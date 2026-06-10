@@ -1,0 +1,532 @@
+<Window x:Class="TerminalSimulation.Wpf.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        xmlns:viewmodels="clr-namespace:TerminalSimulation.Wpf.ViewModels"
+        xmlns:converters="clr-namespace:TerminalSimulation.Wpf.Converters"
+        xmlns:local="clr-namespace:TerminalSimulation.Wpf"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        mc:Ignorable="d"
+        TextElement.Foreground="{DynamicResource MaterialDesignBody}"
+        TextElement.FontWeight="Regular"
+        TextElement.FontSize="14"
+        FontFamily="Microsoft YaHei, Segoe UI, sans-serif"
+        Title="车载定位终端模拟系统 (JT808)" Height="700" Width="1100"
+        WindowStyle="None" ResizeMode="CanResize">
+    
+    <WindowChrome.WindowChrome>
+        <WindowChrome GlassFrameThickness="1" CornerRadius="0" CaptionHeight="40" UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
+
+    <Window.DataContext>
+        <viewmodels:MainViewModel />
+    </Window.DataContext>
+
+    <Window.Resources>
+        <converters:InvertBooleanConverter x:Key="InvertBooleanConverter" />
+        <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
+        
+        <!-- Ensure Cards respond dynamically to background brush changes -->
+        <Style TargetType="{x:Type materialDesign:Card}" BasedOn="{StaticResource {x:Type materialDesign:Card}}">
+            <Setter Property="Background" Value="{DynamicResource MaterialDesignCardBackground}" />
+            <Setter Property="local:GlassBehavior.IsEnabled" Value="True" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding BackgroundEffectMode}" Value="None">
+                    <Setter Property="local:GlassBehavior.IsEnabled" Value="False" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding BackgroundImagePath}" Value="{x:Null}">
+                    <Setter Property="local:GlassBehavior.IsEnabled" Value="False" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding BackgroundImagePath}" Value="">
+                    <Setter Property="local:GlassBehavior.IsEnabled" Value="False" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="TitleBarButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="16,0"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="Width" Value="46"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#33FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#66FFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="TitleBarCloseButtonStyle" TargetType="Button" BasedOn="{StaticResource TitleBarButtonStyle}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#E81123"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#F1707A"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Window.Style>
+        <Style TargetType="Window">
+            <Setter Property="Background" Value="{DynamicResource MaterialDesignPaper}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding BackgroundEffectMode}" Value="Translucent">
+                    <Setter Property="Background" Value="Transparent" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding BackgroundEffectMode}" Value="Blur">
+                    <Setter Property="Background" Value="Transparent" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding BackgroundEffectMode}" Value="Acrylic">
+                    <Setter Property="Background" Value="Transparent" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding BackgroundImagePath}" Value="">
+                    <Setter Property="Background" Value="{DynamicResource MaterialDesignPaper}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Style>
+
+    <Grid x:Name="LayoutRoot">
+        <!-- Settings Overlay (Popup to solve WebView2 airspace issue) -->
+        <Popup IsOpen="{Binding IsSettingsOpen}" Placement="Center" PlacementTarget="{Binding ElementName=LayoutRoot}" AllowsTransparency="True" StaysOpen="True">
+            <Grid Width="{Binding ActualWidth, ElementName=LayoutRoot}" Height="{Binding ActualHeight, ElementName=LayoutRoot}">
+                <Grid Background="#A0000000">
+                    <Grid.InputBindings>
+                        <MouseBinding MouseAction="LeftClick" Command="{Binding CloseSettingsCommand}" />
+                    </Grid.InputBindings>
+                </Grid>
+                <local:ThemeSettingsControl HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Grid>
+        </Popup>
+
+        <Grid>
+            <Grid.RowDefinitions>
+            <RowDefinition Height="40" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Background Sharp Image -->
+        <Image Source="{Binding BackgroundImageSource}" Stretch="UniformToFill" Grid.RowSpan="3" Panel.ZIndex="-2">
+            <Image.Style>
+                <Style TargetType="Image">
+                    <Setter Property="Visibility" Value="Visible" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding BackgroundImagePath}" Value="{x:Null}">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding BackgroundImagePath}" Value="">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Image.Style>
+        </Image>
+
+        <!-- Blurred Background Layer for Glass Effect (Always visible but z-indexed behind the sharp image) -->
+        <Grid x:Name="RootBlurredImage" Grid.RowSpan="3" Panel.ZIndex="-3">
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Setter Property="Visibility" Value="Visible" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding BackgroundEffectMode}" Value="None">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                        <!-- If no image, fallback to solid color -->
+                        <DataTrigger Binding="{Binding BackgroundImagePath}" Value="{x:Null}">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding BackgroundImagePath}" Value="">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
+            
+            <Image Source="{Binding BackgroundImageSource}" Stretch="UniformToFill">
+                <Image.Style>
+                    <Style TargetType="Image">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding BackgroundEffectMode}" Value="Blur">
+                                <Setter Property="Effect">
+                                    <Setter.Value>
+                                        <BlurEffect Radius="20" RenderingBias="Performance" />
+                                    </Setter.Value>
+                                </Setter>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding BackgroundEffectMode}" Value="Acrylic">
+                                <Setter Property="Effect">
+                                    <Setter.Value>
+                                        <BlurEffect Radius="40" RenderingBias="Performance" />
+                                    </Setter.Value>
+                                </Setter>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Image.Style>
+            </Image>
+            
+            <Border Background="{DynamicResource MaterialDesignPaper}" Opacity="{Binding BackgroundOpacity}" />
+        </Grid>
+
+        <!-- Custom Title Bar -->
+        <materialDesign:ColorZone Grid.Row="0" Mode="PrimaryMid" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                
+                <!-- Icon and Title -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="10,0">
+                    <materialDesign:PackIcon Kind="CarConnected" Foreground="White" Width="24" Height="24" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBlock Text="车载定位终端模拟系统 (JT808)" Foreground="White" VerticalAlignment="Center" FontWeight="Bold" FontSize="16" />
+                </StackPanel>
+
+                <!-- Status and Window Controls -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
+                    
+                    <!-- Terminal Status -->
+                    <Border Background="White" CornerRadius="12" Margin="0,8,16,8" Padding="12,0" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Ellipse Width="8" Height="8" Fill="{Binding TerminalStatusColor}" Margin="0,0,6,0" />
+                            <TextBlock Text="{Binding TerminalStatusText}" Foreground="#333" FontSize="12" FontWeight="Bold" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Settings Button -->
+                    <Button Click="BtnSettings_Click" Style="{StaticResource TitleBarButtonStyle}" ToolTip="个性化设置">
+                        <materialDesign:PackIcon Kind="TshirtCrew" Width="16" Height="16" />
+                    </Button>
+
+                    <!-- Minimize Button -->
+                    <Button Click="BtnMinimize_Click" Style="{StaticResource TitleBarButtonStyle}">
+                        <materialDesign:PackIcon Kind="WindowMinimize" Width="14" Height="14" />
+                    </Button>
+                    <!-- Maximize/Restore Button -->
+                    <Button Click="BtnMaximize_Click" Style="{StaticResource TitleBarButtonStyle}">
+                        <materialDesign:PackIcon Kind="WindowMaximize" Width="14" Height="14" />
+                    </Button>
+                    <!-- Close Button -->
+                    <Button Click="BtnClose_Click" Style="{StaticResource TitleBarCloseButtonStyle}">
+                        <materialDesign:PackIcon Kind="WindowClose" Width="14" Height="14" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </materialDesign:ColorZone>
+
+        <!-- Top Config Area -->
+        <materialDesign:Card Grid.Row="1" Margin="8">
+            <StackPanel Orientation="Horizontal" Margin="16">
+                <TextBox materialDesign:HintAssist.Hint="服务器 IP" Style="{StaticResource MaterialDesignFloatingHintTextBox}" Text="{Binding ServerIp}" Width="120" Margin="0,0,16,0" />
+                <TextBox materialDesign:HintAssist.Hint="端口" Style="{StaticResource MaterialDesignFloatingHintTextBox}" Text="{Binding ServerPort}" Width="60" Margin="0,0,16,0" />
+                <TextBox materialDesign:HintAssist.Hint="终端手机号" Style="{StaticResource MaterialDesignFloatingHintTextBox}" Text="{Binding TerminalPhoneNo}" Width="150" Margin="0,0,16,0" />
+                <TextBox materialDesign:HintAssist.Hint="鉴权码" Style="{StaticResource MaterialDesignFloatingHintTextBox}" Text="{Binding AuthCode}" Width="100" Margin="0,0,16,0" />
+                <ComboBox materialDesign:HintAssist.Hint="协议版本" Style="{StaticResource MaterialDesignFloatingHintComboBox}" Width="100" Margin="0,0,16,0" SelectedIndex="{Binding ProtocolVersionIndex}">
+                    <ComboBoxItem Content="JT808-2013" />
+                    <ComboBoxItem Content="JT808-2019" />
+                </ComboBox>
+                
+                <Button Content="连接" Command="{Binding ConnectCommand}" Margin="0,0,8,0" IsEnabled="{Binding IsConnected, Converter={StaticResource InvertBooleanConverter}}" Foreground="White" />
+                <Button Content="断开" Command="{Binding DisconnectCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" IsEnabled="{Binding IsConnected}" Margin="0,0,16,0" />
+                
+                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="0,4,16,4" />
+                <Button Content="导出" Command="{Binding ExportConfigCommand}" Style="{StaticResource MaterialDesignFlatButton}" Margin="0,0,8,0" ToolTip="导出当前所有配置到 JSON 文件" />
+                <Button Content="导入" Command="{Binding ImportConfigCommand}" Style="{StaticResource MaterialDesignFlatButton}" ToolTip="从 JSON 文件导入配置" />
+            </StackPanel>
+        </materialDesign:Card>
+
+        <Grid Grid.Row="2" Margin="8,0,8,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="400" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Left Control Area -->
+            <ScrollViewer Grid.Column="0" Margin="0,0,8,0" VerticalScrollBarVisibility="Hidden">
+                <StackPanel>
+                    <!-- Core Actions -->
+                    <materialDesign:Card Margin="0,0,0,8">
+                        <StackPanel Margin="16">
+                            <TextBlock Text="设备注册与鉴权" Style="{StaticResource MaterialDesignHeadline6TextBlock}" Margin="0,0,0,16" />
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="终端注册" Command="{Binding RegisterCommand}" Margin="0,0,16,0" Width="150" Foreground="White" />
+                                <Button Content="终端鉴权" Command="{Binding AuthCommand}" Width="150" Foreground="White" />
+                            </StackPanel>
+                        </StackPanel>
+                    </materialDesign:Card>
+
+                    <!-- Terminal Heartbeat -->
+                    <materialDesign:Card Margin="0,0,0,8">
+                        <StackPanel Margin="16">
+                            <TextBlock Text="终端心跳保活 (0x0002)" Style="{StaticResource MaterialDesignHeadline6TextBlock}" Margin="0,0,0,16" />
+                            <StackPanel Orientation="Horizontal">
+                                <TextBox materialDesign:HintAssist.Hint="心跳间隔 (秒)" Style="{StaticResource MaterialDesignFloatingHintTextBox}" Text="{Binding HeartbeatInterval}" Width="100" Margin="0,0,16,0" IsEnabled="{Binding IsHeartbeatDisabled, Converter={StaticResource InvertBooleanConverter}}" />
+                                <ToggleButton Style="{StaticResource MaterialDesignSwitchToggleButton}" IsChecked="{Binding IsHeartbeatDisabled}" VerticalAlignment="Bottom" Margin="0,0,8,4" />
+                                <TextBlock Text="关闭自动心跳" VerticalAlignment="Bottom" Margin="0,0,0,6" Foreground="#666" />
+                            </StackPanel>
+                        </StackPanel>
+                    </materialDesign:Card>
+
+                    <!-- Location Report -->
+                    <materialDesign:Card Margin="0,0,0,8">
+                        <StackPanel Margin="16">
+                            <TextBlock Text="位置汇报 (0x0200)" Style="{StaticResource MaterialDesignHeadline6TextBlock}" Margin="0,0,0,16" />
+                            
+                            <Grid Margin="0,0,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0" materialDesign:HintAssist.Hint="纬度 (Lat)" Style="{StaticResource MaterialDesignFloatingHintTextBox}" Text="{Binding Latitude}" Margin="0,0,8,0" />
+                                <TextBox Grid.Column="1" materialDesign:HintAssist.Hint="经度 (Lng)" Style="{StaticResource MaterialDesignFloatingHintTextBox}" Text="{Binding Longitude}" Margin="8,0,0,0" />
+                            </Grid>
+                            
+                            <Grid Margin="0,0,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="16"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="16"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0" materialDesign:HintAssist.Hint="速度 (km/h)" Style="{StaticResource MaterialDesignFloatingHintTextBox}" Text="{Binding Speed}" Margin="0,0,0,0" />
+                                <TextBox Grid.Column="2" materialDesign:HintAssist.Hint="方向 (0-359)" Style="{StaticResource MaterialDesignFloatingHintTextBox}" Text="{Binding Direction}" />
+                                <TextBox Grid.Column="4" materialDesign:HintAssist.Hint="高程 (m)" Style="{StaticResource MaterialDesignFloatingHintTextBox}" Text="{Binding Altitude}" />
+                            </Grid>
+
+                            <Expander Header="报警标志设置" Margin="0,0,0,8" Background="Transparent" BorderThickness="1" BorderBrush="{DynamicResource MaterialDesignDivider}">
+                                <ItemsControl ItemsSource="{Binding AlarmFlags}" Margin="8">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <CheckBox Content="{Binding Name}" IsChecked="{Binding IsChecked}" Margin="0,0,16,8" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Expander>
+
+                            <Expander Header="车辆状态设置" Margin="0,0,0,16" Background="Transparent" BorderThickness="1" BorderBrush="{DynamicResource MaterialDesignDivider}">
+                                <ItemsControl ItemsSource="{Binding StatusFlags}" Margin="8">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <CheckBox Content="{Binding Name}" IsChecked="{Binding IsChecked}" Margin="0,0,16,8" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Expander>
+
+                            <Separator Margin="0,8"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <TextBlock Text="附加信息 (Hex透传)" Style="{StaticResource MaterialDesignSubtitle2TextBlock}" VerticalAlignment="Center"/>
+                                <Button Style="{StaticResource MaterialDesignToolButton}" Command="{Binding AddCustomAttachCommand}" ToolTip="添加一项附加信息" Margin="8,0,0,0">
+                                    <TextBlock Text="➕" FontSize="12"/>
+                                </Button>
+                            </StackPanel>
+                            
+                            <ItemsControl ItemsSource="{Binding CustomAttachItems}" Margin="0,0,0,16">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,0,0,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="60"/>
+                                                <ColumnDefinition Width="60"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox Grid.Column="0" materialDesign:HintAssist.Hint="字段 ID" Style="{StaticResource MaterialDesignFloatingHintTextBox}" Text="{Binding AttachId, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0" />
+                                            <TextBox Grid.Column="1" materialDesign:HintAssist.Hint="长度" Style="{StaticResource MaterialDesignFloatingHintTextBox}" Text="{Binding AttachLength, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0" />
+                                            <TextBox Grid.Column="2" materialDesign:HintAssist.Hint="数据内容 (Hex)" Style="{StaticResource MaterialDesignFloatingHintTextBox}" Text="{Binding AttachData, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"/>
+                                            <Button Grid.Column="3" Style="{StaticResource MaterialDesignToolButton}" Command="{Binding DataContext.RemoveCustomAttachCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" ToolTip="删除" VerticalAlignment="Bottom">
+                                                <TextBlock Text="❌" FontSize="12" Foreground="Red"/>
+                                            </Button>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="8" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="80" />
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Column="0" Content="发送位置汇报" Command="{Binding ReportLocationCommand}" Foreground="White" />
+                                
+                                <TextBlock Grid.Column="2" Text="自动发送" VerticalAlignment="Center" />
+                                <ToggleButton Grid.Column="4" 
+                                              Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                                              IsChecked="{Binding IsAutoReporting, Mode=OneWay}"
+                                              Command="{Binding ToggleAutoReportCommand}"
+                                              ToolTip="开启/关闭自动循环发送" />
+                                              
+                                <TextBox Grid.Column="6" materialDesign:HintAssist.Hint="间隔 (秒)" 
+                                         Style="{StaticResource MaterialDesignFloatingHintTextBox}" 
+                                         Text="{Binding AutoReportInterval}" Margin="0,-16,0,0" />
+                            </Grid>
+                        </StackPanel>
+                    </materialDesign:Card>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Right Advanced & Logs Area -->
+            <materialDesign:Card Grid.Column="1">
+                <TabControl Style="{StaticResource MaterialDesignTabControl}">
+                    <TabItem Header="通信日志">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="8,8,8,4">
+                                <CheckBox Content="自动滚动至最新" IsChecked="{Binding AutoScrollLogs}" Margin="0,0,16,0" />
+                                <Button Content="清空日志" Command="{Binding ClearLogsCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" Height="24" Padding="8,0" />
+                            </StackPanel>
+                            <TextBox Grid.Row="1" x:Name="LogTextBox" 
+                                     Text="{Binding LogText, Mode=OneWay}" 
+                                     Background="#1E1E1E" Foreground="#D4D4D4" 
+                                     FontFamily="Consolas" FontSize="13" 
+                                     Margin="8,0,8,8" Padding="4"
+                                     IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True"
+                                     VerticalScrollBarVisibility="Auto" 
+                                     HorizontalScrollBarVisibility="Auto" 
+                                     VerticalContentAlignment="Top"
+                                     TextChanged="LogTextBox_TextChanged" />
+                        </Grid>
+                    </TabItem>
+                    <TabItem Header="地图选点">
+                        <Grid>
+                            <wv2:WebView2 x:Name="MapWebView" />
+                        </Grid>
+                    </TabItem>
+                    <TabItem Header="数据透传">
+                        <Grid Background="{DynamicResource MaterialDesignPaper}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            
+                            <!-- Top Control Bar -->
+                            <Border Grid.Row="0" Background="{DynamicResource MaterialDesignCardBackground}" BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="0,0,0,1" Padding="8">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="透传类型(HEX):" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource MaterialDesignBodyLight}" />
+                                    <TextBox Text="{Binding PassthroughTypeHex, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,16,0" />
+                                    <TextBlock Text="编码:" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource MaterialDesignBodyLight}" />
+                                    <ComboBox SelectedIndex="{Binding PassthroughEncodingIndex}" Width="80">
+                                        <ComboBoxItem Content="GBK" />
+                                        <ComboBoxItem Content="UTF-8" />
+                                        <ComboBoxItem Content="HEX" />
+                                    </ComboBox>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Chat List -->
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding PassthroughMessages}" Margin="8">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,4,0,4">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <!-- Server Message (Left) -->
+                                                <StackPanel Grid.Column="0" HorizontalAlignment="Left" Visibility="{Binding IsFromServer, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <TextBlock Text="{Binding Time}" FontSize="10" Foreground="Gray" Margin="4,0,0,2" />
+                                                    <Border Background="{DynamicResource MaterialDesignCardBackground}" BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="1" CornerRadius="8" Padding="10,6">
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding TypeHex, StringFormat='类型: 0x{0}'}" FontSize="10" Foreground="Gray" Margin="0,0,0,2" />
+                                                            <TextBlock Text="{Binding Content}" TextWrapping="Wrap" MaxWidth="300" Foreground="{DynamicResource MaterialDesignBody}" />
+                                                        </StackPanel>
+                                                    </Border>
+                                                </StackPanel>
+
+                                                <!-- Terminal Message (Right) -->
+                                                <StackPanel Grid.Column="1" HorizontalAlignment="Right" Visibility="{Binding IsFromServer, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                                                    <TextBlock Text="{Binding Time}" FontSize="10" Foreground="Gray" Margin="0,0,4,2" HorizontalAlignment="Right" />
+                                                    <Border Background="{DynamicResource PrimaryHueLightBrush}" CornerRadius="8" Padding="10,6">
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding TypeHex, StringFormat='类型: 0x{0}'}" FontSize="10" Foreground="{DynamicResource PrimaryHueDarkBrush}" Margin="0,0,0,2" HorizontalAlignment="Right" />
+                                                            <TextBlock Text="{Binding Content}" TextWrapping="Wrap" MaxWidth="300" Foreground="{DynamicResource PrimaryHueLightForegroundBrush}" />
+                                                        </StackPanel>
+                                                    </Border>
+                                                </StackPanel>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+
+                            <!-- Bottom Input Bar -->
+                            <Border Grid.Row="2" Background="{DynamicResource MaterialDesignCardBackground}" BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="0,1,0,0" Padding="8">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0" Text="{Binding PassthroughInputText, UpdateSourceTrigger=PropertyChanged}" 
+                                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                             Height="60" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
+                                             materialDesign:HintAssist.Hint="输入透传内容..." Margin="0,0,8,0" />
+                                    <Button Grid.Column="1" Command="{Binding SendPassthroughCommand}" 
+                                            Height="60" Width="100" VerticalAlignment="Bottom"
+                                            Style="{StaticResource MaterialDesignRaisedButton}"
+                                            materialDesign:ButtonAssist.CornerRadius="8"
+                                            Cursor="Hand">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
+                                            <materialDesign:PackIcon Kind="Send" Width="18" Height="18" Margin="0,0,8,0" />
+                                            <TextBlock Text="发送" FontWeight="Bold" FontSize="14" />
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </TabItem>
+                </TabControl>
+            </materialDesign:Card>
+        </Grid>
+        </Grid>
+    </Grid>
+</Window>

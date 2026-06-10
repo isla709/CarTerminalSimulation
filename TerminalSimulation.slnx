@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="TerminalSimulation.Network/TerminalSimulation.Network.csproj" />
+  <Project Path="TerminalSimulation.Protocol/TerminalSimulation.Protocol.csproj" />
+  <Project Path="TerminalSimulation.Wpf/TerminalSimulation.Wpf.csproj" />
+</Solution>
