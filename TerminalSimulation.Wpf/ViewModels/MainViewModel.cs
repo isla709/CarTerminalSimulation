@@ -66,6 +66,18 @@ namespace TerminalSimulation.Wpf.ViewModels
         public string BackgroundImagePath { get; set; } = "";
         public BackgroundEffectMode BackgroundEffectMode { get; set; } = BackgroundEffectMode.Translucent;
         public double BackgroundOpacity { get; set; } = 0.8;
+        public ushort ProvinceId { get; set; } = 11;
+        public ushort CityId { get; set; } = 1101;
+        public string ManufacturerId { get; set; } = "TEST ";
+        public string TerminalModel { get; set; } = "Model-1";
+        public string TerminalId { get; set; } = "T000001";
+        public byte PlateColor { get; set; } = 1;
+        public string PlateNo { get; set; } = "京A88888";
+        public string SimNumber { get; set; } = "13812345678";
+        public string TerminalIMEI { get; set; } = "861234567890123";
+        public string HardwareVersion { get; set; } = "V1.0.0";
+        public string FirmwareVersion { get; set; } = "V1.0.0";
+        public bool UseAppVersionAsFirmwareVersion { get; set; } = true;
     }
 
     public class WorkStateConfig
@@ -82,6 +94,18 @@ namespace TerminalSimulation.Wpf.ViewModels
         public uint StatusFlagValue { get; set; } = 0;
         public int AutoReportInterval { get; set; } = 5;
         public System.Collections.Generic.List<CustomAttachItem> CustomAttachItems { get; set; } = new();
+        public ushort ProvinceId { get; set; } = 11;
+        public ushort CityId { get; set; } = 1101;
+        public string ManufacturerId { get; set; } = "TEST ";
+        public string TerminalModel { get; set; } = "Model-1";
+        public string TerminalId { get; set; } = "T000001";
+        public byte PlateColor { get; set; } = 1;
+        public string PlateNo { get; set; } = "京A88888";
+        public string SimNumber { get; set; } = "13812345678";
+        public string TerminalIMEI { get; set; } = "861234567890123";
+        public string HardwareVersion { get; set; } = "V1.0.0";
+        public string FirmwareVersion { get; set; } = "V1.0.0";
+        public bool UseAppVersionAsFirmwareVersion { get; set; } = true;
     }
 
     public partial class MainViewModel : ObservableObject, IDisposable
@@ -276,7 +300,19 @@ namespace TerminalSimulation.Wpf.ViewModels
                     e.PropertyName == nameof(CustomAttachItems) ||
                     e.PropertyName == nameof(BackgroundImagePath) ||
                     e.PropertyName == nameof(BackgroundEffectMode) ||
-                    e.PropertyName == nameof(BackgroundOpacity))
+                    e.PropertyName == nameof(BackgroundOpacity) ||
+                    e.PropertyName == nameof(ProvinceIdInput) ||
+                    e.PropertyName == nameof(CityIdInput) ||
+                    e.PropertyName == nameof(ManufacturerId) ||
+                    e.PropertyName == nameof(TerminalModel) ||
+                    e.PropertyName == nameof(TerminalId) ||
+                    e.PropertyName == nameof(PlateColor) ||
+                    e.PropertyName == nameof(PlateNo) ||
+                    e.PropertyName == nameof(SimNumber) ||
+                    e.PropertyName == nameof(TerminalIMEI) ||
+                    e.PropertyName == nameof(HardwareVersion) ||
+                    e.PropertyName == nameof(FirmwareVersion) ||
+                    e.PropertyName == nameof(UseAppVersionAsFirmwareVersion))
                 {
                     SaveConfigDebounced();
                 }
@@ -387,6 +423,18 @@ namespace TerminalSimulation.Wpf.ViewModels
                             Direction = config.Direction;
                             Altitude = config.Altitude;
                             AutoReportInterval = config.AutoReportInterval;
+                            ProvinceIdInput = config.ProvinceId.ToString();
+                            CityIdInput = config.CityId.ToString();
+                            ManufacturerId = config.ManufacturerId ?? "TEST ";
+                            TerminalModel = config.TerminalModel ?? "Model-1";
+                            TerminalId = config.TerminalId ?? "T000001";
+                            PlateColor = config.PlateColor;
+                            PlateNo = config.PlateNo ?? "京A88888";
+                            SimNumber = config.SimNumber ?? "13812345678";
+                            TerminalIMEI = config.TerminalIMEI ?? "861234567890123";
+                            HardwareVersion = config.HardwareVersion ?? "V1.0.0";
+                            FirmwareVersion = config.FirmwareVersion ?? "V1.0.0";
+                            UseAppVersionAsFirmwareVersion = config.UseAppVersionAsFirmwareVersion;
                             var bgPath = config.BackgroundImagePath;
                             var bgEffect = config.BackgroundEffectMode;
 
@@ -537,7 +585,19 @@ namespace TerminalSimulation.Wpf.ViewModels
                 }).ToList(),
                 BackgroundImagePath = BackgroundImagePath,
                 BackgroundEffectMode = BackgroundEffectMode,
-                BackgroundOpacity = BackgroundOpacity
+                BackgroundOpacity = BackgroundOpacity,
+                ProvinceId = ushort.TryParse(ProvinceIdInput?.Split(' ')[0], out var pid) ? pid : (ushort)11,
+                CityId = ushort.TryParse(CityIdInput?.Split(' ')[0], out var cid) ? cid : (ushort)1101,
+                ManufacturerId = ManufacturerId,
+                TerminalModel = TerminalModel,
+                TerminalId = TerminalId,
+                PlateColor = PlateColor,
+                PlateNo = PlateNo,
+                SimNumber = SimNumber,
+                TerminalIMEI = TerminalIMEI,
+                HardwareVersion = HardwareVersion,
+                FirmwareVersion = FirmwareVersion,
+                UseAppVersionAsFirmwareVersion = UseAppVersionAsFirmwareVersion
             };
         }
 
@@ -580,7 +640,24 @@ namespace TerminalSimulation.Wpf.ViewModels
         [ObservableProperty] private string _terminalPhoneNo = "13812345678";
         [ObservableProperty] private string _authCode = "123456";
         [ObservableProperty] private bool _isConnected = false;
-        
+
+        [ObservableProperty] private string _provinceIdInput = "11";
+        [ObservableProperty] private string _cityIdInput = "1101";
+        [ObservableProperty] private string _manufacturerId = "TEST ";
+        [ObservableProperty] private string _terminalModel = "Model-1";
+        [ObservableProperty] private string _terminalId = "T000001";
+        [ObservableProperty] private byte _plateColor = 1;
+        [ObservableProperty] private string _plateNo = "京A88888";
+        [ObservableProperty] private string _simNumber = "13812345678";
+        [ObservableProperty] private string _terminalIMEI = "861234567890123";
+        [ObservableProperty] private string _hardwareVersion = "V1.0.0";
+        [ObservableProperty] private string _firmwareVersion = "V1.0.0";
+        [ObservableProperty] private bool _useAppVersionAsFirmwareVersion = true;
+
+        public ObservableCollection<string> ManufacturerList { get; } = new ObservableCollection<string> { "TEST ", "HIKVS", "DAHUA", "STRMX" };
+        public ObservableCollection<string> ProvinceList { get; } = new ObservableCollection<string> { "11", "31", "44", "33", "32" };
+        public ObservableCollection<string> CityList { get; } = new ObservableCollection<string> { "1101", "3101", "4401", "3301", "3201" };
+
         [ObservableProperty] private double _latitude = 39.9042;
         [ObservableProperty] private double _longitude = 116.4074;
         [ObservableProperty] private double _speed = 60.5;
@@ -953,6 +1030,50 @@ namespace TerminalSimulation.Wpf.ViewModels
                         });
                     }
                 }
+                // 拦截查询终端属性 (0x8107)
+                if (package.Header.MsgId == 0x8107)
+                {
+                    Task.Run(async () =>
+                    {
+                        try
+                        {
+                            var header = new JT808Header
+                            {
+                                MsgId = 0x0107,
+                                TerminalPhoneNo = TerminalPhoneNo,
+                                MsgNum = 1,
+                            };
+
+                            var body = new JT808_0x0107
+                            {
+                                TerminalType = 0,
+                                MakerId = ManufacturerId,
+                                TerminalModel = TerminalModel,
+                                TerminalId = TerminalId,
+                                Terminal_SIM_ICCID = SimNumber,
+                                Terminal_Hardware_Version_Num = HardwareVersion,
+                                Terminal_Firmware_Version_Num = UseAppVersionAsFirmwareVersion ? AppVersionInfo.FullVersion : FirmwareVersion,
+                                GNSSModule = 1,
+                                CommunicationModule = 1
+                            };
+
+                            var replyPackage = new JT808Package
+                            {
+                                Header = header,
+                                Bodies = body
+                            };
+
+                            var version = UseJT808_2019 ? JT808Version.JTT2019 : JT808Version.JTT2013;
+                            byte[] replyData = _protocolManager.Serialize(replyPackage, version);
+                            await _networkClient.SendAsync(replyData);
+                            Log("发送", $"自动应答 0x0107 查询终端属性");
+                        }
+                        catch (Exception ex)
+                        {
+                            Log("系统", $"发送 0x0107 应答异常: {ex.Message}");
+                        }
+                    });
+                }
                 
                 // 拦截平台通用应答 (0x8001)
                 if (package.Header.MsgId == 0x8001 && package.Bodies is JT808_0x8001 platformResponse)
@@ -1192,13 +1313,13 @@ namespace TerminalSimulation.Wpf.ViewModels
 
             var body = new JT808_0x0100
             {
-                AreaID = 0,
-                CityOrCountyId = 0,
-                MakerId = "test",
-                TerminalId = "T001",
-                TerminalModel = "Model1",
-                PlateColor = 1,
-                PlateNo = "京A88888"
+                AreaID = ushort.TryParse(ProvinceIdInput?.Split(' ')[0], out var pid) ? pid : (ushort)0,
+                CityOrCountyId = ushort.TryParse(CityIdInput?.Split(' ')[0], out var cid) ? cid : (ushort)0,
+                MakerId = ManufacturerId,
+                TerminalId = TerminalId,
+                TerminalModel = TerminalModel,
+                PlateColor = PlateColor,
+                PlateNo = PlateNo
             };
 
             var package = new JT808Package

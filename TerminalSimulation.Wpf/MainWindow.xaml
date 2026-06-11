@@ -558,6 +558,45 @@
                              </Border>
                         </Grid>
                     </TabItem>
+                    <TabItem Header="设备属性">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel Margin="16" MinWidth="250">
+                                <StackPanel.Resources>
+                                    <Style TargetType="TextBox" BasedOn="{StaticResource MaterialDesignFloatingHintTextBox}">
+                                        <Setter Property="Margin" Value="0,8,0,16" />
+                                    </Style>
+                                    <Style TargetType="ComboBox" BasedOn="{StaticResource MaterialDesignFloatingHintComboBox}">
+                                        <Setter Property="Margin" Value="0,8,0,16" />
+                                    </Style>
+                                </StackPanel.Resources>
+                                
+                                <TextBlock Text="终端标识属性" FontWeight="Bold" FontSize="16" Margin="0,0,0,16" Foreground="{DynamicResource MaterialDesignBody}" />
+                                
+                                <ComboBox materialDesign:HintAssist.Hint="省域ID" IsEditable="True" Text="{Binding ProvinceIdInput}" ItemsSource="{Binding ProvinceList}" />
+                                <ComboBox materialDesign:HintAssist.Hint="市县域ID" IsEditable="True" Text="{Binding CityIdInput}" ItemsSource="{Binding CityList}" />
+                                <ComboBox materialDesign:HintAssist.Hint="制造商ID" IsEditable="True" Text="{Binding ManufacturerId}" ItemsSource="{Binding ManufacturerList}" />
+                                <TextBox materialDesign:HintAssist.Hint="终端型号" Text="{Binding TerminalModel}" MaxLength="20" />
+                                <TextBox materialDesign:HintAssist.Hint="终端ID" Text="{Binding TerminalId}" MaxLength="7" />
+                                
+                                <TextBlock Text="车辆与SIM卡属性" FontWeight="Bold" FontSize="16" Margin="0,16,0,16" Foreground="{DynamicResource MaterialDesignBody}" />
+                                
+                                <TextBox materialDesign:HintAssist.Hint="车牌颜色 (例如: 1为蓝色, 2为黄色)" Text="{Binding PlateColor}" />
+                                <TextBox materialDesign:HintAssist.Hint="车牌号" Text="{Binding PlateNo}" />
+                                <TextBox materialDesign:HintAssist.Hint="SIM卡号 (ICCID)" Text="{Binding SimNumber}" />
+                                <TextBox materialDesign:HintAssist.Hint="终端IMEI" Text="{Binding TerminalIMEI}" />
+                                
+                                <TextBlock Text="版本属性 (用于 0x8107 回复)" FontWeight="Bold" FontSize="16" Margin="0,16,0,16" Foreground="{DynamicResource MaterialDesignBody}" />
+                                
+                                <TextBox materialDesign:HintAssist.Hint="硬件版本号" Text="{Binding HardwareVersion}" />
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,16">
+                                    <ToggleButton IsChecked="{Binding UseAppVersionAsFirmwareVersion}" />
+                                    <TextBlock Text="使用程序版本作为固件版本" VerticalAlignment="Center" Margin="8,0,0,0" />
+                                </StackPanel>
+                                <TextBox materialDesign:HintAssist.Hint="固件版本号" Text="{Binding FirmwareVersion}" IsEnabled="{Binding UseAppVersionAsFirmwareVersion, Converter={StaticResource InvertBooleanConverter}}" />
+                                
+                            </StackPanel>
+                        </ScrollViewer>
+                    </TabItem>
                 </TabControl>
             </materialDesign:Card>
         </Grid>
