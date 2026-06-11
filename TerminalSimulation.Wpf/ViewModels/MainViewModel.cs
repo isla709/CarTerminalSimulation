@@ -68,6 +68,22 @@ namespace TerminalSimulation.Wpf.ViewModels
         public double BackgroundOpacity { get; set; } = 0.8;
     }
 
+    public class WorkStateConfig
+    {
+        public string ServerIp { get; set; } = "127.0.0.1";
+        public int ServerPort { get; set; } = 808;
+        public string TerminalPhoneNo { get; set; } = "13812345678";
+        public string AuthCode { get; set; } = "123456";
+        public bool UseJT808_2019 { get; set; } = true;
+        public double Speed { get; set; } = 60;
+        public int Direction { get; set; } = 90;
+        public double Altitude { get; set; } = 100;
+        public uint AlarmFlagValue { get; set; } = 0;
+        public uint StatusFlagValue { get; set; } = 0;
+        public int AutoReportInterval { get; set; } = 5;
+        public System.Collections.Generic.List<CustomAttachItem> CustomAttachItems { get; set; } = new();
+    }
+
     public partial class MainViewModel : ObservableObject, IDisposable
     {
         private readonly TerminalNetworkClient _networkClient;
@@ -99,9 +115,14 @@ namespace TerminalSimulation.Wpf.ViewModels
             {
                 try
                 {
+                    var fullPath = value;
+                    if (!System.IO.Path.IsPathRooted(value))
+                    {
+                        fullPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, value);
+                    }
                     var bmp = new System.Windows.Media.Imaging.BitmapImage();
                     bmp.BeginInit();
-                    bmp.UriSource = new Uri(value);
+                    bmp.UriSource = new Uri(fullPath);
                     bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
                     bmp.EndInit();
                     bmp.Freeze();
@@ -111,6 +132,92 @@ namespace TerminalSimulation.Wpf.ViewModels
             }
         }
 
+        partial void OnChatEncodingIndexChanged(int value)
+        {
+            foreach (var msg in PassthroughMessages)
+            {
+                if (msg.RawData != null && msg.RawData.Length > 0)
+                {
+                    msg.Content = DecodePassthroughData(msg.RawData, value);
+                }
+            }
+        }
+
+        partial void OnPassthroughEncodingIndexChanged(int value)
+        {
+            if (value == 2 && !string.IsNullOrEmpty(PassthroughInputText))
+            {
+                var sanitized = SanitizeHex(PassthroughInputText);
+                if (sanitized != PassthroughInputText)
+                {
+                    PassthroughInputText = sanitized;
+                }
+            }
+            ValidateHexInput();
+        }
+
+        partial void OnPassthroughInputTextChanged(string value)
+        {
+            if (PassthroughEncodingIndex == 2)
+            {
+                var sanitized = SanitizeHex(value);
+                if (sanitized != value)
+                {
+                    PassthroughInputText = sanitized;
+                    return;
+                }
+            }
+            ValidateHexInput();
+        }
+
+        private string SanitizeHex(string input)
+        {
+            if (string.IsNullOrEmpty(input)) return "";
+            var sb = new StringBuilder();
+            foreach (var c in input)
+            {
+                if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))
+                {
+                    sb.Append(char.ToUpper(c));
+                }
+            }
+            return sb.ToString();
+        }
+
+        private void ValidateHexInput()
+        {
+            if (PassthroughEncodingIndex == 2 && !string.IsNullOrEmpty(PassthroughInputText))
+            {
+                IsHexInputInvalid = PassthroughInputText.Length % 2 != 0;
+            }
+            else
+            {
+                IsHexInputInvalid = false;
+            }
+        }
+
+        private string DecodePassthroughData(byte[] data, int encodingIndex)
+        {
+            if (data == null || data.Length == 0) return "";
+            if (encodingIndex == 2) // HEX
+            {
+                return data.ToHexString();
+            }
+            else
+            {
+                try
+                {
+                    var encoding = encodingIndex == 0 ? System.Text.Encoding.GetEncoding("GBK") : System.Text.Encoding.UTF8;
+                    return encoding.GetString(data);
+                }
+                catch (Exception ex)
+                {
+                    return $"[解码失败: {ex.Message}]";
+                }
+            }
+        }
+
+        public string AppTitle => $"车载定位终端模拟系统 (JT808) v{AppVersionInfo.FullVersion}";
 
         public MainViewModel()
         {
@@ -128,12 +235,37 @@ namespace TerminalSimulation.Wpf.ViewModels
 
             _protocolManager = new JT808Manager();
 
+            CustomAttachItems.CollectionChanged += (s, e) =>
+            {
+                if (e.NewItems != null)
+                {
+                    foreach (CustomAttachItem item in e.NewItems)
+                    {
+                        item.PropertyChanged += CustomAttachItem_PropertyChanged;
+                    }
+                }
+                if (e.OldItems != null)
+                {
+                    foreach (CustomAttachItem item in e.OldItems)
+                    {
+                        item.PropertyChanged -= CustomAttachItem_PropertyChanged;
+                    }
+                }
+                if (!_isLoadingConfig)
+                {
+                    SaveConfigDebounced();
+                }
+            };
+
             LoadConfig();
             InitThemeImages();
+            RefreshSerialPorts();
 
             // 监听属性变化并保存配置
             this.PropertyChanged += (s, e) =>
             {
+                if (_isLoadingConfig) return;
+
                 if (e.PropertyName == nameof(ServerIp) ||
                     e.PropertyName == nameof(ServerPort) ||
                     e.PropertyName == nameof(TerminalPhoneNo) ||
@@ -146,9 +278,17 @@ namespace TerminalSimulation.Wpf.ViewModels
                     e.PropertyName == nameof(BackgroundEffectMode) ||
                     e.PropertyName == nameof(BackgroundOpacity))
                 {
-                    SaveConfig();
+                    SaveConfigDebounced();
                 }
             };
+        }
+
+        private void CustomAttachItem_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (!_isLoadingConfig)
+            {
+                SaveConfigDebounced();
+            }
         }
 
         private readonly string ConfigFile = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.json");
@@ -159,7 +299,7 @@ namespace TerminalSimulation.Wpf.ViewModels
             for (int i = 0; i < alarmNames.Length; i++)
             {
                 var item = new BitFlagItem { BitIndex = i, Name = $"[bit{i}]{alarmNames[i]}", IsChecked = false };
-                item.PropertyChanged += (s, e) => { if (e.PropertyName == nameof(BitFlagItem.IsChecked)) SaveConfig(); };
+                item.PropertyChanged += (s, e) => { if (!_isLoadingConfig && e.PropertyName == nameof(BitFlagItem.IsChecked)) SaveConfigDebounced(); };
                 AlarmFlags.Add(item);
             }
 
@@ -167,7 +307,7 @@ namespace TerminalSimulation.Wpf.ViewModels
             for (int i = 0; i < statusNames.Length; i++)
             {
                 var item = new BitFlagItem { BitIndex = i, Name = $"[bit{i}]{statusNames[i]}", IsChecked = false };
-                item.PropertyChanged += (s, e) => { if (e.PropertyName == nameof(BitFlagItem.IsChecked)) SaveConfig(); };
+                item.PropertyChanged += (s, e) => { if (!_isLoadingConfig && e.PropertyName == nameof(BitFlagItem.IsChecked)) SaveConfigDebounced(); };
                 StatusFlags.Add(item);
             }
         }
@@ -190,77 +330,249 @@ namespace TerminalSimulation.Wpf.ViewModels
             return val;
         }
 
-        private void LoadConfig()
-        {
-            try
-            {
-                if (File.Exists(ConfigFile))
-                {
-                    var json = File.ReadAllText(ConfigFile);
-                    var config = System.Text.Json.JsonSerializer.Deserialize<AppConfig>(json);
-                    if (config != null)
-                    {
-                        ServerIp = config.ServerIp;
-                        ServerPort = config.ServerPort;
-                        TerminalPhoneNo = config.TerminalPhoneNo;
-                        AuthCode = config.AuthCode;
-                        UseJT808_2019 = config.UseJT808_2019;
-                        Speed = config.Speed;
-                        Direction = config.Direction;
-                        Altitude = config.Altitude;
-                        AutoReportInterval = config.AutoReportInterval;
-                        BackgroundImagePath = config.BackgroundImagePath;
-                        BackgroundEffectMode = config.BackgroundEffectMode;
-                        BackgroundOpacity = config.BackgroundOpacity;
-                        
-                        SetFlagsFromValue(AlarmFlags, config.AlarmFlagValue);
-                        SetFlagsFromValue(StatusFlags, config.StatusFlagValue);
+        private bool _isLoadingConfig = false;
+        private readonly object _configLock = new object();
+        private System.Threading.Timer? _saveTimer;
+        private readonly object _saveLock = new object();
 
-                        if (config.CustomAttachItems != null)
-                        {
-                            CustomAttachItems.Clear();
-                            foreach (var item in config.CustomAttachItems)
-                            {
-                                item.PropertyChanged += (s, e) => SaveConfig();
-                                CustomAttachItems.Add(item);
-                            }
-                        }
-                    }
+        private void SaveConfigDebounced()
+        {
+            lock (_saveLock)
+            {
+                if (_saveTimer == null)
+                {
+                    _saveTimer = new System.Threading.Timer(SaveTimerCallback, null, 500, System.Threading.Timeout.Infinite);
                 }
                 else
                 {
-                    SaveConfig(); // Create default config file if it does not exist
+                    _saveTimer.Change(500, System.Threading.Timeout.Infinite);
                 }
             }
-            catch { }
+        }
+
+        private void SaveTimerCallback(object? state)
+        {
+            SaveConfig();
+        }
+
+        private void LoadConfig()
+        {
+            lock (_configLock)
+            {
+                _isLoadingConfig = true;
+                try
+                {
+                    string tempFile = ConfigFile + ".tmp";
+                    if (!File.Exists(ConfigFile) && File.Exists(tempFile))
+                    {
+                        try
+                        {
+                            File.Move(tempFile, ConfigFile);
+                        }
+                        catch { }
+                    }
+
+                    if (File.Exists(ConfigFile))
+                    {
+                        var json = File.ReadAllText(ConfigFile);
+                        var config = System.Text.Json.JsonSerializer.Deserialize<AppConfig>(json);
+                        if (config != null)
+                        {
+                            ServerIp = config.ServerIp;
+                            ServerPort = config.ServerPort;
+                            TerminalPhoneNo = config.TerminalPhoneNo;
+                            AuthCode = config.AuthCode;
+                            UseJT808_2019 = config.UseJT808_2019;
+                            Speed = config.Speed;
+                            Direction = config.Direction;
+                            Altitude = config.Altitude;
+                            AutoReportInterval = config.AutoReportInterval;
+                            var bgPath = config.BackgroundImagePath;
+                            var bgEffect = config.BackgroundEffectMode;
+
+                            if (!string.IsNullOrEmpty(bgPath))
+                            {
+                                if (bgPath.StartsWith("pack://embedded/"))
+                                {
+                                    // Embedded resource
+                                }
+                                else
+                                {
+                                    var fileName = System.IO.Path.GetFileName(bgPath);
+                                    var relativePath = System.IO.Path.Combine("Themes", fileName);
+                                    var fullPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, relativePath);
+
+                                    if (System.IO.File.Exists(fullPath))
+                                    {
+                                        bgPath = relativePath;
+                                    }
+                                    else if (System.IO.Path.IsPathRooted(bgPath) && System.IO.File.Exists(bgPath))
+                                    {
+                                        try
+                                        {
+                                            var themeDir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Themes");
+                                            if (!System.IO.Directory.Exists(themeDir)) System.IO.Directory.CreateDirectory(themeDir);
+                                            var destFile = System.IO.Path.Combine(themeDir, fileName);
+                                            System.IO.File.Copy(bgPath, destFile, true);
+                                            bgPath = relativePath;
+                                        }
+                                        catch
+                                        {
+                                            // Keep as is if copy fails
+                                        }
+                                    }
+                                    else
+                                    {
+                                        bgPath = "";
+                                        bgEffect = BackgroundEffectMode.None;
+                                    }
+                                }
+                            }
+
+                            BackgroundImagePath = bgPath;
+                            BackgroundEffectMode = bgEffect;
+                            BackgroundOpacity = config.BackgroundOpacity;
+                            
+                            SetFlagsFromValue(AlarmFlags, config.AlarmFlagValue);
+                            SetFlagsFromValue(StatusFlags, config.StatusFlagValue);
+
+                            if (config.CustomAttachItems != null)
+                            {
+                                CustomAttachItems.Clear();
+                                foreach (var item in config.CustomAttachItems)
+                                {
+                                    CustomAttachItems.Add(item);
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        SaveConfig(); // Create default config file if it does not exist
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log("系统", $"加载配置失败: {ex.Message}");
+                }
+                finally
+                {
+                    _isLoadingConfig = false;
+                }
+            }
+        }
+
+        private class LocationReportSnapshot
+        {
+            public string TerminalPhoneNo { get; set; } = "";
+            public uint AlarmFlag { get; set; }
+            public uint StatusFlag { get; set; }
+            public double Latitude { get; set; }
+            public double Longitude { get; set; }
+            public double Altitude { get; set; }
+            public double Speed { get; set; }
+            public int Direction { get; set; }
+            public System.Collections.Generic.List<CustomAttachItem> CustomAttachItems { get; set; } = new();
+        }
+
+        private LocationReportSnapshot CaptureLocationReportSnapshot()
+        {
+            if (Application.Current != null && !Application.Current.Dispatcher.CheckAccess())
+            {
+                return Application.Current.Dispatcher.Invoke(() => CaptureLocationReportSnapshotInternal());
+            }
+            return CaptureLocationReportSnapshotInternal();
+        }
+
+        private LocationReportSnapshot CaptureLocationReportSnapshotInternal()
+        {
+            return new LocationReportSnapshot
+            {
+                TerminalPhoneNo = TerminalPhoneNo,
+                AlarmFlag = GetValueFromFlags(AlarmFlags),
+                StatusFlag = GetValueFromFlags(StatusFlags),
+                Latitude = Latitude,
+                Longitude = Longitude,
+                Altitude = Altitude,
+                Speed = Speed,
+                Direction = Direction,
+                CustomAttachItems = CustomAttachItems.Select(x => new CustomAttachItem
+                {
+                    AttachId = x.AttachId,
+                    AttachLength = x.AttachLength,
+                    AttachData = x.AttachData
+                }).ToList()
+            };
+        }
+
+        private AppConfig CaptureAppConfig()
+        {
+            if (Application.Current != null && !Application.Current.Dispatcher.CheckAccess())
+            {
+                return Application.Current.Dispatcher.Invoke(() => CaptureAppConfigInternal());
+            }
+            return CaptureAppConfigInternal();
+        }
+
+        private AppConfig CaptureAppConfigInternal()
+        {
+            return new AppConfig
+            {
+                ServerIp = ServerIp,
+                ServerPort = ServerPort,
+                TerminalPhoneNo = TerminalPhoneNo,
+                AuthCode = AuthCode,
+                UseJT808_2019 = UseJT808_2019,
+                Speed = Speed,
+                Direction = Direction,
+                Altitude = Altitude,
+                AutoReportInterval = AutoReportInterval,
+                AlarmFlagValue = GetValueFromFlags(AlarmFlags),
+                StatusFlagValue = GetValueFromFlags(StatusFlags),
+                CustomAttachItems = CustomAttachItems.Select(x => new CustomAttachItem
+                {
+                    AttachId = x.AttachId,
+                    AttachLength = x.AttachLength,
+                    AttachData = x.AttachData
+                }).ToList(),
+                BackgroundImagePath = BackgroundImagePath,
+                BackgroundEffectMode = BackgroundEffectMode,
+                BackgroundOpacity = BackgroundOpacity
+            };
         }
 
         private void SaveConfig()
         {
-            try
+            var config = CaptureAppConfig();
+            lock (_configLock)
             {
-                var config = new AppConfig
+                int retries = 5;
+                while (retries > 0)
                 {
-                    ServerIp = ServerIp,
-                    ServerPort = ServerPort,
-                    TerminalPhoneNo = TerminalPhoneNo,
-                    AuthCode = AuthCode,
-                    UseJT808_2019 = UseJT808_2019,
-                    Speed = Speed,
-                    Direction = Direction,
-                    Altitude = Altitude,
-                    AutoReportInterval = AutoReportInterval,
-                    AlarmFlagValue = GetValueFromFlags(AlarmFlags),
-                    StatusFlagValue = GetValueFromFlags(StatusFlags),
-                    CustomAttachItems = CustomAttachItems.ToList(),
-                    BackgroundImagePath = BackgroundImagePath,
-                    BackgroundEffectMode = BackgroundEffectMode,
-                    BackgroundOpacity = BackgroundOpacity
-                };
-                var json = System.Text.Json.JsonSerializer.Serialize(config);
-                File.WriteAllText(ConfigFile, json);
+                    try
+                    {
+                        var json = System.Text.Json.JsonSerializer.Serialize(config);
+                        var tempFile = ConfigFile + ".tmp";
+                        File.WriteAllText(tempFile, json);
+                        if (File.Exists(ConfigFile))
+                        {
+                            File.Delete(ConfigFile);
+                        }
+                        File.Move(tempFile, ConfigFile);
+                        break; // Success!
+                    }
+                    catch (IOException) when (retries > 1)
+                    {
+                        retries--;
+                        System.Threading.Thread.Sleep(50);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log("系统", $"保存配置失败: {ex.Message}");
+                        break;
+                    }
+                }
             }
-            catch { }
         }
 
         [ObservableProperty] private string _serverIp = "127.0.0.1";
@@ -340,6 +652,17 @@ namespace TerminalSimulation.Wpf.ViewModels
         [ObservableProperty] private string _passthroughInputText = "";
         [ObservableProperty] private string _passthroughTypeHex = "00";
         [ObservableProperty] private int _passthroughEncodingIndex = 0; // 0: GBK, 1: UTF-8, 2: HEX
+        [ObservableProperty] private int _chatEncodingIndex = 0; // 0: GBK, 1: UTF-8, 2: HEX
+        [ObservableProperty] private bool _isHexInputInvalid = false;
+
+        // Serial Port Properties
+        private System.IO.Ports.SerialPort? _serialPort;
+        public ObservableCollection<string> SerialPorts { get; } = new ObservableCollection<string>();
+        [ObservableProperty] private string? _selectedSerialPort;
+        public ObservableCollection<int> BaudRates { get; } = new ObservableCollection<int> { 4800, 9600, 19200, 38400, 57600, 115200 };
+        [ObservableProperty] private int _selectedBaudRate = 9600;
+        [ObservableProperty] private bool _isSerialPortOpen = false;
+        [ObservableProperty] private string _serialPortBtnText = "打开串口";
 
         [ObservableProperty] private string _terminalStatusText = "未连接";
         [ObservableProperty] private string _terminalStatusColor = "Gray";
@@ -419,11 +742,12 @@ namespace TerminalSimulation.Wpf.ViewModels
                     var files = System.IO.Directory.GetFiles(themeDir).Where(f => f.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".png", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase));
                     foreach (var file in files)
                     {
+                        var relativePath = System.IO.Path.Combine("Themes", System.IO.Path.GetFileName(file));
                         var item = new ThemeImageItem
                         {
                             FileName = System.IO.Path.GetFileName(file),
-                            ImagePath = file,
-                            IsSelected = BackgroundImagePath == file,
+                            ImagePath = relativePath,
+                            IsSelected = BackgroundImagePath == relativePath,
                             IsUserAdded = true
                         };
                         
@@ -471,7 +795,8 @@ namespace TerminalSimulation.Wpf.ViewModels
                     }
                     
                     LoadThemeImages();
-                    SelectThemeImage(ThemeImages.FirstOrDefault(x => x.ImagePath == destFile));
+                    var relativePath = System.IO.Path.Combine("Themes", fileName);
+                    SelectThemeImage(ThemeImages.FirstOrDefault(x => x.ImagePath == relativePath));
                 }
                 catch (Exception ex)
                 {
@@ -498,9 +823,14 @@ namespace TerminalSimulation.Wpf.ViewModels
             {
                 try
                 {
-                    if (System.IO.File.Exists(item.ImagePath))
+                    var fullPath = item.ImagePath;
+                    if (!System.IO.Path.IsPathRooted(fullPath))
                     {
-                        System.IO.File.Delete(item.ImagePath);
+                        fullPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, fullPath);
+                    }
+                    if (System.IO.File.Exists(fullPath))
+                    {
+                        System.IO.File.Delete(fullPath);
                     }
                     if (item.IsSelected)
                     {
@@ -519,9 +849,7 @@ namespace TerminalSimulation.Wpf.ViewModels
         private void AddCustomAttach()
         {
             var newItem = new CustomAttachItem { AttachId = "", AttachLength = "", AttachData = "" };
-            newItem.PropertyChanged += (s, e) => SaveConfig();
             CustomAttachItems.Add(newItem);
-            SaveConfig();
         }
 
         [RelayCommand]
@@ -530,7 +858,6 @@ namespace TerminalSimulation.Wpf.ViewModels
             if (item != null)
             {
                 CustomAttachItems.Remove(item);
-                SaveConfig();
             }
         }
 
@@ -654,25 +981,31 @@ namespace TerminalSimulation.Wpf.ViewModels
                 // 拦截下行透传报文 (0x8900)
                 if (package.Header.MsgId == 0x8900 && package.Bodies is JT808_0x8900 ptDown)
                 {
+                    // If serial port is open, write data to it
+                    bool writeToSerialSuccess = false;
+                    if (_serialPort != null && _serialPort.IsOpen)
+                    {
+                        try
+                        {
+                            _serialPort.Write(ptDown.PassthroughData, 0, ptDown.PassthroughData.Length);
+                            writeToSerialSuccess = true;
+                        }
+                        catch (Exception ex)
+                        {
+                            Log("系统", $"接收数据写入串口失败: {ex.Message}");
+                        }
+                    }
+
                     Application.Current.Dispatcher.Invoke(() =>
                     {
-                        string contentStr;
-                        if (PassthroughEncodingIndex == 2) // HEX
-                        {
-                            contentStr = ptDown.PassthroughData.ToHexString();
-                        }
-                        else
-                        {
-                            var encoding = PassthroughEncodingIndex == 0 ? System.Text.Encoding.GetEncoding("GBK") : System.Text.Encoding.UTF8;
-                            contentStr = encoding.GetString(ptDown.PassthroughData);
-                        }
-
                         PassthroughMessages.Add(new PassthroughMessage
                         {
                             IsFromServer = true,
                             Time = DateTime.Now.ToString("HH:mm:ss"),
                             TypeHex = ptDown.PassthroughType.ToString("X2"),
-                            Content = contentStr
+                            RawData = ptDown.PassthroughData,
+                            Content = DecodePassthroughData(ptDown.PassthroughData, ChatEncodingIndex),
+                            Label = writeToSerialSuccess ? "[平台 -> 串口]" : "[平台 -> 终端]"
                         });
                     });
 
@@ -801,7 +1134,7 @@ namespace TerminalSimulation.Wpf.ViewModels
             return newEscapedList.ToArray();
         }
 
-        private async Task SendPackageAsync<T>(JT808Package package, byte[] rawAppendBytes = null) where T : JT808Bodies
+        private async Task SendPackageAsync<T>(JT808Package package, byte[]? rawAppendBytes = null) where T : JT808Bodies
         {
             if (!IsConnected)
             {
@@ -912,22 +1245,24 @@ namespace TerminalSimulation.Wpf.ViewModels
         [RelayCommand]
         private async Task ReportLocationAsync()
         {
+            var snapshot = CaptureLocationReportSnapshot();
+
             var header = new JT808Header
             {
                 MsgId = 0x0200,
-                TerminalPhoneNo = TerminalPhoneNo,
+                TerminalPhoneNo = snapshot.TerminalPhoneNo,
                 MsgNum = 3,
             };
 
             var body = new JT808_0x0200
             {
-                AlarmFlag = GetValueFromFlags(AlarmFlags),
-                StatusFlag = GetValueFromFlags(StatusFlags),
-                Lat = (int)(Latitude * 1000000),
-                Lng = (int)(Longitude * 1000000),
-                Altitude = (ushort)Altitude,
-                Speed = (ushort)(Speed * 10),
-                Direction = (ushort)Direction,
+                AlarmFlag = snapshot.AlarmFlag,
+                StatusFlag = snapshot.StatusFlag,
+                Lat = (int)(snapshot.Latitude * 1000000),
+                Lng = (int)(snapshot.Longitude * 1000000),
+                Altitude = (ushort)snapshot.Altitude,
+                Speed = (ushort)(snapshot.Speed * 10),
+                Direction = (ushort)snapshot.Direction,
                 GPSTime = DateTime.Now,
                 UnknownLocationAttachData = new Dictionary<ushort, byte[]>()
             };
@@ -938,8 +1273,8 @@ namespace TerminalSimulation.Wpf.ViewModels
 
             // 自定义 Hex 透传 (格式：ID|Length|Data 或 ID|Data，支持逗号分隔多个)
             var rawAppendBytesList = new System.Collections.Generic.List<byte>();
-            Log("系统", $"开始处理位置汇报，当前配置附加项数量: {CustomAttachItems.Count}");
-            foreach (var attach in CustomAttachItems)
+            Log("系统", $"开始处理位置汇报，当前配置附加项数量: {snapshot.CustomAttachItems.Count}");
+            foreach (var attach in snapshot.CustomAttachItems)
             {
                 try
                 {
@@ -1099,6 +1434,15 @@ namespace TerminalSimulation.Wpf.ViewModels
                 return;
             }
 
+            if (PassthroughEncodingIndex == 2)
+            {
+                if (PassthroughInputText.Length % 2 != 0)
+                {
+                    Log("系统", "HEX 模式下输入内容长度必须为偶数，发送已拒绝");
+                    return;
+                }
+            }
+
             try
             {
                 byte ptType = Convert.ToByte(PassthroughTypeHex, 16);
@@ -1135,6 +1479,21 @@ namespace TerminalSimulation.Wpf.ViewModels
 
                 await SendPackageAsync<JT808_0x0900>(package);
 
+                // If serial port is open, also write data to it
+                bool writeToSerialSuccess = false;
+                if (_serialPort != null && _serialPort.IsOpen)
+                {
+                    try
+                    {
+                        _serialPort.Write(ptData, 0, ptData.Length);
+                        writeToSerialSuccess = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        Log("系统", $"发送数据到串口失败: {ex.Message}");
+                    }
+                }
+
                 // Add to UI List
                 Application.Current.Dispatcher.Invoke(() =>
                 {
@@ -1143,7 +1502,9 @@ namespace TerminalSimulation.Wpf.ViewModels
                         IsFromServer = false,
                         Time = DateTime.Now.ToString("HH:mm:ss"),
                         TypeHex = ptType.ToString("X2"),
-                        Content = PassthroughInputText
+                        RawData = ptData,
+                        Content = DecodePassthroughData(ptData, ChatEncodingIndex),
+                        Label = writeToSerialSuccess ? "[终端 -> 平台/串口]" : "[终端 -> 平台]"
                     });
                     PassthroughInputText = "";
                 });
@@ -1151,6 +1512,187 @@ namespace TerminalSimulation.Wpf.ViewModels
             catch (Exception ex)
             {
                 Log("系统", $"发送透传失败: {ex.Message}");
+            }
+        }
+
+        [RelayCommand]
+        public void RefreshSerialPorts()
+        {
+            try
+            {
+                var ports = System.IO.Ports.SerialPort.GetPortNames();
+                SerialPorts.Clear();
+                foreach (var port in ports)
+                {
+                    SerialPorts.Add(port);
+                }
+                if (SerialPorts.Count > 0)
+                {
+                    if (string.IsNullOrEmpty(SelectedSerialPort) || !SerialPorts.Contains(SelectedSerialPort))
+                    {
+                        SelectedSerialPort = SerialPorts[0];
+                    }
+                }
+                else
+                {
+                    SelectedSerialPort = null;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log("系统", $"获取串口列表失败: {ex.Message}");
+            }
+        }
+
+        [RelayCommand]
+        private void ToggleSerialPort()
+        {
+            if (IsSerialPortOpen)
+            {
+                CloseSerialPort();
+            }
+            else
+            {
+                OpenSerialPort();
+            }
+        }
+
+        private void OpenSerialPort()
+        {
+            if (string.IsNullOrEmpty(SelectedSerialPort))
+            {
+                Log("系统", "无可用串口，打开失败");
+                return;
+            }
+
+            try
+            {
+                _serialPort = new System.IO.Ports.SerialPort(SelectedSerialPort, SelectedBaudRate);
+                _serialPort.DataReceived += SerialPort_DataReceived;
+                _serialPort.Open();
+
+                IsSerialPortOpen = true;
+                SerialPortBtnText = "关闭串口";
+                Log("系统", $"串口已打开: {SelectedSerialPort} (波特率: {SelectedBaudRate})");
+            }
+            catch (Exception ex)
+            {
+                Log("系统", $"打开串口 {SelectedSerialPort} 失败: {ex.Message}");
+                CloseSerialPort();
+            }
+        }
+
+        private void CloseSerialPort()
+        {
+            try
+            {
+                if (_serialPort != null)
+                {
+                    _serialPort.DataReceived -= SerialPort_DataReceived;
+                    if (_serialPort.IsOpen)
+                    {
+                        _serialPort.Close();
+                    }
+                    _serialPort.Dispose();
+                    _serialPort = null;
+                }
+                Log("系统", "串口已关闭");
+            }
+            catch (Exception ex)
+            {
+                Log("系统", $"关闭串口异常: {ex.Message}");
+            }
+            finally
+            {
+                IsSerialPortOpen = false;
+                SerialPortBtnText = "打开串口";
+            }
+        }
+
+        private void SerialPort_DataReceived(object sender, System.IO.Ports.SerialDataReceivedEventArgs e)
+        {
+            if (_serialPort == null || !_serialPort.IsOpen) return;
+
+            try
+            {
+                int bytesToRead = _serialPort.BytesToRead;
+                if (bytesToRead <= 0) return;
+
+                byte[] buffer = new byte[bytesToRead];
+                _serialPort.Read(buffer, 0, bytesToRead);
+
+                _ = HandleSerialDataReceivedAsync(buffer);
+            }
+            catch (Exception ex)
+            {
+                Log("系统", $"串口数据读取失败: {ex.Message}");
+            }
+        }
+
+        private async Task HandleSerialDataReceivedAsync(byte[] data)
+        {
+            try
+            {
+                byte ptType = 0;
+                try
+                {
+                    ptType = Convert.ToByte(PassthroughTypeHex, 16);
+                }
+                catch { }
+
+                string contentStr;
+                if (PassthroughEncodingIndex == 2) // HEX
+                {
+                    contentStr = data.ToHexString();
+                }
+                else
+                {
+                    var encoding = PassthroughEncodingIndex == 0 ? System.Text.Encoding.GetEncoding("GBK") : System.Text.Encoding.UTF8;
+                    contentStr = encoding.GetString(data);
+                }
+
+                // Forward to server if connected
+                if (IsConnected)
+                {
+                    var header = new JT808Header
+                    {
+                        MsgId = 0x0900,
+                        TerminalPhoneNo = TerminalPhoneNo,
+                        MsgNum = 5
+                    };
+
+                    var body = new JT808_0x0900
+                    {
+                        PassthroughType = ptType,
+                        PassthroughData = data
+                    };
+
+                    var package = new JT808Package
+                    {
+                        Header = header,
+                        Bodies = body
+                    };
+
+                    await SendPackageAsync<JT808_0x0900>(package);
+                }
+
+                // Show in UI
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    PassthroughMessages.Add(new PassthroughMessage
+                    {
+                        IsFromServer = false,
+                        Time = DateTime.Now.ToString("HH:mm:ss"),
+                        TypeHex = ptType.ToString("X2"),
+                        RawData = data,
+                        Content = DecodePassthroughData(data, ChatEncodingIndex),
+                        Label = IsConnected ? "[串口 -> 平台]" : "[串口接收]"
+                    });
+                });
+            }
+            catch (Exception ex)
+            {
+                Log("系统", $"转发串口数据失败: {ex.Message}");
             }
         }
 
@@ -1318,7 +1860,7 @@ namespace TerminalSimulation.Wpf.ViewModels
             {
                 try
                 {
-                    var config = new AppConfig
+                    var config = new WorkStateConfig
                     {
                         ServerIp = ServerIp,
                         ServerPort = ServerPort,
@@ -1356,30 +1898,38 @@ namespace TerminalSimulation.Wpf.ViewModels
                 try
                 {
                     var json = File.ReadAllText(dialog.FileName);
-                    var config = System.Text.Json.JsonSerializer.Deserialize<AppConfig>(json);
+                    var config = System.Text.Json.JsonSerializer.Deserialize<WorkStateConfig>(json);
                     if (config != null)
                     {
-                        ServerIp = config.ServerIp;
-                        ServerPort = config.ServerPort;
-                        TerminalPhoneNo = config.TerminalPhoneNo;
-                        AuthCode = config.AuthCode;
-                        UseJT808_2019 = config.UseJT808_2019;
-                        Speed = config.Speed;
-                        Direction = config.Direction;
-                        Altitude = config.Altitude;
-                        AutoReportInterval = config.AutoReportInterval;
-                        
-                        SetFlagsFromValue(AlarmFlags, config.AlarmFlagValue);
-                        SetFlagsFromValue(StatusFlags, config.StatusFlagValue);
-
-                        if (config.CustomAttachItems != null)
+                        _isLoadingConfig = true;
+                        try
                         {
-                            CustomAttachItems.Clear();
-                            foreach (var item in config.CustomAttachItems)
+                            ServerIp = config.ServerIp;
+                            ServerPort = config.ServerPort;
+                            TerminalPhoneNo = config.TerminalPhoneNo;
+                            AuthCode = config.AuthCode;
+                            UseJT808_2019 = config.UseJT808_2019;
+                            Speed = config.Speed;
+                            Direction = config.Direction;
+                            Altitude = config.Altitude;
+                            AutoReportInterval = config.AutoReportInterval;
+                            
+                            SetFlagsFromValue(AlarmFlags, config.AlarmFlagValue);
+                            SetFlagsFromValue(StatusFlags, config.StatusFlagValue);
+
+                            if (config.CustomAttachItems != null)
                             {
-                                item.PropertyChanged += (s, e) => SaveConfig();
-                                CustomAttachItems.Add(item);
+                                CustomAttachItems.Clear();
+                                foreach (var item in config.CustomAttachItems)
+                                {
+                                    item.PropertyChanged += (s, e) => SaveConfigDebounced();
+                                    CustomAttachItems.Add(item);
+                                }
                             }
+                        }
+                        finally
+                        {
+                            _isLoadingConfig = false;
                         }
                         
                         SaveConfig(); // Update local config.json immediately
@@ -1398,6 +1948,15 @@ namespace TerminalSimulation.Wpf.ViewModels
             _autoReportCts?.Cancel();
             _autoReportCts?.Dispose();
             _networkClient?.Dispose();
+            CloseSerialPort();
+
+            // Force save any pending config change immediately on dispose
+            if (_saveTimer != null)
+            {
+                _saveTimer.Dispose();
+                _saveTimer = null;
+                SaveConfig();
+            }
         }
     }
 
@@ -1407,11 +1966,16 @@ namespace TerminalSimulation.Wpf.ViewModels
         public double Lng { get; set; }
     }
 
-    public class PassthroughMessage
+    public partial class PassthroughMessage : ObservableObject
     {
         public bool IsFromServer { get; set; }
         public string Time { get; set; } = "";
         public string TypeHex { get; set; } = "";
-        public string Content { get; set; } = "";
+        
+        [ObservableProperty]
+        private string _content = "";
+        
+        public string Label { get; set; } = "";
+        public byte[] RawData { get; set; } = Array.Empty<byte>();
     }
 }

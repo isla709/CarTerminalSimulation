@@ -9,9 +9,12 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="MaterialDesignThemes" Version="5.3.2" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3967.48" />
+    <PackageReference Include="System.IO.Ports" Version="8.0.0" />
   </ItemGroup>
 
   <PropertyGroup>
+    <!-- 手动修改程序版本号 -->
+    <AppVersion>0.0.1</AppVersion>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
@@ -25,5 +28,24 @@
   <ItemGroup>
     <EmbeddedResource Include="Themes\**\*" />
   </ItemGroup>
+  <Target Name="GenerateBuildVersion" BeforeTargets="BeforeCompile">
+    <PropertyGroup>
+      <RandomBuildString>$([System.Guid]::NewGuid().ToString().Substring(0, 8).ToUpper())</RandomBuildString>
+      <VersionFileContent>
+// &lt;auto-generated/&gt;
+namespace TerminalSimulation.Wpf%3B
+public static class AppVersionInfo
+{
+    public const string AppVersion = "$(AppVersion)"%3B
+    public const string BuildVersion = "$(RandomBuildString)"%3B
+    public const string FullVersion = AppVersion + "-" + BuildVersion%3B
+}
+      </VersionFileContent>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(IntermediateOutputPath)AppVersionInfo.g.cs" Lines="$(VersionFileContent)" Overwrite="true" WriteOnlyWhenDifferent="false" />
+    <ItemGroup>
+      <Compile Include="$(IntermediateOutputPath)AppVersionInfo.g.cs" />
+    </ItemGroup>
+  </Target>
 
 </Project>

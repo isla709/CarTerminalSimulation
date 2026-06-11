@@ -20,6 +20,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         InitializeMapAsync();
+        this.Loaded += MainWindow_Loaded;
     }
 
     private async void InitializeMapAsync()
@@ -458,6 +459,64 @@ public partial class MainWindow : Window
         if (DataContext is TerminalSimulation.Wpf.ViewModels.MainViewModel vm)
         {
             vm.IsSettingsOpen = true;
+        }
+    }
+
+    private ThemeSettingsWindow? _settingsWindow;
+
+    private void MainWindow_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is TerminalSimulation.Wpf.ViewModels.MainViewModel vm)
+        {
+            vm.PropertyChanged += Vm_PropertyChanged;
+        }
+    }
+
+    private void Vm_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(TerminalSimulation.Wpf.ViewModels.MainViewModel.IsSettingsOpen))
+        {
+            if (DataContext is TerminalSimulation.Wpf.ViewModels.MainViewModel vm)
+            {
+                if (vm.IsSettingsOpen)
+                {
+                    if (_settingsWindow == null)
+                    {
+                        _settingsWindow = new ThemeSettingsWindow
+                        {
+                            Owner = this,
+                            DataContext = vm,
+                            Width = this.ActualWidth,
+                            Height = this.ActualHeight,
+                            Left = this.Left,
+                            Top = this.Top
+                        };
+                        _settingsWindow.Closed += (s, args) =>
+                        {
+                            _settingsWindow = null;
+                            vm.IsSettingsOpen = false;
+                        };
+                        _settingsWindow.ShowDialog();
+                    }
+                }
+                else
+                {
+                    if (_settingsWindow != null)
+                    {
+                        _settingsWindow.Close();
+                        _settingsWindow = null;
+                    }
+                }
+            }
+        }
+    }
+
+    protected override void OnClosed(System.EventArgs e)
+    {
+        base.OnClosed(e);
+        if (DataContext is System.IDisposable disposable)
+        {
+            disposable.Dispose();
         }
     }
 }
