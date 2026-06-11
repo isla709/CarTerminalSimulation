@@ -1,16 +1,15 @@
 using System;
-using JT808.Protocol.Enums;
+using System.IO;
+using System.Net.Http;
+using System.Threading.Tasks;
 
-namespace DumpApp
+class Program
 {
-    class Program
+    static async Task Main()
     {
-        static void Main(string[] args)
-        {
-            foreach(var name in Enum.GetNames(typeof(JT808TerminalResult)))
-            {
-                Console.WriteLine(name);
-            }
-        }
+        using var client = new HttpClient();
+        var json = await client.GetStringAsync("https://raw.githubusercontent.com/modood/Administrative-divisions-of-China/master/dist/pc-code.json");
+        File.WriteAllText(@"e:\Project\CarTerminalSimulation\TerminalSimulation.Wpf\Regions.json", json, System.Text.Encoding.UTF8);
+        Console.WriteLine("Done");
     }
 }

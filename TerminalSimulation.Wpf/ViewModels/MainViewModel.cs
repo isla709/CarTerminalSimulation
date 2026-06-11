@@ -11,6 +11,7 @@ using JT808.Protocol.Extensions;
 using JT808.Protocol.MessageBody;
 using TerminalSimulation.Network;
 using TerminalSimulation.Protocol;
+using System.Speech.Synthesis;
 
 using System.IO;
 using System.Linq;
@@ -25,6 +26,62 @@ namespace TerminalSimulation.Wpf.ViewModels
         Translucent,
         Blur,
         Acrylic
+    }
+
+    public class RegionNode
+    {
+        public string code { get; set; } = "";
+        public string name { get; set; } = "";
+        public System.Collections.Generic.List<RegionNode> children { get; set; } = new();
+    }
+
+    public class PlateColorItem
+    {
+        public byte Value { get; set; }
+        public string Name { get; set; } = "";
+    }
+
+    public class AnalyzerNode
+    {
+        public string Name { get; set; } = "";
+        public string Value { get; set; } = "";
+        public ObservableCollection<AnalyzerNode> Children { get; } = new();
+    }
+
+    public class AnalyzerTableRow
+    {
+        public int Index { get; set; }
+        public string Field { get; set; } = "";
+        public string HexData { get; set; } = "";
+        public string DataType { get; set; } = "";
+        public string OffsetStr { get; set; } = "";
+        public string LengthStr { get; set; } = "";
+        public string Result { get; set; } = "";
+    }
+
+    public partial class LogMessageItem : ObservableObject
+    {
+        [ObservableProperty] private string _timestampStr = "";
+        [ObservableProperty] private string _directionStr = "";
+        [ObservableProperty] private string _message = "";
+        [ObservableProperty] private bool _hasRaw = false;
+        [ObservableProperty] private string _rawData = "";
+
+        [RelayCommand]
+        private void CopyRaw()
+        {
+            if (!string.IsNullOrEmpty(RawData))
+            {
+                System.Windows.Clipboard.SetText(RawData);
+            }
+        }
+
+        [RelayCommand]
+        private void CopyFullLog()
+        {
+            string fullText = $"{TimestampStr} {DirectionStr} {Message}".Trim();
+            System.Windows.Clipboard.SetText(fullText);
+        }
     }
 
     public partial class ThemeImageItem : ObservableObject
@@ -47,6 +104,73 @@ namespace TerminalSimulation.Wpf.ViewModels
         [ObservableProperty] private string _attachId = "";
         [ObservableProperty] private string _attachLength = "";
         [ObservableProperty] private string _attachData = "";
+    }
+
+    public partial class TextDownlinkMessage : ObservableObject
+    {
+        [ObservableProperty] private string _time = "";
+        [ObservableProperty] private string _content = "";
+        [ObservableProperty] private byte _flag;
+
+        /// <summary>原始文本字节，用于重编码切换时实时重解码</summary>
+        public byte[] RawBytes { get; set; } = Array.Empty<byte>();
+
+        public bool IsEmergency => (Flag & 1) != 0;    // bit0: 紧急
+        public bool IsNotification => (Flag & 2) != 0; // bit1: 通知
+        public bool IsAdScreen => (Flag & 4) != 0;     // bit2: 显示器显示
+        public bool IsTTS => (Flag & 8) != 0;          // bit3: TTS播读
+        public bool IsCanFault => (Flag & 32) != 0;    // bit5: CAN故障码信息
+
+        /// <summary>简短标志描述（气泡顶部 Badge）</summary>
+        public string FlagsDescription
+        {
+            get
+            {
+                var list = new System.Collections.Generic.List<string>();
+                if (IsEmergency)    list.Add("紧急");
+                if (IsNotification) list.Add("通知");
+                if (IsAdScreen)     list.Add("显示器");
+                if (IsTTS)          list.Add("TTS播读");
+                if (IsCanFault)     list.Add("CAN故障");
+                if (list.Count == 0) list.Add("无特别标志");
+                return string.Join(" | ", list);
+            }
+        }
+
+        /// <summary>详细标志说明（气泡内容区逐行）</summary>
+        public string DetailedFlagsText
+        {
+            get
+            {
+                var lines = new System.Collections.Generic.List<string>();
+                lines.Add($"标志字节: 0x{Flag:X2}  ({Convert.ToString(Flag, 2).PadLeft(8, '0')}b)");
+                lines.Add($" bit0 紧急     :{(IsEmergency    ? "✔ 是" : "✘ 否")}");
+                lines.Add($" bit1 通知     :{(IsNotification ? "✔ 是" : "✘ 否")}");
+                lines.Add($" bit2 屏显     :{(IsAdScreen     ? "✔ 是" : "✘ 否")}");
+                lines.Add($" bit3 TTS播读  :{(IsTTS          ? "✔ 是" : "✘ 否")}");
+                lines.Add($" bit5 CAN故障  :{(IsCanFault     ? "✔ 是" : "✘ 否")}");
+                return string.Join("\n", lines);
+            }
+        }
+
+        /// <summary>根据指定编码序号重新解码原始字节（0=UTF-8, 1=GBK, 2=HEX）</summary>
+        public void RecodeContent(int encodingIndex)
+        {
+            if (RawBytes == null || RawBytes.Length == 0) return;
+            try
+            {
+                Content = encodingIndex switch
+                {
+                    2 => BitConverter.ToString(RawBytes).Replace("-", " "),
+                    1 => System.Text.Encoding.GetEncoding("GBK").GetString(RawBytes),
+                    _ => System.Text.Encoding.UTF8.GetString(RawBytes)
+                };
+            }
+            catch
+            {
+                Content = BitConverter.ToString(RawBytes).Replace("-", " ");
+            }
+        }
     }
 
     public class AppConfig
@@ -78,6 +202,41 @@ namespace TerminalSimulation.Wpf.ViewModels
         public string HardwareVersion { get; set; } = "V1.0.0";
         public string FirmwareVersion { get; set; } = "V1.0.0";
         public bool UseAppVersionAsFirmwareVersion { get; set; } = true;
+        public int AnalyzerMode { get; set; } = 0;
+        public double WindowWidth { get; set; } = 1200;
+        public double WindowHeight { get; set; } = 800;
+        public bool EnableTTSPlayback { get; set; } = true;
+        public string SelectedTTSVoice { get; set; } = "";
+        public int TextDownlinkEncodingIndex { get; set; } = 0;
+
+        // Standard Attachments
+        public bool Enable0x01 { get; set; } = true;
+        public uint Mileage0x01 { get; set; } = 0;
+        public bool Enable0x02 { get; set; } = false;
+        public ushort Oil0x02 { get; set; } = 0;
+        public bool Enable0x03 { get; set; } = true;
+        public ushort Speed0x03 { get; set; } = 0;
+        public bool Enable0x04 { get; set; } = false;
+        public ushort AlarmEventId0x04 { get; set; } = 0;
+        public bool Enable0x25 { get; set; } = false;
+        public uint ExtVehicleSignal0x25 { get; set; } = 0;
+        public bool Enable0x2A { get; set; } = false;
+        public ushort IOStatus0x2A { get; set; } = 0;
+        public bool Enable0x2B { get; set; } = false;
+        public ushort AnalogAD0 { get; set; } = 0;
+        public ushort AnalogAD1 { get; set; } = 0;
+        public bool Enable0x30 { get; set; } = true;
+        public byte NetworkSignal0x30 { get; set; } = 31;
+        public bool Enable0x31 { get; set; } = true;
+        public byte GNSSCount0x31 { get; set; } = 15;
+
+        // Simulation Parameters
+        public bool EnableMileageSimulation { get; set; } = false;
+        public bool Sync0x03SpeedWithMainSpeed { get; set; } = true;
+        public bool EnableOilConsumption { get; set; } = false;
+        public double OilConsumptionRate { get; set; } = 8.0;
+        public bool EnableNetworkSignalFluctuation { get; set; } = false;
+        public bool EnableGNSSFluctuation { get; set; } = false;
     }
 
     public class WorkStateConfig
@@ -164,6 +323,27 @@ namespace TerminalSimulation.Wpf.ViewModels
                 {
                     msg.Content = DecodePassthroughData(msg.RawData, value);
                 }
+            }
+        }
+
+        partial void OnTextDownlinkEncodingIndexChanged(int value)
+        {
+            UpdateSerializerEncoding();
+            // 实时重解码已有消息
+            foreach (var msg in TextDownlinkMessages)
+            {
+                msg.RecodeContent(value);
+            }
+        }
+
+        private void UpdateSerializerEncoding()
+        {
+            if (_protocolManager != null)
+            {
+                // 协议栈编码：HEX模式仍用UTF-8做网络解析，只有UTF-8/GBK影响协议栈
+                _protocolManager.Encoding = TextDownlinkEncodingIndex == 1
+                    ? System.Text.Encoding.GetEncoding("GBK")
+                    : System.Text.Encoding.UTF8;
             }
         }
 
@@ -258,6 +438,7 @@ namespace TerminalSimulation.Wpf.ViewModels
             };
 
             _protocolManager = new JT808Manager();
+            UpdateSerializerEncoding();
 
             CustomAttachItems.CollectionChanged += (s, e) =>
             {
@@ -282,6 +463,8 @@ namespace TerminalSimulation.Wpf.ViewModels
             };
 
             LoadConfig();
+            InitializeTTSVoices();
+            LoadRegions();
             InitThemeImages();
             RefreshSerialPorts();
 
@@ -312,11 +495,124 @@ namespace TerminalSimulation.Wpf.ViewModels
                     e.PropertyName == nameof(TerminalIMEI) ||
                     e.PropertyName == nameof(HardwareVersion) ||
                     e.PropertyName == nameof(FirmwareVersion) ||
-                    e.PropertyName == nameof(UseAppVersionAsFirmwareVersion))
+                    e.PropertyName == nameof(UseAppVersionAsFirmwareVersion) ||
+                    e.PropertyName == nameof(ConfigWindowWidth) ||
+                    e.PropertyName == nameof(ConfigWindowHeight) ||
+                    e.PropertyName == nameof(Enable0x01) ||
+                    e.PropertyName == nameof(Mileage0x01) ||
+                    e.PropertyName == nameof(Enable0x02) ||
+                    e.PropertyName == nameof(Oil0x02) ||
+                    e.PropertyName == nameof(Enable0x03) ||
+                    e.PropertyName == nameof(Speed0x03) ||
+                    e.PropertyName == nameof(Enable0x04) ||
+                    e.PropertyName == nameof(AlarmEventId0x04) ||
+                    e.PropertyName == nameof(Enable0x25) ||
+                    e.PropertyName == nameof(ExtVehicleSignal0x25) ||
+                    e.PropertyName == nameof(Enable0x2A) ||
+                    e.PropertyName == nameof(IOStatus0x2A) ||
+                    e.PropertyName == nameof(Enable0x2B) ||
+                    e.PropertyName == nameof(AnalogAD0) ||
+                    e.PropertyName == nameof(AnalogAD1) ||
+                    e.PropertyName == nameof(Enable0x30) ||
+                    e.PropertyName == nameof(NetworkSignal0x30) ||
+                    e.PropertyName == nameof(Enable0x31) ||
+                    e.PropertyName == nameof(GNSSCount0x31) ||
+                    e.PropertyName == nameof(EnableMileageSimulation) ||
+                    e.PropertyName == nameof(Sync0x03SpeedWithMainSpeed) ||
+                    e.PropertyName == nameof(EnableOilConsumption) ||
+                    e.PropertyName == nameof(OilConsumptionRate) ||
+                    e.PropertyName == nameof(EnableNetworkSignalFluctuation) ||
+                    e.PropertyName == nameof(EnableGNSSFluctuation) ||
+                    e.PropertyName == nameof(EnableTTSPlayback) ||
+                    e.PropertyName == nameof(SelectedTTSVoice) ||
+                    e.PropertyName == nameof(TextDownlinkEncodingIndex))
                 {
                     SaveConfigDebounced();
                 }
             };
+            
+            _simulationTimer = new System.Threading.Timer(SimulationTimerCallback, null, 1000, 1000);
+        }
+
+        private System.Threading.Timer? _simulationTimer;
+        private double _mileageAccumulator = 0;
+        private double _oilAccumulator = 0;
+        private readonly Random _rand = new Random();
+
+        private void SimulationTimerCallback(object? state)
+        {
+            if (Application.Current != null && !Application.Current.Dispatcher.CheckAccess())
+            {
+                Application.Current.Dispatcher.Invoke(() => SimulationTimerCallback(state));
+                return;
+            }
+
+            // Mileage Simulation
+            if (EnableMileageSimulation)
+            {
+                // Speed is km/h, mileage is 1/10km
+                // distance per second in km = Speed / 3600
+                // distance per second in 1/10km = (Speed / 3600) * 10
+                double increment = (Speed / 3600.0) * 10.0;
+                _mileageAccumulator += increment;
+                if (_mileageAccumulator >= 1.0)
+                {
+                    uint added = (uint)Math.Floor(_mileageAccumulator);
+                    Mileage0x01 += added;
+                    _mileageAccumulator -= added;
+                }
+            }
+
+            // Speed Sync
+            if (Sync0x03SpeedWithMainSpeed)
+            {
+                Speed0x03 = (ushort)(Speed * 10);
+            }
+
+            // Oil Simulation
+            if (EnableOilConsumption)
+            {
+                // Speed is km/h, OilConsumptionRate is L/100km
+                // consumed L per hour = Speed * OilConsumptionRate / 100
+                // consumed L per sec = (Speed * OilConsumptionRate / 100) / 3600
+                // consumed 1/10L per sec = (Speed * OilConsumptionRate / 100) / 3600 * 10
+                double oilIncrement = (Speed * OilConsumptionRate / 100.0) / 3600.0 * 10.0;
+                _oilAccumulator += oilIncrement;
+                if (_oilAccumulator >= 1.0)
+                {
+                    ushort consumed = (ushort)Math.Floor(_oilAccumulator);
+                    if (Oil0x02 >= consumed)
+                        Oil0x02 -= consumed;
+                    else
+                        Oil0x02 = 0;
+                    _oilAccumulator -= consumed;
+                }
+            }
+
+            // Fluctuation
+            if (EnableNetworkSignalFluctuation)
+            {
+                if (_rand.NextDouble() < 0.3) // 30% chance to fluctuate each second
+                {
+                    int delta = _rand.Next(-1, 2);
+                    int newVal = NetworkSignal0x30 + delta;
+                    if (newVal < 0) newVal = 0;
+                    if (newVal > 31) newVal = 31;
+                    NetworkSignal0x30 = (byte)newVal;
+                }
+            }
+
+            if (EnableGNSSFluctuation)
+            {
+                if (_rand.NextDouble() < 0.3)
+                {
+                    int delta = _rand.Next(-1, 2);
+                    int newVal = GNSSCount0x31 + delta;
+                    if (newVal < 0) newVal = 0;
+                    if (newVal > 30) newVal = 30; // Max GNSS sats typical
+                    GNSSCount0x31 = (byte)newVal;
+                }
+            }
         }
 
         private void CustomAttachItem_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -435,6 +731,40 @@ namespace TerminalSimulation.Wpf.ViewModels
                             HardwareVersion = config.HardwareVersion ?? "V1.0.0";
                             FirmwareVersion = config.FirmwareVersion ?? "V1.0.0";
                             UseAppVersionAsFirmwareVersion = config.UseAppVersionAsFirmwareVersion;
+                            AnalyzerMode = config.AnalyzerMode;
+                            ConfigWindowWidth = config.WindowWidth > 400 ? config.WindowWidth : 1200;
+                            ConfigWindowHeight = config.WindowHeight > 300 ? config.WindowHeight : 800;
+
+                            Enable0x01 = config.Enable0x01;
+                            Mileage0x01 = config.Mileage0x01;
+                            Enable0x02 = config.Enable0x02;
+                            Oil0x02 = config.Oil0x02;
+                            Enable0x03 = config.Enable0x03;
+                            Speed0x03 = config.Speed0x03;
+                            Enable0x04 = config.Enable0x04;
+                            AlarmEventId0x04 = config.AlarmEventId0x04;
+                            Enable0x25 = config.Enable0x25;
+                            ExtVehicleSignal0x25 = config.ExtVehicleSignal0x25;
+                            Enable0x2A = config.Enable0x2A;
+                            IOStatus0x2A = config.IOStatus0x2A;
+                            Enable0x2B = config.Enable0x2B;
+                            AnalogAD0 = config.AnalogAD0;
+                            AnalogAD1 = config.AnalogAD1;
+                            Enable0x30 = config.Enable0x30;
+                            NetworkSignal0x30 = config.NetworkSignal0x30;
+                            Enable0x31 = config.Enable0x31;
+                            GNSSCount0x31 = config.GNSSCount0x31;
+
+                            EnableMileageSimulation = config.EnableMileageSimulation;
+                            Sync0x03SpeedWithMainSpeed = config.Sync0x03SpeedWithMainSpeed;
+                            EnableOilConsumption = config.EnableOilConsumption;
+                            OilConsumptionRate = config.OilConsumptionRate;
+                            EnableNetworkSignalFluctuation = config.EnableNetworkSignalFluctuation;
+                            EnableGNSSFluctuation = config.EnableGNSSFluctuation;
+                            EnableTTSPlayback = config.EnableTTSPlayback;
+                            SelectedTTSVoice = config.SelectedTTSVoice ?? "";
+                            TextDownlinkEncodingIndex = config.TextDownlinkEncodingIndex;
+
                             var bgPath = config.BackgroundImagePath;
                             var bgEffect = config.BackgroundEffectMode;
 
@@ -521,6 +851,26 @@ namespace TerminalSimulation.Wpf.ViewModels
             public double Speed { get; set; }
             public int Direction { get; set; }
             public System.Collections.Generic.List<CustomAttachItem> CustomAttachItems { get; set; } = new();
+
+            public bool Enable0x01 { get; set; }
+            public uint Mileage0x01 { get; set; }
+            public bool Enable0x02 { get; set; }
+            public ushort Oil0x02 { get; set; }
+            public bool Enable0x03 { get; set; }
+            public ushort Speed0x03 { get; set; }
+            public bool Enable0x04 { get; set; }
+            public ushort AlarmEventId0x04 { get; set; }
+            public bool Enable0x25 { get; set; }
+            public uint ExtVehicleSignal0x25 { get; set; }
+            public bool Enable0x2A { get; set; }
+            public ushort IOStatus0x2A { get; set; }
+            public bool Enable0x2B { get; set; }
+            public ushort AnalogAD0 { get; set; }
+            public ushort AnalogAD1 { get; set; }
+            public bool Enable0x30 { get; set; }
+            public byte NetworkSignal0x30 { get; set; }
+            public bool Enable0x31 { get; set; }
+            public byte GNSSCount0x31 { get; set; }
         }
 
         private LocationReportSnapshot CaptureLocationReportSnapshot()
@@ -549,7 +899,27 @@ namespace TerminalSimulation.Wpf.ViewModels
                     AttachId = x.AttachId,
                     AttachLength = x.AttachLength,
                     AttachData = x.AttachData
-                }).ToList()
+                }).ToList(),
+                
+                Enable0x01 = Enable0x01,
+                Mileage0x01 = Mileage0x01,
+                Enable0x02 = Enable0x02,
+                Oil0x02 = Oil0x02,
+                Enable0x03 = Enable0x03,
+                Speed0x03 = Speed0x03,
+                Enable0x04 = Enable0x04,
+                AlarmEventId0x04 = AlarmEventId0x04,
+                Enable0x25 = Enable0x25,
+                ExtVehicleSignal0x25 = ExtVehicleSignal0x25,
+                Enable0x2A = Enable0x2A,
+                IOStatus0x2A = IOStatus0x2A,
+                Enable0x2B = Enable0x2B,
+                AnalogAD0 = AnalogAD0,
+                AnalogAD1 = AnalogAD1,
+                Enable0x30 = Enable0x30,
+                NetworkSignal0x30 = NetworkSignal0x30,
+                Enable0x31 = Enable0x31,
+                GNSSCount0x31 = GNSSCount0x31
             };
         }
 
@@ -586,8 +956,8 @@ namespace TerminalSimulation.Wpf.ViewModels
                 BackgroundImagePath = BackgroundImagePath,
                 BackgroundEffectMode = BackgroundEffectMode,
                 BackgroundOpacity = BackgroundOpacity,
-                ProvinceId = ushort.TryParse(ProvinceIdInput?.Split(' ')[0], out var pid) ? pid : (ushort)11,
-                CityId = ushort.TryParse(CityIdInput?.Split(' ')[0], out var cid) ? cid : (ushort)1101,
+                ProvinceId = ParseProvinceId(ProvinceIdInput, 11),
+                CityId = ParseCityId(CityIdInput, 1101),
                 ManufacturerId = ManufacturerId,
                 TerminalModel = TerminalModel,
                 TerminalId = TerminalId,
@@ -597,7 +967,38 @@ namespace TerminalSimulation.Wpf.ViewModels
                 TerminalIMEI = TerminalIMEI,
                 HardwareVersion = HardwareVersion,
                 FirmwareVersion = FirmwareVersion,
-                UseAppVersionAsFirmwareVersion = UseAppVersionAsFirmwareVersion
+                UseAppVersionAsFirmwareVersion = UseAppVersionAsFirmwareVersion,
+                AnalyzerMode = AnalyzerMode,
+                WindowWidth = ConfigWindowWidth,
+                WindowHeight = ConfigWindowHeight,
+                Enable0x01 = Enable0x01,
+                Mileage0x01 = Mileage0x01,
+                Enable0x02 = Enable0x02,
+                Oil0x02 = Oil0x02,
+                Enable0x03 = Enable0x03,
+                Speed0x03 = Speed0x03,
+                Enable0x04 = Enable0x04,
+                AlarmEventId0x04 = AlarmEventId0x04,
+                Enable0x25 = Enable0x25,
+                ExtVehicleSignal0x25 = ExtVehicleSignal0x25,
+                Enable0x2A = Enable0x2A,
+                IOStatus0x2A = IOStatus0x2A,
+                Enable0x2B = Enable0x2B,
+                AnalogAD0 = AnalogAD0,
+                AnalogAD1 = AnalogAD1,
+                Enable0x30 = Enable0x30,
+                NetworkSignal0x30 = NetworkSignal0x30,
+                Enable0x31 = Enable0x31,
+                GNSSCount0x31 = GNSSCount0x31,
+                EnableMileageSimulation = EnableMileageSimulation,
+                Sync0x03SpeedWithMainSpeed = Sync0x03SpeedWithMainSpeed,
+                EnableOilConsumption = EnableOilConsumption,
+                OilConsumptionRate = OilConsumptionRate,
+                EnableNetworkSignalFluctuation = EnableNetworkSignalFluctuation,
+                EnableGNSSFluctuation = EnableGNSSFluctuation,
+                EnableTTSPlayback = EnableTTSPlayback,
+                SelectedTTSVoice = SelectedTTSVoice,
+                TextDownlinkEncodingIndex = TextDownlinkEncodingIndex
             };
         }
 
@@ -611,7 +1012,7 @@ namespace TerminalSimulation.Wpf.ViewModels
                 {
                     try
                     {
-                        var json = System.Text.Json.JsonSerializer.Serialize(config);
+                        var json = System.Text.Json.JsonSerializer.Serialize(config, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
                         var tempFile = ConfigFile + ".tmp";
                         File.WriteAllText(tempFile, json);
                         if (File.Exists(ConfigFile))
@@ -654,9 +1055,87 @@ namespace TerminalSimulation.Wpf.ViewModels
         [ObservableProperty] private string _firmwareVersion = "V1.0.0";
         [ObservableProperty] private bool _useAppVersionAsFirmwareVersion = true;
 
-        public ObservableCollection<string> ManufacturerList { get; } = new ObservableCollection<string> { "TEST ", "HIKVS", "DAHUA", "STRMX" };
-        public ObservableCollection<string> ProvinceList { get; } = new ObservableCollection<string> { "11", "31", "44", "33", "32" };
-        public ObservableCollection<string> CityList { get; } = new ObservableCollection<string> { "1101", "3101", "4401", "3301", "3201" };
+        public ObservableCollection<PlateColorItem> PlateColorList { get; } = new ObservableCollection<PlateColorItem>
+        {
+            new PlateColorItem { Value = 1, Name = "1 - 蓝色" },
+            new PlateColorItem { Value = 2, Name = "2 - 黄色" },
+            new PlateColorItem { Value = 3, Name = "3 - 黑色" },
+            new PlateColorItem { Value = 4, Name = "4 - 白色" },
+            new PlateColorItem { Value = 5, Name = "5 - 绿色" },
+            new PlateColorItem { Value = 9, Name = "9 - 其他" },
+            new PlateColorItem { Value = 0, Name = "0 - 未上牌" }
+        };
+        public ObservableCollection<string> ProvinceList { get; } = new ObservableCollection<string>();
+        public ObservableCollection<string> CityList { get; } = new ObservableCollection<string>();
+
+        private System.Collections.Generic.List<RegionNode> _allRegions = new();
+
+        private void LoadRegions()
+        {
+            try
+            {
+                var jsonPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Regions.json");
+                if (System.IO.File.Exists(jsonPath))
+                {
+                    var json = System.IO.File.ReadAllText(jsonPath, System.Text.Encoding.UTF8);
+                    _allRegions = System.Text.Json.JsonSerializer.Deserialize<System.Collections.Generic.List<RegionNode>>(json) ?? new();
+                    ProvinceList.Clear();
+                    foreach (var prov in _allRegions)
+                    {
+                        ProvinceList.Add($"{prov.code} {prov.name}");
+                    }
+                    
+                    // Trigger city load for initial province
+                    if (!string.IsNullOrEmpty(ProvinceIdInput))
+                    {
+                        OnProvinceIdInputChanged(ProvinceIdInput);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log("系统", $"加载行政区划失败: {ex.Message}");
+            }
+        }
+
+        partial void OnProvinceIdInputChanged(string value)
+        {
+            if (_isLoadingConfig) return;
+            CityList.Clear();
+            if (!string.IsNullOrEmpty(value))
+            {
+                var code = value.Split(' ')[0];
+                var prov = _allRegions.FirstOrDefault(x => x.code == code);
+                if (prov != null && prov.children != null)
+                {
+                    foreach (var city in prov.children)
+                    {
+                        CityList.Add($"{city.code} {city.name}");
+                    }
+                    if (CityList.Count > 0 && string.IsNullOrEmpty(CityIdInput) || !CityList.Contains(CityIdInput))
+                    {
+                        CityIdInput = CityList[0];
+                    }
+                }
+            }
+        }
+
+        private ushort ParseProvinceId(string? input, ushort defVal)
+        {
+            var codeStr = input?.Split(' ')[0];
+            if (string.IsNullOrEmpty(codeStr)) return defVal;
+            if (codeStr.Length >= 2) codeStr = codeStr.Substring(0, 2);
+            return ushort.TryParse(codeStr, out var pid) ? pid : defVal;
+        }
+
+        private ushort ParseCityId(string? input, ushort defVal)
+        {
+            var codeStr = input?.Split(' ')[0];
+            if (string.IsNullOrEmpty(codeStr)) return defVal;
+            if (codeStr.Length == 6) codeStr = codeStr.Substring(2, 4);
+            else if (codeStr.Length > 4) codeStr = codeStr.Substring(codeStr.Length - 4);
+            return ushort.TryParse(codeStr, out var cid) ? cid : defVal;
+        }
 
         [ObservableProperty] private double _latitude = 39.9042;
         [ObservableProperty] private double _longitude = 116.4074;
@@ -704,8 +1183,401 @@ namespace TerminalSimulation.Wpf.ViewModels
         private System.Threading.CancellationTokenSource? _autoReportCts;
 
         [ObservableProperty] private bool _autoScrollLogs = true;
-        [ObservableProperty] private string _logText = "";
-        private System.Text.StringBuilder _logBuilder = new System.Text.StringBuilder();
+        [ObservableProperty] private ObservableCollection<LogMessageItem> _logMessages = new();
+        [ObservableProperty] private bool _isAnalyzerVisible = false;
+        [ObservableProperty] private string _analyzerInputHex = "";
+        public ObservableCollection<AnalyzerNode> AnalyzerResultTree { get; } = new();
+        
+        [ObservableProperty] private int _analyzerMode = 0;
+
+        [ObservableProperty] private double _configWindowWidth = 1200;
+        [ObservableProperty] private double _configWindowHeight = 800;
+
+        // Standard Attach Properties
+        [ObservableProperty] private bool _enable0x01 = true;
+        [ObservableProperty] private uint _mileage0x01 = 0;
+        [ObservableProperty] private bool _enable0x02 = false;
+        [ObservableProperty] private ushort _oil0x02 = 0;
+        [ObservableProperty] private bool _enable0x03 = true;
+        [ObservableProperty] private ushort _speed0x03 = 0;
+        [ObservableProperty] private bool _enable0x04 = false;
+        [ObservableProperty] private ushort _alarmEventId0x04 = 0;
+        [ObservableProperty] private bool _enable0x25 = false;
+        [ObservableProperty] private uint _extVehicleSignal0x25 = 0;
+
+        partial void OnExtVehicleSignal0x25Changed(uint value)
+        {
+            OnPropertyChanged(nameof(ExtVehSigLowBeam));
+            OnPropertyChanged(nameof(ExtVehSigHighBeam));
+            OnPropertyChanged(nameof(ExtVehSigRightTurn));
+            OnPropertyChanged(nameof(ExtVehSigLeftTurn));
+            OnPropertyChanged(nameof(ExtVehSigBrake));
+            OnPropertyChanged(nameof(ExtVehSigReverse));
+            OnPropertyChanged(nameof(ExtVehSigFogLight));
+            OnPropertyChanged(nameof(ExtVehSigOutlineLight));
+            OnPropertyChanged(nameof(ExtVehSigHorn));
+            OnPropertyChanged(nameof(ExtVehSigAC));
+            OnPropertyChanged(nameof(ExtVehSigNeutral));
+            OnPropertyChanged(nameof(ExtVehSigRetarder));
+            OnPropertyChanged(nameof(ExtVehSigABS));
+            OnPropertyChanged(nameof(ExtVehSigHeater));
+            OnPropertyChanged(nameof(ExtVehSigClutch));
+        }
+
+        public bool ExtVehSigLowBeam
+        {
+            get => (ExtVehicleSignal0x25 & (1U << 0)) != 0;
+            set
+            {
+                if (value) ExtVehicleSignal0x25 |= (1U << 0);
+                else ExtVehicleSignal0x25 &= ~(1U << 0);
+            }
+        }
+
+        public bool ExtVehSigHighBeam
+        {
+            get => (ExtVehicleSignal0x25 & (1U << 1)) != 0;
+            set
+            {
+                if (value) ExtVehicleSignal0x25 |= (1U << 1);
+                else ExtVehicleSignal0x25 &= ~(1U << 1);
+            }
+        }
+
+        public bool ExtVehSigRightTurn
+        {
+            get => (ExtVehicleSignal0x25 & (1U << 2)) != 0;
+            set
+            {
+                if (value) ExtVehicleSignal0x25 |= (1U << 2);
+                else ExtVehicleSignal0x25 &= ~(1U << 2);
+            }
+        }
+
+        public bool ExtVehSigLeftTurn
+        {
+            get => (ExtVehicleSignal0x25 & (1U << 3)) != 0;
+            set
+            {
+                if (value) ExtVehicleSignal0x25 |= (1U << 3);
+                else ExtVehicleSignal0x25 &= ~(1U << 3);
+            }
+        }
+
+        public bool ExtVehSigBrake
+        {
+            get => (ExtVehicleSignal0x25 & (1U << 4)) != 0;
+            set
+            {
+                if (value) ExtVehicleSignal0x25 |= (1U << 4);
+                else ExtVehicleSignal0x25 &= ~(1U << 4);
+            }
+        }
+
+        public bool ExtVehSigReverse
+        {
+            get => (ExtVehicleSignal0x25 & (1U << 5)) != 0;
+            set
+            {
+                if (value) ExtVehicleSignal0x25 |= (1U << 5);
+                else ExtVehicleSignal0x25 &= ~(1U << 5);
+            }
+        }
+
+        public bool ExtVehSigFogLight
+        {
+            get => (ExtVehicleSignal0x25 & (1U << 6)) != 0;
+            set
+            {
+                if (value) ExtVehicleSignal0x25 |= (1U << 6);
+                else ExtVehicleSignal0x25 &= ~(1U << 6);
+            }
+        }
+
+        public bool ExtVehSigOutlineLight
+        {
+            get => (ExtVehicleSignal0x25 & (1U << 7)) != 0;
+            set
+            {
+                if (value) ExtVehicleSignal0x25 |= (1U << 7);
+                else ExtVehicleSignal0x25 &= ~(1U << 7);
+            }
+        }
+
+        public bool ExtVehSigHorn
+        {
+            get => (ExtVehicleSignal0x25 & (1U << 8)) != 0;
+            set
+            {
+                if (value) ExtVehicleSignal0x25 |= (1U << 8);
+                else ExtVehicleSignal0x25 &= ~(1U << 8);
+            }
+        }
+
+        public bool ExtVehSigAC
+        {
+            get => (ExtVehicleSignal0x25 & (1U << 9)) != 0;
+            set
+            {
+                if (value) ExtVehicleSignal0x25 |= (1U << 9);
+                else ExtVehicleSignal0x25 &= ~(1U << 9);
+            }
+        }
+
+        public bool ExtVehSigNeutral
+        {
+            get => (ExtVehicleSignal0x25 & (1U << 10)) != 0;
+            set
+            {
+                if (value) ExtVehicleSignal0x25 |= (1U << 10);
+                else ExtVehicleSignal0x25 &= ~(1U << 10);
+            }
+        }
+
+        public bool ExtVehSigRetarder
+        {
+            get => (ExtVehicleSignal0x25 & (1U << 11)) != 0;
+            set
+            {
+                if (value) ExtVehicleSignal0x25 |= (1U << 11);
+                else ExtVehicleSignal0x25 &= ~(1U << 11);
+            }
+        }
+
+        public bool ExtVehSigABS
+        {
+            get => (ExtVehicleSignal0x25 & (1U << 12)) != 0;
+            set
+            {
+                if (value) ExtVehicleSignal0x25 |= (1U << 12);
+                else ExtVehicleSignal0x25 &= ~(1U << 12);
+            }
+        }
+
+        public bool ExtVehSigHeater
+        {
+            get => (ExtVehicleSignal0x25 & (1U << 13)) != 0;
+            set
+            {
+                if (value) ExtVehicleSignal0x25 |= (1U << 13);
+                else ExtVehicleSignal0x25 &= ~(1U << 13);
+            }
+        }
+
+        public bool ExtVehSigClutch
+        {
+            get => (ExtVehicleSignal0x25 & (1U << 14)) != 0;
+            set
+            {
+                if (value) ExtVehicleSignal0x25 |= (1U << 14);
+                else ExtVehicleSignal0x25 &= ~(1U << 14);
+            }
+        }
+
+        [ObservableProperty] private bool _enable0x2A = false;
+        [ObservableProperty] private ushort _iOStatus0x2A = 0;
+
+        partial void OnIOStatus0x2AChanged(ushort value)
+        {
+            OnPropertyChanged(nameof(IOStatusDeepSleep));
+            OnPropertyChanged(nameof(IOStatusSleep));
+            OnPropertyChanged(nameof(IOStatusGPIO2));
+            OnPropertyChanged(nameof(IOStatusGPIO3));
+            OnPropertyChanged(nameof(IOStatusGPIO4));
+            OnPropertyChanged(nameof(IOStatusGPIO5));
+            OnPropertyChanged(nameof(IOStatusGPIO6));
+            OnPropertyChanged(nameof(IOStatusGPIO7));
+            OnPropertyChanged(nameof(IOStatusGPIO8));
+            OnPropertyChanged(nameof(IOStatusGPIO9));
+            OnPropertyChanged(nameof(IOStatusGPIO10));
+            OnPropertyChanged(nameof(IOStatusGPIO11));
+            OnPropertyChanged(nameof(IOStatusGPIO12));
+            OnPropertyChanged(nameof(IOStatusGPIO13));
+            OnPropertyChanged(nameof(IOStatusGPIO14));
+            OnPropertyChanged(nameof(IOStatusGPIO15));
+        }
+
+        public bool IOStatusDeepSleep
+        {
+            get => (IOStatus0x2A & (1U << 0)) != 0;
+            set
+            {
+                if (value) IOStatus0x2A |= (ushort)(1U << 0);
+                else IOStatus0x2A &= (ushort)(0xFFFF ^ (1U << 0));
+            }
+        }
+
+        public bool IOStatusSleep
+        {
+            get => (IOStatus0x2A & (1U << 1)) != 0;
+            set
+            {
+                if (value) IOStatus0x2A |= (ushort)(1U << 1);
+                else IOStatus0x2A &= (ushort)(0xFFFF ^ (1U << 1));
+            }
+        }
+
+        public bool IOStatusGPIO2
+        {
+            get => (IOStatus0x2A & (1U << 2)) != 0;
+            set
+            {
+                if (value) IOStatus0x2A |= (ushort)(1U << 2);
+                else IOStatus0x2A &= (ushort)(0xFFFF ^ (1U << 2));
+            }
+        }
+
+        public bool IOStatusGPIO3
+        {
+            get => (IOStatus0x2A & (1U << 3)) != 0;
+            set
+            {
+                if (value) IOStatus0x2A |= (ushort)(1U << 3);
+                else IOStatus0x2A &= (ushort)(0xFFFF ^ (1U << 3));
+            }
+        }
+
+        public bool IOStatusGPIO4
+        {
+            get => (IOStatus0x2A & (1U << 4)) != 0;
+            set
+            {
+                if (value) IOStatus0x2A |= (ushort)(1U << 4);
+                else IOStatus0x2A &= (ushort)(0xFFFF ^ (1U << 4));
+            }
+        }
+
+        public bool IOStatusGPIO5
+        {
+            get => (IOStatus0x2A & (1U << 5)) != 0;
+            set
+            {
+                if (value) IOStatus0x2A |= (ushort)(1U << 5);
+                else IOStatus0x2A &= (ushort)(0xFFFF ^ (1U << 5));
+            }
+        }
+
+        public bool IOStatusGPIO6
+        {
+            get => (IOStatus0x2A & (1U << 6)) != 0;
+            set
+            {
+                if (value) IOStatus0x2A |= (ushort)(1U << 6);
+                else IOStatus0x2A &= (ushort)(0xFFFF ^ (1U << 6));
+            }
+        }
+
+        public bool IOStatusGPIO7
+        {
+            get => (IOStatus0x2A & (1U << 7)) != 0;
+            set
+            {
+                if (value) IOStatus0x2A |= (ushort)(1U << 7);
+                else IOStatus0x2A &= (ushort)(0xFFFF ^ (1U << 7));
+            }
+        }
+
+        public bool IOStatusGPIO8
+        {
+            get => (IOStatus0x2A & (1U << 8)) != 0;
+            set
+            {
+                if (value) IOStatus0x2A |= (ushort)(1U << 8);
+                else IOStatus0x2A &= (ushort)(0xFFFF ^ (1U << 8));
+            }
+        }
+
+        public bool IOStatusGPIO9
+        {
+            get => (IOStatus0x2A & (1U << 9)) != 0;
+            set
+            {
+                if (value) IOStatus0x2A |= (ushort)(1U << 9);
+                else IOStatus0x2A &= (ushort)(0xFFFF ^ (1U << 9));
+            }
+        }
+
+        public bool IOStatusGPIO10
+        {
+            get => (IOStatus0x2A & (1U << 10)) != 0;
+            set
+            {
+                if (value) IOStatus0x2A |= (ushort)(1U << 10);
+                else IOStatus0x2A &= (ushort)(0xFFFF ^ (1U << 10));
+            }
+        }
+
+        public bool IOStatusGPIO11
+        {
+            get => (IOStatus0x2A & (1U << 11)) != 0;
+            set
+            {
+                if (value) IOStatus0x2A |= (ushort)(1U << 11);
+                else IOStatus0x2A &= (ushort)(0xFFFF ^ (1U << 11));
+            }
+        }
+
+        public bool IOStatusGPIO12
+        {
+            get => (IOStatus0x2A & (1U << 12)) != 0;
+            set
+            {
+                if (value) IOStatus0x2A |= (ushort)(1U << 12);
+                else IOStatus0x2A &= (ushort)(0xFFFF ^ (1U << 12));
+            }
+        }
+
+        public bool IOStatusGPIO13
+        {
+            get => (IOStatus0x2A & (1U << 13)) != 0;
+            set
+            {
+                if (value) IOStatus0x2A |= (ushort)(1U << 13);
+                else IOStatus0x2A &= (ushort)(0xFFFF ^ (1U << 13));
+            }
+        }
+
+        public bool IOStatusGPIO14
+        {
+            get => (IOStatus0x2A & (1U << 14)) != 0;
+            set
+            {
+                if (value) IOStatus0x2A |= (ushort)(1U << 14);
+                else IOStatus0x2A &= (ushort)(0xFFFF ^ (1U << 14));
+            }
+        }
+
+        public bool IOStatusGPIO15
+        {
+            get => (IOStatus0x2A & (1U << 15)) != 0;
+            set
+            {
+                if (value) IOStatus0x2A |= (ushort)(1U << 15);
+                else IOStatus0x2A &= (ushort)(0xFFFF ^ (1U << 15));
+            }
+        }
+
+        [ObservableProperty] private bool _enable0x2B = false;
+        [ObservableProperty] private ushort _analogAD0 = 0;
+        [ObservableProperty] private ushort _analogAD1 = 0;
+        [ObservableProperty] private bool _enable0x30 = true;
+        [ObservableProperty] private byte _networkSignal0x30 = 31;
+        [ObservableProperty] private bool _enable0x31 = true;
+        [ObservableProperty] private byte _gNSSCount0x31 = 15;
+
+        // Simulation Properties
+        [ObservableProperty] private bool _enableMileageSimulation = false;
+        [ObservableProperty] private bool _sync0x03SpeedWithMainSpeed = true;
+        [ObservableProperty] private bool _enableOilConsumption = false;
+        [ObservableProperty] private double _oilConsumptionRate = 8.0;
+        [ObservableProperty] private bool _enableNetworkSignalFluctuation = false;
+        [ObservableProperty] private bool _enableGNSSFluctuation = false;
+        [ObservableProperty] private bool _enableTTSPlayback = true;
+        [ObservableProperty] private string _selectedTTSVoice = "";
+        public ObservableCollection<string> InstalledTTSVoices { get; } = new();
+        public ObservableCollection<TextDownlinkMessage> TextDownlinkMessages { get; } = new();
+
+        public ObservableCollection<AnalyzerTableRow> AnalyzerResultTable { get; } = new();
 
         private System.Threading.CancellationTokenSource? _pathSimulationCts;
         [ObservableProperty] private bool _isPathSimulating = false;
@@ -730,6 +1602,7 @@ namespace TerminalSimulation.Wpf.ViewModels
         [ObservableProperty] private string _passthroughTypeHex = "00";
         [ObservableProperty] private int _passthroughEncodingIndex = 0; // 0: GBK, 1: UTF-8, 2: HEX
         [ObservableProperty] private int _chatEncodingIndex = 0; // 0: GBK, 1: UTF-8, 2: HEX
+        [ObservableProperty] private int _textDownlinkEncodingIndex = 0; // 0: UTF-8, 1: GBK
         [ObservableProperty] private bool _isHexInputInvalid = false;
 
         // Serial Port Properties
@@ -750,6 +1623,57 @@ namespace TerminalSimulation.Wpf.ViewModels
 
 
         public ObservableCollection<ThemeImageItem> ThemeImages { get; } = new ObservableCollection<ThemeImageItem>();
+
+        private void InitializeTTSVoices()
+        {
+            try
+            {
+                using (var synth = new System.Speech.Synthesis.SpeechSynthesizer())
+                {
+                    foreach (var voice in synth.GetInstalledVoices())
+                    {
+                        if (voice.Enabled)
+                        {
+                            InstalledTTSVoices.Add(voice.VoiceInfo.Name);
+                        }
+                    }
+                }
+                
+                if (InstalledTTSVoices.Count > 0)
+                {
+                    if (string.IsNullOrEmpty(SelectedTTSVoice) || !InstalledTTSVoices.Contains(SelectedTTSVoice))
+                    {
+                        SelectedTTSVoice = InstalledTTSVoices[0];
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log("系统", $"初始化语音朗读引擎失败: {ex.Message}");
+            }
+        }
+
+        [RelayCommand]
+        private void ReplayTTS(TextDownlinkMessage? msg)
+        {
+            if (msg == null || !EnableTTSPlayback) return;
+            string textToSpeak = msg.Content;
+            string voiceName = SelectedTTSVoice;
+            Task.Run(() =>
+            {
+                try
+                {
+                    using var synth = new System.Speech.Synthesis.SpeechSynthesizer();
+                    if (!string.IsNullOrEmpty(voiceName))
+                        synth.SelectVoice(voiceName);
+                    synth.Speak(textToSpeak);
+                }
+                catch (Exception ex)
+                {
+                    Log("系统", $"TTS重播失败: {ex.Message}");
+                }
+            });
+        }
 
         private void InitThemeImages()
         {
@@ -941,20 +1865,246 @@ namespace TerminalSimulation.Wpf.ViewModels
         [RelayCommand]
         private void ClearLogs()
         {
-            _logBuilder.Clear();
-            LogText = "";
+            LogMessages.Clear();
+            PassthroughMessages.Clear();
+        }
+
+        [RelayCommand]
+        private void AnalyzeMessage()
+        {
+            try
+            {
+                AnalyzerResultTree.Clear();
+                if (string.IsNullOrWhiteSpace(AnalyzerInputHex)) return;
+                
+                string hex = AnalyzerInputHex.Replace(" ", "").Replace("\r", "").Replace("\n", "");
+                byte[] data = Convert.FromHexString(hex);
+                
+                string json = _protocolManager.Analyze(data);
+                
+                using (var doc = JsonDocument.Parse(json))
+                {
+                    var rootNode = ParseJsonElement("JT808 Package", doc.RootElement);
+                    AnalyzerResultTree.Add(rootNode);
+                    
+                    AnalyzerResultTable.Clear();
+                    int offset = 0;
+                    TraverseJsonForTable("JT808 Package", doc.RootElement, ref offset);
+                }
+            }
+            catch (Exception ex)
+            {
+                AnalyzerResultTree.Add(new AnalyzerNode { Name = "解析错误", Value = ex.Message });
+            }
+        }
+        
+        private AnalyzerNode ParseJsonElement(string name, JsonElement element)
+        {
+            var node = new AnalyzerNode { Name = TranslateKey(name) };
+            
+            if (element.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var prop in element.EnumerateObject())
+                {
+                    node.Children.Add(ParseJsonElement(prop.Name, prop.Value));
+                }
+            }
+            else if (element.ValueKind == JsonValueKind.Array)
+            {
+                int i = 0;
+                foreach (var item in element.EnumerateArray())
+                {
+                    node.Children.Add(ParseJsonElement($"[{i}]", item));
+                    i++;
+                }
+            }
+            else
+            {
+                string rawValue = element.ToString() ?? "";
+                node.Value = TranslateValue(name, rawValue);
+            }
+            
+            return node;
+        }
+
+        private string TranslateKey(string key)
+        {
+            if (key.Contains("消息Id", StringComparison.OrdinalIgnoreCase)) return key.Replace("消息Id", "消息ID ", StringComparison.OrdinalIgnoreCase);
+            if (key.Contains("车牌颜色")) return key.Replace("车牌颜色", "车牌颜色 ");
+            
+            return key switch
+            {
+                "MsgId" => "消息ID",
+                "MsgNum" => "消息流水号",
+                "TerminalPhoneNo" => "终端手机号",
+                "Header" => "消息头",
+                "MessageBodyProperty" => "消息体属性",
+                "VersionFlag" => "版本标识",
+                "Encrypt" => "加密方式",
+                "DataLength" => "数据长度",
+                "TerminalId" => "终端ID",
+                "PlateColor" => "车牌颜色",
+                "Bodies" => "消息体",
+                "CheckCode" => "校验码",
+                "JT808 Package" => "JT808 报文",
+                _ => key
+            };
+        }
+
+        private string TranslateValue(string key, string value)
+        {
+            if (key.Contains("消息Id", StringComparison.OrdinalIgnoreCase) && int.TryParse(value, out int msgId))
+            {
+                string hex = msgId.ToString("X4");
+                string desc = hex switch
+                {
+                    "0100" => "终端注册",
+                    "0002" => "终端心跳",
+                    "0102" => "终端鉴权",
+                    "0200" => "位置信息汇报",
+                    "0001" => "终端通用应答",
+                    _ => ""
+                };
+                return $"{msgId} {desc}".Trim();
+            }
+            else if (key.Contains("车牌颜色") && int.TryParse(value, out int colorId))
+            {
+                string colorDesc = colorId switch
+                {
+                    1 => "蓝色",
+                    2 => "黄色",
+                    3 => "黑色",
+                    4 => "白色",
+                    5 => "绿色",
+                    9 => "其他",
+                    _ => "未指定"
+                };
+                return $"{colorId} {colorDesc}";
+            }
+
+            return value;
+        }
+
+        private void TraverseJsonForTable(string name, JsonElement element, ref int offset)
+        {
+            if (name == "JT808 Package")
+            {
+                if (element.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (var prop in element.EnumerateObject())
+                    {
+                        TraverseJsonForTable(prop.Name, prop.Value, ref offset);
+                    }
+                }
+                return;
+            }
+
+            string hexData = "";
+            string field = name;
+            var match = System.Text.RegularExpressions.Regex.Match(name, @"^\[([0-9A-Fa-f]+|bit[0-9~]+)\](.*)$");
+            if (match.Success)
+            {
+                hexData = match.Groups[1].Value;
+                field = match.Groups[2].Value.Trim();
+            }
+
+            field = TranslateKey(field).Replace(" ", "");
+            string rawValue = element.ValueKind != JsonValueKind.Object && element.ValueKind != JsonValueKind.Array ? element.ToString() ?? "" : "";
+            string result = TranslateValue(name, rawValue);
+
+            string offsetStr = "";
+            string lengthStr = "";
+            string dataType = "";
+
+            if (!string.IsNullOrEmpty(hexData))
+            {
+                if (hexData.StartsWith("bit"))
+                {
+                    offsetStr = "-";
+                    lengthStr = "bit";
+                    dataType = "BIT";
+                }
+                else
+                {
+                    offsetStr = offset.ToString();
+                    int len = hexData.Length / 2;
+                    lengthStr = len.ToString();
+                    dataType = len switch
+                    {
+                        1 => "BYTE",
+                        2 => "WORD",
+                        4 => "DWORD",
+                        _ => "BYTES"
+                    };
+                    offset += len;
+                }
+            }
+            
+            if (!string.IsNullOrEmpty(hexData) || (!string.IsNullOrEmpty(rawValue) && element.ValueKind != JsonValueKind.Object && element.ValueKind != JsonValueKind.Array))
+            {
+                if (element.ValueKind != JsonValueKind.Object && element.ValueKind != JsonValueKind.Array)
+                {
+                    AnalyzerResultTable.Add(new AnalyzerTableRow
+                    {
+                        Index = AnalyzerResultTable.Count,
+                        Field = field,
+                        HexData = hexData,
+                        DataType = dataType,
+                        OffsetStr = offsetStr,
+                        LengthStr = lengthStr,
+                        Result = result
+                    });
+                }
+            }
+
+            if (element.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var prop in element.EnumerateObject())
+                {
+                    TraverseJsonForTable(prop.Name, prop.Value, ref offset);
+                }
+            }
+            else if (element.ValueKind == JsonValueKind.Array)
+            {
+                int i = 0;
+                foreach (var item in element.EnumerateArray())
+                {
+                    TraverseJsonForTable($"[{i}]", item, ref offset);
+                    i++;
+                }
+            }
         }
 
         private void Log(string direction, string message)
         {
             Application.Current.Dispatcher.Invoke(() =>
             {
-                _logBuilder.AppendLine($"[{DateTime.Now:HH:mm:ss.fff}] [{direction}] {message}");
-                if (_logBuilder.Length > 100000)
+                bool isRaw = message.StartsWith("RAW: ");
+                string rawHex = "";
+                string displayMsg = message;
+
+                if (isRaw)
                 {
-                    _logBuilder.Remove(0, _logBuilder.Length - 80000); // Keep last 80K characters
+                    rawHex = message.Substring(5).Trim();
+                    displayMsg = message; // Keep RAW: prefix for visual clarity, or you can strip it
                 }
-                LogText = _logBuilder.ToString();
+
+                var item = new LogMessageItem
+                {
+                    TimestampStr = $"[{DateTime.Now:HH:mm:ss.fff}]",
+                    DirectionStr = $"[{direction}]",
+                    Message = displayMsg,
+                    HasRaw = isRaw,
+                    RawData = rawHex
+                };
+
+                LogMessages.Add(item);
+
+                // Keep only the last 2000 log items to prevent memory issues
+                if (LogMessages.Count > 2000)
+                {
+                    LogMessages.RemoveAt(0);
+                }
             });
         }
 
@@ -1131,6 +2281,63 @@ namespace TerminalSimulation.Wpf.ViewModels
                     });
 
                     // 通用应答
+                    _ = SendTerminalGeneralResponseAsync(package.Header.MsgId, package.Header.MsgNum, JT808.Protocol.Enums.JT808TerminalResult.Success);
+                }
+                // 拦截文本信息下发 (0x8300)
+                else if (package.Header.MsgId == 0x8300 && package.Bodies is JT808_0x8300 textDown)
+                {
+                    // 保存原始字节用于后续重编码切换
+                    byte[] rawBytes;
+                    try
+                    {
+                        rawBytes = TextDownlinkEncodingIndex == 1
+                            ? System.Text.Encoding.GetEncoding("GBK").GetBytes(textDown.TextInfo)
+                            : System.Text.Encoding.UTF8.GetBytes(textDown.TextInfo ?? "");
+                    }
+                    catch
+                    {
+                        rawBytes = System.Text.Encoding.UTF8.GetBytes(textDown.TextInfo ?? "");
+                    }
+
+                    var msg = new TextDownlinkMessage
+                    {
+                        Time = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+                        Content = textDown.TextInfo ?? string.Empty,
+                        Flag = textDown.TextFlag,
+                        RawBytes = rawBytes
+                    };
+
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        TextDownlinkMessages.Add(msg);
+                    });
+
+                    // TTS语音播报
+                    if (msg.IsTTS && EnableTTSPlayback)
+                    {
+                        string voiceName = SelectedTTSVoice;
+                        string textToSpeak = textDown.TextInfo ?? string.Empty;
+                        Task.Run(() =>
+                        {
+                            try
+                            {
+                                using (var synth = new System.Speech.Synthesis.SpeechSynthesizer())
+                                {
+                                    if (!string.IsNullOrEmpty(voiceName))
+                                    {
+                                        synth.SelectVoice(voiceName);
+                                    }
+                                    synth.Speak(textToSpeak);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Log("系统", $"TTS语音播报失败: {ex.Message}");
+                            }
+                        });
+                    }
+
+                    // 回复通用应答
                     _ = SendTerminalGeneralResponseAsync(package.Header.MsgId, package.Header.MsgNum, JT808.Protocol.Enums.JT808TerminalResult.Success);
                 }
                 // 拦截其他需要通用应答的下行指令
@@ -1313,8 +2520,8 @@ namespace TerminalSimulation.Wpf.ViewModels
 
             var body = new JT808_0x0100
             {
-                AreaID = ushort.TryParse(ProvinceIdInput?.Split(' ')[0], out var pid) ? pid : (ushort)0,
-                CityOrCountyId = ushort.TryParse(CityIdInput?.Split(' ')[0], out var cid) ? cid : (ushort)0,
+                AreaID = ParseProvinceId(ProvinceIdInput, 0),
+                CityOrCountyId = ParseCityId(CityIdInput, 0),
                 MakerId = ManufacturerId,
                 TerminalId = TerminalId,
                 TerminalModel = TerminalModel,
@@ -1388,9 +2595,54 @@ namespace TerminalSimulation.Wpf.ViewModels
                 UnknownLocationAttachData = new Dictionary<ushort, byte[]>()
             };
 
-            // 标准附加信息：里程
-            body.BasicLocationAttachData = new Dictionary<byte, JT808_0x0200_BodyBase>();
-            body.BasicLocationAttachData.Add(JT808Constants.JT808_0x0200_0x01, new JT808_0x0200_0x01 { Mileage = 12345 });
+            // 标准附加信息注入 (直接转为RAW字节追加，避免依赖底层库的序列化兼容性问题)
+            var standardAttachBytes = new System.Collections.Generic.List<byte>();
+            if (snapshot.Enable0x01)
+            {
+                standardAttachBytes.Add(0x01); standardAttachBytes.Add(0x04);
+                standardAttachBytes.AddRange(BitConverter.GetBytes(System.Net.IPAddress.HostToNetworkOrder((int)snapshot.Mileage0x01)));
+            }
+            if (snapshot.Enable0x02)
+            {
+                standardAttachBytes.Add(0x02); standardAttachBytes.Add(0x02);
+                standardAttachBytes.AddRange(BitConverter.GetBytes(System.Net.IPAddress.HostToNetworkOrder((short)snapshot.Oil0x02)));
+            }
+            if (snapshot.Enable0x03)
+            {
+                standardAttachBytes.Add(0x03); standardAttachBytes.Add(0x02);
+                standardAttachBytes.AddRange(BitConverter.GetBytes(System.Net.IPAddress.HostToNetworkOrder((short)snapshot.Speed0x03)));
+            }
+            if (snapshot.Enable0x04)
+            {
+                standardAttachBytes.Add(0x04); standardAttachBytes.Add(0x02);
+                standardAttachBytes.AddRange(BitConverter.GetBytes(System.Net.IPAddress.HostToNetworkOrder((short)snapshot.AlarmEventId0x04)));
+            }
+            if (snapshot.Enable0x25)
+            {
+                standardAttachBytes.Add(0x25); standardAttachBytes.Add(0x04);
+                standardAttachBytes.AddRange(BitConverter.GetBytes(System.Net.IPAddress.HostToNetworkOrder((int)snapshot.ExtVehicleSignal0x25)));
+            }
+            if (snapshot.Enable0x2A)
+            {
+                standardAttachBytes.Add(0x2A); standardAttachBytes.Add(0x02);
+                standardAttachBytes.AddRange(BitConverter.GetBytes(System.Net.IPAddress.HostToNetworkOrder((short)snapshot.IOStatus0x2A)));
+            }
+            if (snapshot.Enable0x2B)
+            {
+                standardAttachBytes.Add(0x2B); standardAttachBytes.Add(0x04);
+                int analog = (snapshot.AnalogAD1 << 16) | snapshot.AnalogAD0;
+                standardAttachBytes.AddRange(BitConverter.GetBytes(System.Net.IPAddress.HostToNetworkOrder(analog)));
+            }
+            if (snapshot.Enable0x30)
+            {
+                standardAttachBytes.Add(0x30); standardAttachBytes.Add(0x01);
+                standardAttachBytes.Add(snapshot.NetworkSignal0x30);
+            }
+            if (snapshot.Enable0x31)
+            {
+                standardAttachBytes.Add(0x31); standardAttachBytes.Add(0x01);
+                standardAttachBytes.Add(snapshot.GNSSCount0x31);
+            }
 
             // 自定义 Hex 透传 (格式：ID|Length|Data 或 ID|Data，支持逗号分隔多个)
             var rawAppendBytesList = new System.Collections.Generic.List<byte>();
@@ -1422,6 +2674,11 @@ namespace TerminalSimulation.Wpf.ViewModels
                     Log("系统", $"自定义附加字段[{attach.AttachId}]解析失败: {ex.Message}");
                 }
             }
+            if (standardAttachBytes.Count > 0)
+            {
+                rawAppendBytesList.InsertRange(0, standardAttachBytes);
+            }
+
             Log("系统", $"最终拼接的附加数据(RAW Hex): {(rawAppendBytesList.Count > 0 ? rawAppendBytesList.ToArray().ToHexString() : "无")}");
 
             var package = new JT808Package
@@ -2074,8 +3331,10 @@ namespace TerminalSimulation.Wpf.ViewModels
             // Force save any pending config change immediately on dispose
             if (_saveTimer != null)
             {
-                _saveTimer.Dispose();
+                _saveTimer?.Dispose();
                 _saveTimer = null;
+                _simulationTimer?.Dispose();
+                _simulationTimer = null;
                 SaveConfig();
             }
         }
@@ -2099,4 +3358,5 @@ namespace TerminalSimulation.Wpf.ViewModels
         public string Label { get; set; } = "";
         public byte[] RawData { get; set; } = Array.Empty<byte>();
     }
+
 }

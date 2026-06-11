@@ -412,12 +412,17 @@ public partial class MainWindow : Window
         catch { }
     }
 
-    private void LogTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    private void LogMessages_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
     {
         var vm = DataContext as TerminalSimulation.Wpf.ViewModels.MainViewModel;
-        if (vm != null && vm.AutoScrollLogs)
+        if (vm != null && vm.AutoScrollLogs && LogListBox.Items.Count > 0)
         {
-            LogTextBox.ScrollToEnd();
+            var border = System.Windows.Media.VisualTreeHelper.GetChild(LogListBox, 0) as System.Windows.Controls.Decorator;
+            if (border != null)
+            {
+                var scroll = border.Child as System.Windows.Controls.ScrollViewer;
+                if (scroll != null) scroll.ScrollToEnd();
+            }
         }
     }
 
@@ -466,10 +471,18 @@ public partial class MainWindow : Window
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        if (DataContext is TerminalSimulation.Wpf.ViewModels.MainViewModel vm)
+        if (DataContext is ViewModels.MainViewModel vm)
         {
+            vm.LogMessages.CollectionChanged += LogMessages_CollectionChanged;
             vm.PropertyChanged += Vm_PropertyChanged;
         }
+
+        try
+        {
+            var configJson = System.IO.File.ReadAllText("terminal_config.json");
+            var config = System.Text.Json.JsonSerializer.Deserialize<ViewModels.AppConfig>(configJson);
+        }
+        catch { }
     }
 
     private void Vm_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -517,6 +530,18 @@ public partial class MainWindow : Window
         if (DataContext is System.IDisposable disposable)
         {
             disposable.Dispose();
+        }
+    }
+
+    private void AnalyzerTreeView_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.C && System.Windows.Input.Keyboard.Modifiers == System.Windows.Input.ModifierKeys.Control)
+        {
+            if (sender is TreeView tv && tv.SelectedItem is ViewModels.AnalyzerNode node)
+            {
+                System.Windows.Clipboard.SetText($"{node.Name} {node.Value}".Trim());
+                e.Handled = true;
+            }
         }
     }
 }
