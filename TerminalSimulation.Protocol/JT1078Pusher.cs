@@ -90,6 +90,9 @@ namespace TerminalSimulation.Protocol
                 var sw = System.Diagnostics.Stopwatch.StartNew();
                 double expectedElapsedMs = 0;
 
+                int burstIFrameCount = 0;
+                bool isBursting = true;
+
                 while (!token.IsCancellationRequested)
                 {
                     foreach (var frame in frames)
@@ -98,6 +101,18 @@ namespace TerminalSimulation.Protocol
 
                         bool isIFrame = frame.IsIFrame;
                         byte[] frameData = frame.Data;
+
+                        if (isIFrame && isBursting)
+                        {
+                            burstIFrameCount++;
+                            if (burstIFrameCount >= 2)
+                            {
+                                isBursting = false;
+                                sw.Restart();
+                                expectedElapsedMs = 0;
+                                OnLog?.Invoke("首个 GOP (关键帧组) 极速推送完成，已解决平台 HLS 切片等待 404 问题，现恢复正常流速");
+                            }
+                        }
 
                         ushort lastIFrameInterval = 0;
                         ushort lastFrameInterval = 0;
@@ -190,6 +205,12 @@ namespace TerminalSimulation.Protocol
 
                         // 时间戳以 1000/FPS 递增
                         timestamp += (ulong)sleepDelayMs;
+
+                        if (isBursting)
+                        {
+                            // 极速模式下无任何延时，全速发包
+                            continue;
+                        }
 
                         if (_isConstantFps)
                         {
