@@ -11,6 +11,7 @@ namespace TerminalSimulation.Network
         private TcpClient? _tcpClient;
         private NetworkStream? _networkStream;
         private CancellationTokenSource? _receiveCts;
+        private readonly object _disconnectLock = new object();
 
         public event Action<byte[]>? OnDataReceived;
         public event Action? OnDisconnected;
@@ -71,15 +72,17 @@ namespace TerminalSimulation.Network
                                 currentPacket.Clear();
                                 currentPacket.Add(b);
                             }
-                            else
+                            else if (currentPacket.Count > 1)
                             {
                                 // End of packet
                                 currentPacket.Add(b);
                                 var packetData = currentPacket.ToArray();
                                 OnDataReceived?.Invoke(packetData);
                                 
-                                isReadingPacket = false;
+                                // Shared delimiter: the end of this packet is also the start of next packet
                                 currentPacket.Clear();
+                                currentPacket.Add(b);
+                                isReadingPacket = true;
                             }
                         }
                         else if (isReadingPacket)
@@ -102,15 +105,27 @@ namespace TerminalSimulation.Network
 
         public void Disconnect()
         {
-            _receiveCts?.Cancel();
-            _receiveCts?.Dispose();
-            _receiveCts = null;
+            lock (_disconnectLock)
+            {
+                if (_receiveCts != null)
+                {
+                    try { _receiveCts.Cancel(); } catch { }
+                    try { _receiveCts.Dispose(); } catch { }
+                    _receiveCts = null;
+                }
 
-            _networkStream?.Dispose();
-            _networkStream = null;
+                if (_networkStream != null)
+                {
+                    try { _networkStream.Dispose(); } catch { }
+                    _networkStream = null;
+                }
 
-            _tcpClient?.Dispose();
-            _tcpClient = null;
+                if (_tcpClient != null)
+                {
+                    try { _tcpClient.Dispose(); } catch { }
+                    _tcpClient = null;
+                }
+            }
         }
 
         public void Dispose()

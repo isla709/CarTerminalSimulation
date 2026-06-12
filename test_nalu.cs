@@ -10,10 +10,12 @@ class Program {
             fs.Read(data, 0, data.Length);
         }
 
-        var sw = Stopwatch.StartNew();
         var nalus = SplitNalus(data);
-        sw.Stop();
-        Console.WriteLine($"SplitNalus took {sw.ElapsedMilliseconds} ms, total {nalus.Count} nalus");
+        for(int i=0; i<Math.Min(100, nalus.Count); i++) {
+            var nalu = nalus[i];
+            int type = nalu.Length > 4 ? nalu[4] & 0x1F : 0;
+            Console.WriteLine($"NALU {i}: Length={nalu.Length}, Type={type}");
+        }
     }
 
     static List<byte[]> SplitNalus(byte[] data)
@@ -56,4 +58,3 @@ class Program {
         return nalus;
     }
 }
-

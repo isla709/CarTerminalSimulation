@@ -471,6 +471,14 @@ public partial class MainWindow : Window
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        try
+        {
+            var helper = new System.Windows.Interop.WindowInteropHelper(this);
+            var source = System.Windows.Interop.HwndSource.FromHwnd(helper.Handle);
+            source?.AddHook(WndProc);
+        }
+        catch { }
+
         if (DataContext is ViewModels.MainViewModel vm)
         {
             vm.LogMessages.CollectionChanged += LogMessages_CollectionChanged;
@@ -543,5 +551,209 @@ public partial class MainWindow : Window
                 e.Handled = true;
             }
         }
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool bRedraw);
+
+    [System.Runtime.InteropServices.DllImport("gdi32.dll")]
+    private static extern IntPtr CreateRectRgn(int nLeftRect, int nTopRect, int nRightRect, int nBottomRect);
+
+    private double _dpiScale = 1.0;
+
+    private void UpdateDpiScale()
+    {
+        var source = PresentationSource.FromVisual(this);
+        if (source?.CompositionTarget != null)
+        {
+            _dpiScale = source.CompositionTarget.TransformToDevice.M11;
+        }
+    }
+
+    private static IntPtr GetHwnd(DependencyObject control)
+    {
+        if (control is System.Windows.Interop.HwndHost hwndHost)
+        {
+            return hwndHost.Handle;
+        }
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(control); i++)
+        {
+            var child = VisualTreeHelper.GetChild(control, i);
+            var hwnd = GetHwnd(child);
+            if (hwnd != IntPtr.Zero) return hwnd;
+        }
+        return IntPtr.Zero;
+    }
+
+    private void VideoScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        UpdateVideoViewsVisibility();
+    }
+
+    private void VideoScrollViewer_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        UpdateVideoViewsVisibility();
+    }
+
+    private void MainTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.Source == MainTabControl)
+        {
+            UpdateVideoViewsVisibility();
+        }
+    }
+
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        const int WM_EXITSIZEMOVE = 0x0232;
+
+        if (msg == WM_EXITSIZEMOVE)
+        {
+            UpdateVideoViewsVisibility();
+        }
+
+        return IntPtr.Zero;
+    }
+
+    private void HideAllVideoViews()
+    {
+        if (VideoItemsControl == null) return;
+        var videoViews = FindVisualChildren<LibVLCSharp.WPF.VideoView>(VideoItemsControl);
+        foreach (var videoView in videoViews)
+        {
+            videoView.Visibility = Visibility.Hidden;
+        }
+    }
+
+    private void UpdateVideoViewsVisibility()
+    {
+        if (VideoScrollViewer == null || VideoItemsControl == null) return;
+
+        // Ensure layout is updated before we do visual tree bounds calculation
+        VideoScrollViewer.UpdateLayout();
+
+        double viewportHeight = VideoScrollViewer.ViewportHeight;
+        double viewportWidth = VideoScrollViewer.ViewportWidth;
+
+        // Update DPI scale dynamically
+        UpdateDpiScale();
+
+        var videoViews = FindVisualChildren<LibVLCSharp.WPF.VideoView>(VideoItemsControl);
+
+        foreach (var videoView in videoViews)
+        {
+            try
+            {
+                if (!videoView.IsLoaded) continue;
+                if (!videoView.IsDescendantOf(VideoScrollViewer)) continue;
+
+                // 检查 DataContext，如果未开始播放视频，则强制折叠，避免创建原生窗口或引起闪烁
+                if (videoView.DataContext is ViewModels.VideoChannelItem vm)
+                {
+                    if (!vm.IsVideoViewVisible)
+                    {
+                        videoView.Visibility = Visibility.Hidden;
+                        continue;
+                    }
+                }
+
+                var transform = videoView.TransformToAncestor(VideoScrollViewer);
+                var relativeRect = transform.TransformBounds(new Rect(0, 0, videoView.ActualWidth, videoView.ActualHeight));
+
+                // 计算可视区域的相交矩形
+                var intersection = Rect.Intersect(relativeRect, new Rect(0, 0, viewportWidth, viewportHeight));
+
+                if (intersection.IsEmpty || intersection.Width <= 0 || intersection.Height <= 0)
+                {
+                    // 完全移出视口，隐藏它
+                    videoView.Visibility = Visibility.Hidden;
+                }
+                else
+                {
+                    // 至少部分可见
+                    videoView.Visibility = Visibility.Visible;
+
+                    // 获取原生窗口句柄进行裁剪区设定 (解决 HwndHost 遮挡外侧控件的 airspace 问题)
+                    IntPtr hwnd = GetHwnd(videoView);
+                    if (hwnd != IntPtr.Zero)
+                    {
+                        // 计算相对于 VideoView 自己客户区的裁剪矩形 (WPF 逻辑像素)
+                        double left = Math.Max(0, -relativeRect.Left);
+                        double top = Math.Max(0, -relativeRect.Top);
+                        double right = left + intersection.Width;
+                        double bottom = top + intersection.Height;
+
+                        // 转换为物理像素 (考虑系统 DPI 缩放)
+                        int physLeft = (int)Math.Round(left * _dpiScale);
+                        int physTop = (int)Math.Round(top * _dpiScale);
+                        int physRight = (int)Math.Round(right * _dpiScale);
+                        int physBottom = (int)Math.Round(bottom * _dpiScale);
+
+                        // 设定原生窗口裁剪区
+                        IntPtr hRgn = CreateRectRgn(physLeft, physTop, physRight, physBottom);
+                        if (hRgn != IntPtr.Zero)
+                        {
+                            SetWindowRgn(hwnd, hRgn, true);
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore if visual tree transforms fail (e.g. during disconnects/disposes)
+            }
+        }
+    }
+
+    private void VideoView_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is LibVLCSharp.WPF.VideoView videoView && videoView.MediaPlayer != null)
+        {
+            // 防止重复订阅
+            videoView.MediaPlayer.Playing -= MediaPlayer_Playing;
+            videoView.MediaPlayer.Playing += MediaPlayer_Playing;
+        }
+        UpdateVideoViewsVisibility();
+    }
+
+    private async void MediaPlayer_Playing(object? sender, EventArgs e)
+    {
+        // 延迟 300 毫秒，确保 VLC 的 D3D 渲染链已经输出第一帧
+        await System.Threading.Tasks.Task.Delay(300);
+        
+        Application.Current?.Dispatcher?.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, new Action(() =>
+        {
+            UpdateVideoViewsVisibility();
+        }));
+    }
+
+    private void VideoView_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (sender is UIElement element && element.IsVisible)
+        {
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, new Action(() =>
+            {
+                UpdateVideoViewsVisibility();
+            }));
+        }
+    }
+
+
+    private static System.Collections.Generic.List<T> FindVisualChildren<T>(DependencyObject depObj) where T : DependencyObject
+    {
+        var list = new System.Collections.Generic.List<T>();
+        if (depObj != null)
+        {
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(depObj); i++)
+            {
+                DependencyObject child = VisualTreeHelper.GetChild(depObj, i);
+                if (child is T t)
+                {
+                    list.Add(t);
+                }
+                list.AddRange(FindVisualChildren<T>(child));
+            }
+        }
+        return list;
     }
 }

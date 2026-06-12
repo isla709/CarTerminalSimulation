@@ -151,6 +151,7 @@ namespace TerminalSimulation.Wpf.ViewModels
                 lines.Add($" bit5 CAN故障  :{(IsCanFault     ? "✔ 是" : "✘ 否")}");
                 return string.Join("\n", lines);
             }
+            set { }
         }
 
         /// <summary>根据指定编码序号重新解码原始字节（0=UTF-8, 1=GBK, 2=HEX）</summary>
@@ -2175,35 +2176,68 @@ namespace TerminalSimulation.Wpf.ViewModels
 
         private void Log(string direction, string message)
         {
-            Application.Current.Dispatcher.Invoke(() =>
+            // Forward to console logger
+            if (direction == "发送")
             {
-                bool isRaw = message.StartsWith("RAW: ");
-                string rawHex = "";
-                string displayMsg = message;
+                ConsoleLogger.LogNetwork("发送", Array.Empty<byte>(), message);
+            }
+            else if (direction == "发送解析")
+            {
+                ConsoleLogger.LogNetwork("发送解析", Array.Empty<byte>(), message);
+            }
+            else if (direction == "接收")
+            {
+                ConsoleLogger.LogNetwork("接收", Array.Empty<byte>(), message);
+            }
+            else if (direction == "接收解析")
+            {
+                ConsoleLogger.LogNetwork("接收解析", Array.Empty<byte>(), message);
+            }
+            else if (direction == "系统")
+            {
+                ConsoleLogger.LogInfo(message);
+            }
+            else if (direction == "异常" || direction == "解析异常")
+            {
+                ConsoleLogger.LogError(direction, message);
+            }
+            else
+            {
+                ConsoleLogger.LogDebug(direction, message);
+            }
 
-                if (isRaw)
+            if (Application.Current != null)
+            {
+                Application.Current.Dispatcher.Invoke(() =>
                 {
-                    rawHex = message.Substring(5).Trim();
-                    displayMsg = message; // Keep RAW: prefix for visual clarity, or you can strip it
-                }
+                    bool isRaw = message.StartsWith("RAW: ");
+                    string rawHex = "";
+                    string displayMsg = message;
 
-                var item = new LogMessageItem
-                {
-                    TimestampStr = $"[{DateTime.Now:HH:mm:ss.fff}]",
-                    DirectionStr = $"[{direction}]",
-                    Message = displayMsg,
-                    HasRaw = isRaw,
-                    RawData = rawHex
-                };
+                    if (isRaw)
+                    {
+                        rawHex = message.Substring(5).Trim();
+                        displayMsg = message; // Keep RAW: prefix for visual clarity, or you can strip it
+                    }
 
-                LogMessages.Add(item);
+                    var item = new LogMessageItem
+                    {
+                        TimestampStr = $"[{DateTime.Now:HH:mm:ss.fff}]",
+                        DirectionStr = $"[{direction}]",
+                        Message = displayMsg,
+                        HasRaw = isRaw,
+                        RawData = rawHex
+                    };
 
-                // Keep only the last 2000 log items to prevent memory issues
-                if (LogMessages.Count > 2000)
-                {
-                    LogMessages.RemoveAt(0);
-                }
-            });
+                    LogMessages.Add(item);
+
+                    // Keep only the last 2000 log items to prevent memory issues
+                    if (LogMessages.Count > 2000)
+                    {
+                        LogMessages.RemoveAt(0);
+                    }
+                });
+            }
         }
 
         private void RemoveErrorProperties(JsonNode node)
@@ -2628,6 +2662,7 @@ namespace TerminalSimulation.Wpf.ViewModels
         {
             if (IsConnected) return;
 
+            ConsoleLogger.LogAction("连接服务器", $"IP={ServerIp}, 端口={ServerPort}");
             try
             {
                 Log("系统", $"正在连接 {ServerIp}:{ServerPort}...");
@@ -2647,6 +2682,7 @@ namespace TerminalSimulation.Wpf.ViewModels
         [RelayCommand]
         private void Disconnect()
         {
+            ConsoleLogger.LogAction("断开连接", "正在断开与服务器的连接");
             _networkClient.Disconnect();
             IsConnected = false;
             TerminalStatusText = "未连接";
@@ -2780,6 +2816,7 @@ namespace TerminalSimulation.Wpf.ViewModels
         [RelayCommand]
         private async Task RegisterAsync()
         {
+            ConsoleLogger.LogAction("终端注册", $"手机号={TerminalPhoneNo}, 省域={ProvinceIdInput}, 市县={CityIdInput}, 制造商ID={ManufacturerId}, 终端型号={TerminalModel}, 终端ID={TerminalId}, 车牌号={PlateNo}, 车牌颜色={PlateColor}");
             var header = new JT808Header
             {
                 MsgId = 0x0100,
@@ -2810,6 +2847,7 @@ namespace TerminalSimulation.Wpf.ViewModels
         [RelayCommand]
         private async Task AuthAsync()
         {
+            ConsoleLogger.LogAction("终端鉴权", $"手机号={TerminalPhoneNo}, 鉴权码={AuthCode}");
             if (string.IsNullOrEmpty(AuthCode))
             {
                 Log("系统", "鉴权码不能为空！请先注册获取或手动输入。");
@@ -2843,6 +2881,7 @@ namespace TerminalSimulation.Wpf.ViewModels
         private async Task ReportLocationAsync()
         {
             var snapshot = CaptureLocationReportSnapshot();
+            ConsoleLogger.LogAction("发送位置汇报", $"手机号={snapshot.TerminalPhoneNo}, 经度={snapshot.Longitude}, 纬度={snapshot.Latitude}, 速度={snapshot.Speed}, 方向={snapshot.Direction}, 高程={snapshot.Altitude}, 报警标志=0x{snapshot.AlarmFlag:X8}, 状态标志=0x{snapshot.StatusFlag:X8}");
 
             var header = new JT808Header
             {
@@ -2995,6 +3034,7 @@ namespace TerminalSimulation.Wpf.ViewModels
         [RelayCommand]
         private void ToggleAutoReport()
         {
+            ConsoleLogger.LogAction("切换自动位置汇报", $"当前状态={IsAutoReporting} -> 目标状态={!IsAutoReporting}, 间隔={AutoReportInterval}秒");
             if (IsAutoReporting)
             {
                 _autoReportCts?.Cancel();
@@ -3242,8 +3282,8 @@ namespace TerminalSimulation.Wpf.ViewModels
                     }
                     _serialPort.Dispose();
                     _serialPort = null;
+                    Log("系统", "串口已关闭");
                 }
-                Log("系统", "串口已关闭");
             }
             catch (Exception ex)
             {
@@ -3597,13 +3637,14 @@ namespace TerminalSimulation.Wpf.ViewModels
             _networkClient?.Dispose();
             CloseSerialPort();
 
+            _simulationTimer?.Dispose();
+            _simulationTimer = null;
+
             // Force save any pending config change immediately on dispose
             if (_saveTimer != null)
             {
-                _saveTimer?.Dispose();
+                _saveTimer.Dispose();
                 _saveTimer = null;
-                _simulationTimer?.Dispose();
-                _simulationTimer = null;
                 SaveConfig();
             }
         }

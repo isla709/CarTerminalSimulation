@@ -28,7 +28,10 @@
     <Window.Resources>
         <converters:InvertBooleanConverter x:Key="InvertBooleanConverter" />
         <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <converters:BooleanToHiddenVisibilityConverter x:Key="BooleanToHiddenVisibilityConverter" />
         <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
+        <converters:WidthToColumnsConverter x:Key="WidthToColumnsConverter" />
+        <converters:AspectRatioConverter x:Key="AspectRatioConverter" />
         
         <!-- Ensure Cards respond dynamically to background brush changes -->
         <Style TargetType="{x:Type materialDesign:Card}" BasedOn="{StaticResource {x:Type materialDesign:Card}}">
@@ -604,7 +607,7 @@
 
             <!-- Right Advanced & Logs Area -->
             <materialDesign:Card Grid.Column="1">
-                <TabControl Style="{StaticResource MaterialDesignTabControl}">
+                <TabControl x:Name="MainTabControl" Style="{StaticResource MaterialDesignTabControl}" SelectionChanged="MainTabControl_SelectionChanged">
                     <TabItem Header="通信日志">
                         <Grid>
                             <Grid.RowDefinitions>
@@ -947,16 +950,16 @@
                                 <ComboBox ItemsSource="{Binding IntRange1to36}" SelectedItem="{Binding VideoChannelCount}" Width="80"/>
                             </StackPanel>
                             
-                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                                <ItemsControl ItemsSource="{Binding VideoChannels}">
+                            <ScrollViewer x:Name="VideoScrollViewer" Grid.Row="1" VerticalScrollBarVisibility="Auto" CanContentScroll="True" ScrollChanged="VideoScrollViewer_ScrollChanged" SizeChanged="VideoScrollViewer_SizeChanged">
+                                <ItemsControl x:Name="VideoItemsControl" ItemsSource="{Binding VideoChannels}">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate>
-                                            <WrapPanel />
+                                            <UniformGrid Columns="{Binding ElementName=VideoItemsControl, Path=ActualWidth, Converter={StaticResource WidthToColumnsConverter}, ConverterParameter=336}" />
                                         </ItemsPanelTemplate>
                                     </ItemsControl.ItemsPanel>
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <materialDesign:Card Width="320" Height="300" Margin="8">
+                                            <materialDesign:Card Height="Auto" Margin="8" HorizontalAlignment="Stretch">
                                                 <Grid Margin="12">
                                                     <Grid.RowDefinitions>
                                                         <RowDefinition Height="Auto"/>
@@ -966,8 +969,35 @@
                                                     
                                                     <TextBlock Text="{Binding LogicalChannelNo, StringFormat='通道 {0}'}" FontWeight="Bold" Margin="0,0,0,8"/>
                                                     
-                                                    <Border Grid.Row="1" Background="Black" Margin="0,0,0,12" CornerRadius="4" ClipToBounds="True">
-                                                        <vlc:VideoView MediaPlayer="{Binding MediaPlayer}" />
+                                                    <Border Grid.Row="1" Background="#1E1E1E" Margin="0,0,0,12" CornerRadius="4" ClipToBounds="True"
+                                                            Height="{Binding RelativeSource={RelativeSource Self}, Path=ActualWidth, Converter={StaticResource AspectRatioConverter}, ConverterParameter=0.5625}">
+                                                        <Grid>
+                                                            <!-- 占位画面 (未推流且未预览时显示) -->
+                                                            <Grid Background="#151515" Visibility="{Binding IsVideoViewVisible, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                                                                <!-- 视频首帧缩略图 -->
+                                                                <Image Source="{Binding ThumbnailPath}" Stretch="UniformToFill" 
+                                                                       Visibility="{Binding HasThumbnail, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                                                
+                                                                <!-- 覆盖半透明遮罩与文字图标 -->
+                                                                <Grid Background="#CC151515" Visibility="{Binding HasThumbnail, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                                                        <materialDesign:PackIcon Kind="VideoOff" Width="28" Height="28" Foreground="#88FFFFFF" HorizontalAlignment="Center"/>
+                                                                        <TextBlock Text="{Binding PlaceholderText}" Foreground="#D0FFFFFF" FontSize="11" Margin="0,6,0,0" HorizontalAlignment="Center"/>
+                                                                    </StackPanel>
+                                                                </Grid>
+                                                                
+                                                                <!-- 无缩略图时的默认占位画面 -->
+                                                                <Grid Visibility="{Binding HasThumbnail, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                                                                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                                                        <materialDesign:PackIcon Kind="VideoOff" Width="28" Height="28" Foreground="#444444" HorizontalAlignment="Center"/>
+                                                                        <TextBlock Text="{Binding PlaceholderText}" Foreground="#666666" FontSize="11" Margin="0,6,0,0" HorizontalAlignment="Center"/>
+                                                                    </StackPanel>
+                                                                </Grid>
+                                                            </Grid>
+
+                                                            <!-- 实际视频播放控件 -->
+                                                            <vlc:VideoView MediaPlayer="{Binding MediaPlayer}" Visibility="{Binding IsVideoViewVisible, Converter={StaticResource BooleanToHiddenVisibilityConverter}}" Loaded="VideoView_Loaded" IsVisibleChanged="VideoView_IsVisibleChanged" />
+                                                        </Grid>
                                                     </Border>
                                                     
                                                     <StackPanel Grid.Row="2">
@@ -985,6 +1015,19 @@
                                                             
                                                             <TextBox Text="{Binding TargetFps}" Width="40" VerticalAlignment="Center" materialDesign:HintAssist.Hint="FPS" IsReadOnly="{Binding IsConstantFramerate}"/>
                                                             <TextBlock Text="FPS" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                                            <Button Content="{Binding PreviewButtonText}" 
+                                                                    Command="{Binding TogglePreviewCommand}" 
+                                                                    Visibility="{Binding IsPreviewBtnVisible, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                                                    Height="24" Padding="8,0" Margin="16,0,0,0" VerticalAlignment="Center"/>
+
+                                                            <!-- 静音控制按钮 -->
+                                                            <Button Command="{Binding ToggleMuteCommand}" 
+                                                                    Visibility="{Binding IsVideoViewVisible, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                                    Style="{StaticResource MaterialDesignIconButton}"
+                                                                    Width="24" Height="24" Margin="16,0,0,0" Padding="0" VerticalAlignment="Center" ToolTip="声音控制">
+                                                                <materialDesign:PackIcon Kind="{Binding MuteIcon}" Width="18" Height="18"/>
+                                                            </Button>
                                                         </StackPanel>
                                                         <TextBox Text="{Binding StatusText}" Foreground="Gray" Margin="0,8,0,0" FontSize="11" TextWrapping="Wrap" MaxHeight="50" VerticalScrollBarVisibility="Auto" IsReadOnly="True" BorderThickness="0" Background="Transparent" />
                                                     </StackPanel>
