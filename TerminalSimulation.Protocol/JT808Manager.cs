@@ -5,6 +5,7 @@ using JT808.Protocol.Enums;
 using JT808.Protocol.Extensions;
 using JT808.Protocol.Interfaces;
 using JT808.Protocol.MessageBody;
+using JT808.Protocol.Extensions.JT1078;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace TerminalSimulation.Protocol
@@ -17,7 +18,7 @@ namespace TerminalSimulation.Protocol
         public JT808Manager()
         {
             IServiceCollection services = new ServiceCollection();
-            services.AddJT808Configure();
+            services.AddJT808Configure().AddJT1078Configure();
             var serviceProvider = services.BuildServiceProvider();
             _config = serviceProvider.GetRequiredService<IJT808Config>();
             _serializer = _config.GetSerializer();

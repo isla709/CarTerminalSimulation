@@ -7,15 +7,20 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="LibVLCSharp.WPF" Version="3.9.7.1" />
     <PackageReference Include="MaterialDesignThemes" Version="5.3.2" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3967.48" />
     <PackageReference Include="System.IO.Ports" Version="8.0.0" />
     <PackageReference Include="System.Speech" Version="8.0.0" />
+    <PackageReference Include="System.Text.Json" Version="9.0.0" />
+    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.23.1" />
+    <PackageReference Include="Xabe.FFmpeg" Version="6.0.2" />
+    <PackageReference Include="Xabe.FFmpeg.Downloader" Version="6.0.2" />
   </ItemGroup>
 
   <PropertyGroup>
     <!-- 手动修改程序版本号 -->
-    <AppVersion>0.0.1</AppVersion>
+    <AppVersion>preview1</AppVersion>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
@@ -31,13 +36,18 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="Regions.json">
+    <Content Remove="Regions.json" />
+    <None Remove="Regions.json" />
+    <Content Include="Regions.json" Condition="'$(PublishSingleFile)' != 'true'">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <EmbeddedResource Include="Regions.json" Condition="'$(PublishSingleFile)' == 'true'" />
   </ItemGroup>
   <Target Name="GenerateBuildVersion" BeforeTargets="BeforeCompile">
     <PropertyGroup>
-      <RandomBuildString>$([System.Guid]::NewGuid().ToString().Substring(0, 8).ToUpper())</RandomBuildString>
+      <BuildDate>$([System.DateTime]::Now.ToString("yyyyMMdd"))</BuildDate>
+      <RandomNum>$([System.Guid]::NewGuid().ToString().Substring(0, 4))</RandomNum>
+      <RandomBuildString>build.$(BuildDate).$(RandomNum)</RandomBuildString>
       <VersionFileContent>
 // &lt;auto-generated/&gt;
 namespace TerminalSimulation.Wpf%3B

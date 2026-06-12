@@ -8,6 +8,7 @@
         xmlns:converters="clr-namespace:TerminalSimulation.Wpf.Converters"
         xmlns:local="clr-namespace:TerminalSimulation.Wpf"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        xmlns:vlc="clr-namespace:LibVLCSharp.WPF;assembly=LibVLCSharp.WPF"
         mc:Ignorable="d"
         TextElement.Foreground="{DynamicResource MaterialDesignBody}"
         TextElement.FontWeight="Regular"
@@ -933,6 +934,67 @@
                                 
                             </StackPanel>
                         </ScrollViewer>
+                    </TabItem>
+                    <TabItem Header="视频控制">
+                        <Grid Margin="16">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                                <TextBlock Text="通道数量:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <ComboBox ItemsSource="{Binding IntRange1to36}" SelectedItem="{Binding VideoChannelCount}" Width="80"/>
+                            </StackPanel>
+                            
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding VideoChannels}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <materialDesign:Card Width="320" Height="300" Margin="8">
+                                                <Grid Margin="12">
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="*"/>
+                                                        <RowDefinition Height="Auto"/>
+                                                    </Grid.RowDefinitions>
+                                                    
+                                                    <TextBlock Text="{Binding LogicalChannelNo, StringFormat='通道 {0}'}" FontWeight="Bold" Margin="0,0,0,8"/>
+                                                    
+                                                    <Border Grid.Row="1" Background="Black" Margin="0,0,0,12" CornerRadius="4" ClipToBounds="True">
+                                                        <vlc:VideoView MediaPlayer="{Binding MediaPlayer}" />
+                                                    </Border>
+                                                    
+                                                    <StackPanel Grid.Row="2">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBox Text="{Binding VideoFilePath}" IsReadOnly="True" ToolTip="{Binding VideoFilePath}" materialDesign:HintAssist.Hint="选择视频或 H.264..."/>
+                                                            <Button Grid.Column="1" Content="..." Command="{Binding SelectVideoFileCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" Padding="8,0" Height="24" Margin="8,0,0,0"/>
+                                                        </Grid>
+                                                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                                            <ToggleButton IsChecked="{Binding IsConstantFramerate}" Style="{StaticResource MaterialDesignSwitchToggleButton}" ToolTip="启用匀速推送"/>
+                                                            <TextBlock Text="匀速" VerticalAlignment="Center" Margin="4,0,16,0"/>
+                                                            
+                                                            <TextBox Text="{Binding TargetFps}" Width="40" VerticalAlignment="Center" materialDesign:HintAssist.Hint="FPS" IsReadOnly="{Binding IsConstantFramerate}"/>
+                                                            <TextBlock Text="FPS" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                                        </StackPanel>
+                                                        <TextBox Text="{Binding StatusText}" Foreground="Gray" Margin="0,8,0,0" FontSize="11" TextWrapping="Wrap" MaxHeight="50" VerticalScrollBarVisibility="Auto" IsReadOnly="True" BorderThickness="0" Background="Transparent" />
+                                                    </StackPanel>
+                                                </Grid>
+                                            </materialDesign:Card>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Grid>
                     </TabItem>
                 </TabControl>
             </materialDesign:Card>

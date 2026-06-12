@@ -421,7 +421,7 @@ namespace TerminalSimulation.Wpf.ViewModels
             }
         }
 
-        public string AppTitle => $"车载定位终端模拟系统 (JT808) v{AppVersionInfo.FullVersion}";
+        public string AppTitle => $"车载定位终端模拟系统 (JT808) {AppVersionInfo.FullVersion}";
 
         public MainViewModel()
         {
@@ -438,6 +438,8 @@ namespace TerminalSimulation.Wpf.ViewModels
             };
 
             _protocolManager = new JT808Manager();
+            
+            UpdateVideoChannels(VideoChannelCount);
             UpdateSerializerEncoding();
 
             CustomAttachItems.CollectionChanged += (s, e) =>
@@ -1075,9 +1077,24 @@ namespace TerminalSimulation.Wpf.ViewModels
             try
             {
                 var jsonPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Regions.json");
+                string json = string.Empty;
                 if (System.IO.File.Exists(jsonPath))
                 {
-                    var json = System.IO.File.ReadAllText(jsonPath, System.Text.Encoding.UTF8);
+                    json = System.IO.File.ReadAllText(jsonPath, System.Text.Encoding.UTF8);
+                }
+                else
+                {
+                    var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                    using var stream = assembly.GetManifestResourceStream("TerminalSimulation.Wpf.Regions.json");
+                    if (stream != null)
+                    {
+                        using var reader = new System.IO.StreamReader(stream, System.Text.Encoding.UTF8);
+                        json = reader.ReadToEnd();
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(json))
+                {
                     _allRegions = System.Text.Json.JsonSerializer.Deserialize<System.Collections.Generic.List<RegionNode>>(json) ?? new();
                     ProvinceList.Clear();
                     foreach (var prov in _allRegions)
@@ -1189,6 +1206,32 @@ namespace TerminalSimulation.Wpf.ViewModels
         public ObservableCollection<AnalyzerNode> AnalyzerResultTree { get; } = new();
         
         [ObservableProperty] private int _analyzerMode = 0;
+        public int[] IntRange1to36 { get; } = System.Linq.Enumerable.Range(1, 36).ToArray();
+
+        [ObservableProperty] private int _videoChannelCount = 4;
+        public ObservableCollection<VideoChannelItem> VideoChannels { get; } = new();
+
+        partial void OnVideoChannelCountChanged(int value)
+        {
+            UpdateVideoChannels(value);
+        }
+
+        private void UpdateVideoChannels(int count)
+        {
+            if (count < 1) count = 1;
+            if (count > 36) count = 36;
+            
+            while (VideoChannels.Count > count)
+            {
+                var item = VideoChannels.Last();
+                item.Dispose();
+                VideoChannels.Remove(item);
+            }
+            while (VideoChannels.Count < count)
+            {
+                VideoChannels.Add(new VideoChannelItem((byte)(VideoChannels.Count + 1), Log));
+            }
+        }
 
         [ObservableProperty] private double _configWindowWidth = 1200;
         [ObservableProperty] private double _configWindowHeight = 800;
@@ -1951,20 +1994,75 @@ namespace TerminalSimulation.Wpf.ViewModels
             };
         }
 
+        private string TranslateMsgId(ushort msgId)
+        {
+            string hex = msgId.ToString("X4");
+            string desc = hex switch
+            {
+                "0001" => "终端通用应答",
+                "8001" => "平台通用应答",
+                "0002" => "终端心跳",
+                "8003" => "补传分包请求",
+                "0100" => "终端注册",
+                "8100" => "终端注册应答",
+                "0102" => "终端鉴权",
+                "0104" => "查询终端参数应答",
+                "8103" => "设置终端参数",
+                "8104" => "查询终端参数",
+                "8105" => "终端控制",
+                "8106" => "查询指定终端参数",
+                "8107" => "查询终端属性",
+                "0107" => "查询终端属性应答",
+                "0108" => "终端升级结果通知",
+                "0200" => "位置信息汇报",
+                "0201" => "位置信息查询应答",
+                "8201" => "位置信息查询",
+                "8202" => "临时位置跟踪控制",
+                "8203" => "人工确认报警消息",
+                "8300" => "文本信息下发",
+                "8301" => "事件设置",
+                "0301" => "事件报告",
+                "8302" => "提问下发",
+                "0302" => "提问应答",
+                "8303" => "信息点播菜单设置",
+                "0303" => "信息点播/取消",
+                "8304" => "信息服务",
+                "8400" => "电话回拨",
+                "8401" => "设置电话本",
+                "8500" => "车辆控制",
+                "0500" => "车辆控制应答",
+                "8600" => "设置多边形区域",
+                "8601" => "删除多边形区域",
+                "8602" => "设置矩形区域",
+                "8603" => "删除矩形区域",
+                "8604" => "设置圆形区域",
+                "8605" => "删除圆形区域",
+                "8606" => "设置路线",
+                "8607" => "删除路线",
+                "8800" => "多媒体数据上传应答",
+                "0800" => "多媒体事件信息上传",
+                "0801" => "多媒体数据上传",
+                "8801" => "摄像头立即拍摄命令",
+                "0805" => "摄像头立即拍摄命令应答",
+                "8802" => "存储多媒体数据检索",
+                "0802" => "存储多媒体数据检索应答",
+                "8803" => "存储多媒体数据上传",
+                "8804" => "录音开始命令",
+                "0900" => "数据上行透传",
+                "8900" => "数据下行透传",
+                "0901" => "数据压缩上报",
+                "0A00" => "终端RSA公钥",
+                "8A00" => "平台RSA公钥",
+                _ => ""
+            };
+            return desc;
+        }
+
         private string TranslateValue(string key, string value)
         {
             if (key.Contains("消息Id", StringComparison.OrdinalIgnoreCase) && int.TryParse(value, out int msgId))
             {
-                string hex = msgId.ToString("X4");
-                string desc = hex switch
-                {
-                    "0100" => "终端注册",
-                    "0002" => "终端心跳",
-                    "0102" => "终端鉴权",
-                    "0200" => "位置信息汇报",
-                    "0001" => "终端通用应答",
-                    _ => ""
-                };
+                string desc = TranslateMsgId((ushort)msgId);
                 return $"{msgId} {desc}".Trim();
             }
             else if (key.Contains("车牌颜色") && int.TryParse(value, out int colorId))
@@ -2136,6 +2234,12 @@ namespace TerminalSimulation.Wpf.ViewModels
             try
             {
                 var package = _protocolManager.Deserialize(data);
+                string desc = TranslateMsgId(package.Header.MsgId);
+                if (!string.IsNullOrEmpty(desc))
+                {
+                    Log("接收", $"{desc}(0x{package.Header.MsgId:X4})");
+                }
+
                 string analysis = _protocolManager.Analyze(data);
                 
                 // 格式化解析出的 JSON 以提高可读性，包含中文支持
@@ -2339,6 +2443,171 @@ namespace TerminalSimulation.Wpf.ViewModels
 
                     // 回复通用应答
                     _ = SendTerminalGeneralResponseAsync(package.Header.MsgId, package.Header.MsgNum, JT808.Protocol.Enums.JT808TerminalResult.Success);
+                }
+                // 拦截查询终端参数 (0x8104)
+                else if (package.Header.MsgId == 0x8104)
+                {
+                    var replyBody = new JT808_0x0104
+                    {
+                        MsgNum = package.Header.MsgNum,
+                        ParamList = new System.Collections.Generic.List<JT808_0x8103_BodyBase>()
+                    };
+                    
+                    replyBody.ParamList.Add(new JT808_0x8103_0x0081 { ParamValue = ParseProvinceId(ProvinceIdInput, 11) });
+                    replyBody.ParamList.Add(new JT808_0x8103_0x0082 { ParamValue = ParseCityId(CityIdInput, 1101) });
+                    replyBody.ParamList.Add(new JT808_0x8103_0x0083 { ParamValue = PlateNo ?? "沪A88888" });
+                    replyBody.ParamList.Add(new JT808_0x8103_0x0084 { ParamValue = PlateColor });
+
+                    // 0x0075: 音视频参数
+                    replyBody.ParamList.Add(new JT808.Protocol.Extensions.JT1078.MessageBody.JT808_0x8103_0x0075 
+                    { 
+                        RTS_EncodeMode = 0,
+                        RTS_Resolution = 5,
+                        RTS_KF_Interval = 250,
+                        RTS_Target_FPS = 25,
+                        RTS_Target_CodeRate = 0,
+                        StreamStore_EncodeMode = 0,
+                        StreamStore_Resolution = 5,
+                        StreamStore_KF_Interval = 250,
+                        StreamStore_Target_FPS = 25,
+                        StreamStore_Target_CodeRate = 0,
+                        OSD = 1,
+                        AudioOutputEnabled = 0
+                    });
+
+                    // 0x0076: 音视频通道列表设置
+                    var avChannels = new System.Collections.Generic.List<JT808.Protocol.Extensions.JT1078.MessageBody.JT808_0x8103_0x0076_AVChannelRefTable>();
+                    foreach (var c in VideoChannels)
+                    {
+                        avChannels.Add(new JT808.Protocol.Extensions.JT1078.MessageBody.JT808_0x8103_0x0076_AVChannelRefTable 
+                        {
+                            PhysicalChannelNo = c.LogicalChannelNo,
+                            LogicChannelNo = c.LogicalChannelNo,
+                            ChannelType = 0, // 0:音视频
+                            IsConnectCloudPlat = 0
+                        });
+                    }
+                    replyBody.ParamList.Add(new JT808.Protocol.Extensions.JT1078.MessageBody.JT808_0x8103_0x0076 
+                    {
+                        AVChannelTotal = (byte)avChannels.Count,
+                        AudioChannelTotal = 0,
+                        VudioChannelTotal = (byte)avChannels.Count,
+                        AVChannelRefTables = avChannels
+                    });
+
+                    // 0x0077: 单独视频通道参数设置
+                    var signalChannels = new System.Collections.Generic.List<JT808.Protocol.Extensions.JT1078.MessageBody.JT808_0x8103_0x0077_SignalChannel>();
+                    foreach (var c in VideoChannels)
+                    {
+                        signalChannels.Add(new JT808.Protocol.Extensions.JT1078.MessageBody.JT808_0x8103_0x0077_SignalChannel
+                        {
+                            LogicChannelNo = c.LogicalChannelNo,
+                            RTS_EncodeMode = 0,
+                            RTS_Resolution = 5,
+                            RTS_KF_Interval = 250,
+                            RTS_Target_FPS = 25,
+                            RTS_Target_CodeRate = 0,
+                            StreamStore_EncodeMode = 0,
+                            StreamStore_Resolution = 5,
+                            StreamStore_KF_Interval = 250,
+                            StreamStore_Target_FPS = 25,
+                            StreamStore_Target_CodeRate = 0,
+                            OSD = 1
+                        });
+                    }
+                    replyBody.ParamList.Add(new JT808.Protocol.Extensions.JT1078.MessageBody.JT808_0x8103_0x0077 
+                    {
+                        NeedSetChannelTotal = (byte)signalChannels.Count,
+                        SignalChannels = signalChannels
+                    });
+                    
+                    var replyPackage = new JT808Package
+                    {
+                        Header = new JT808Header
+                        {
+                            MsgId = 0x0104,
+                            MsgNum = 0, // Using 0 as default or we can keep track of SN
+                            TerminalPhoneNo = TerminalPhoneNo,
+                        },
+                        Bodies = replyBody
+                    };
+                    
+                    Task.Run(async () =>
+                    {
+                        try
+                        {
+                            var version = UseJT808_2019 ? JT808Version.JTT2019 : JT808Version.JTT2013;
+                            byte[] replyData = _protocolManager.Serialize(replyPackage, version);
+                            await _networkClient.SendAsync(replyData);
+                            Application.Current.Dispatcher.Invoke(() =>
+                            {
+                                Log("发送", $"查询终端参数应答(0x0104)，响应流水号: {package.Header.MsgNum}，参数个数: {replyBody.ParamList.Count}");
+                                Log("发送", $"RAW: {replyData.ToHexString()}");
+                                try { Log("解析", _protocolManager.Analyze(replyData)); } catch { }
+                            });
+                        }
+                        catch (Exception ex)
+                        {
+                            Application.Current.Dispatcher.Invoke(() =>
+                            {
+                                Log("发送异常", $"0x0104序列化失败: {ex.Message}");
+                            });
+                        }
+                    });
+                }
+                // 拦截音视频传输请求 (0x9101)
+                else if (package.Header.MsgId == 0x9101)
+                {
+                    try
+                    {
+                        var body = package.Bodies as JT808.Protocol.Extensions.JT1078.MessageBody.JT808_0x9101;
+                        if (body != null)
+                        {
+                            string ip = body.ServerIp;
+                            int port = body.TcpPort > 0 ? body.TcpPort : body.UdpPort;
+                            byte channel = body.ChannelNo;
+                            
+                            var videoItem = VideoChannels.FirstOrDefault(c => c.LogicalChannelNo == channel);
+                            if (videoItem != null)
+                            {
+                                videoItem.StartPushing(ip, port, TerminalPhoneNo);
+                            }
+                        }
+
+                        _ = SendTerminalGeneralResponseAsync(package.Header.MsgId, package.Header.MsgNum, JT808.Protocol.Enums.JT808TerminalResult.Success);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log("异常", $"解析 0x9101 失败: {ex.Message}");
+                    }
+                }
+                // 拦截音视频传输控制 (0x9102)
+                else if (package.Header.MsgId == 0x9102)
+                {
+                    try
+                    {
+                        var body = package.Bodies as JT808.Protocol.Extensions.JT1078.MessageBody.JT808_0x9102;
+                        if (body != null)
+                        {
+                            byte channel = body.ChannelNo;
+                            int ctrlCmd = body.ControlCmd;
+                            
+                            var videoItem = VideoChannels.FirstOrDefault(c => c.LogicalChannelNo == channel);
+                            if (videoItem != null)
+                            {
+                                if (ctrlCmd == 0) // 0表示关闭音视频传输
+                                {
+                                    videoItem.StopPushing();
+                                }
+                            }
+                        }
+
+                        _ = SendTerminalGeneralResponseAsync(package.Header.MsgId, package.Header.MsgNum, JT808.Protocol.Enums.JT808TerminalResult.Success);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log("异常", $"解析 0x9102 失败: {ex.Message}");
+                    }
                 }
                 // 拦截其他需要通用应答的下行指令
                 else if (package.Header.MsgId != 0x8100 && package.Header.MsgId != 0x8001 && package.Header.MsgId.ToString("X4").StartsWith("8"))
