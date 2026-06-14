@@ -572,6 +572,55 @@ namespace TerminalSimulation.Wpf.ViewModels
                 Speed0x03 = (ushort)(Speed * 10);
             }
 
+            // Global Video Traffic Update
+            long currentTotalBytes = 0;
+            bool isAnyStreaming = false;
+
+            foreach (var ch in VideoChannels)
+            {
+                ch.UpdateTraffic();
+                currentTotalBytes += ch.CurrentPusherBytes;
+                if (ch.IsStreaming) isAnyStreaming = true;
+            }
+
+            if (!isAnyStreaming)
+            {
+                TotalVideoTrafficText = "0 KB/s | 总计 0 MB";
+                _lastGlobalTrafficUpdateTime = DateTime.MinValue;
+                _lastTotalVideoBytes = 0;
+            }
+            else
+            {
+                var now = DateTime.Now;
+                if (_lastGlobalTrafficUpdateTime == DateTime.MinValue)
+                {
+                    _lastGlobalTrafficUpdateTime = now;
+                    _lastTotalVideoBytes = currentTotalBytes;
+                    TotalVideoTrafficText = "计算中...";
+                }
+                else
+                {
+                    double seconds = (now - _lastGlobalTrafficUpdateTime).TotalSeconds;
+                    if (seconds > 0)
+                    {
+                        double speedBps = (currentTotalBytes - _lastTotalVideoBytes) / seconds;
+                        
+                        string speedText = "";
+                        if (speedBps < 1024) speedText = $"{speedBps:F0} B/s";
+                        else if (speedBps < 1024 * 1024) speedText = $"{speedBps / 1024:F1} KB/s";
+                        else speedText = $"{speedBps / (1024 * 1024):F1} MB/s";
+
+                        double totalMb = currentTotalBytes / (1024.0 * 1024.0);
+                        string totalText = currentTotalBytes < 1024 * 1024 ? $"{currentTotalBytes / 1024.0:F1} KB" : $"{totalMb:F1} MB";
+
+                        TotalVideoTrafficText = $"{speedText} | 总计 {totalText}";
+                    }
+
+                    _lastGlobalTrafficUpdateTime = now;
+                    _lastTotalVideoBytes = currentTotalBytes;
+                }
+            }
+
             // Oil Simulation
             if (EnableOilConsumption)
             {
@@ -1211,6 +1260,22 @@ namespace TerminalSimulation.Wpf.ViewModels
 
         [ObservableProperty] private int _videoChannelCount = 4;
         public ObservableCollection<VideoChannelItem> VideoChannels { get; } = new();
+
+        [ObservableProperty] private string _totalVideoTrafficText = "0 KB/s | 总计 0 MB";
+        private long _lastTotalVideoBytes = 0;
+        private DateTime _lastGlobalTrafficUpdateTime = DateTime.MinValue;
+
+        [RelayCommand]
+        private void StopAllPushStreams()
+        {
+            foreach (var ch in VideoChannels)
+            {
+                if (ch.IsStreaming)
+                {
+                    ch.StopPushing();
+                }
+            }
+        }
 
         partial void OnVideoChannelCountChanged(int value)
         {
@@ -2601,6 +2666,8 @@ namespace TerminalSimulation.Wpf.ViewModels
                             int port = body.TcpPort > 0 ? body.TcpPort : body.UdpPort;
                             byte channel = body.ChannelNo;
                             
+                            Log("音视频", $"收到 0x9101 实时传输请求: 通道={channel}, IP={ip}:{port}, 数据类型={body.DataType}");
+
                             var videoItem = VideoChannels.FirstOrDefault(c => c.LogicalChannelNo == channel);
                             if (videoItem != null)
                             {
@@ -2626,12 +2693,25 @@ namespace TerminalSimulation.Wpf.ViewModels
                             byte channel = body.ChannelNo;
                             int ctrlCmd = body.ControlCmd;
                             
-                            var videoItem = VideoChannels.FirstOrDefault(c => c.LogicalChannelNo == channel);
-                            if (videoItem != null)
+                            Log("音视频控制", $"收到 0x9102 传输控制: 通道={channel}, 命令={ctrlCmd}");
+
+                            if (ctrlCmd == 0) // 0表示关闭音视频传输
                             {
-                                if (ctrlCmd == 0) // 0表示关闭音视频传输
+                                if (channel == 0)
                                 {
-                                    videoItem.StopPushing();
+                                    // 通道号为0表示操作所有通道
+                                    foreach (var ch in VideoChannels)
+                                    {
+                                        ch.StopPushing();
+                                    }
+                                }
+                                else
+                                {
+                                    var videoItem = VideoChannels.FirstOrDefault(c => c.LogicalChannelNo == channel);
+                                    if (videoItem != null)
+                                    {
+                                        videoItem.StopPushing();
+                                    }
                                 }
                             }
                         }

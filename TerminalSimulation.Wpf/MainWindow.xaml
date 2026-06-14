@@ -948,6 +948,10 @@
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
                                 <TextBlock Text="通道数量:" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <ComboBox ItemsSource="{Binding IntRange1to36}" SelectedItem="{Binding VideoChannelCount}" Width="80"/>
+                                <TextBlock Text="实时总流量:" VerticalAlignment="Center" Margin="24,0,8,0" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                                <TextBlock Text="{Binding TotalVideoTrafficText}" VerticalAlignment="Center" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                                
+                                <Button Content="中断推流" Command="{Binding StopAllPushStreamsCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" Height="30" Margin="32,0,0,0" Foreground="#E53935" BorderBrush="#E53935" ToolTip="强制断开所有运行中的视频推流"/>
                             </StackPanel>
                             
                             <ScrollViewer x:Name="VideoScrollViewer" Grid.Row="1" VerticalScrollBarVisibility="Auto" CanContentScroll="True" ScrollChanged="VideoScrollViewer_ScrollChanged" SizeChanged="VideoScrollViewer_SizeChanged">
@@ -1030,6 +1034,7 @@
                                                             </Button>
                                                         </StackPanel>
                                                         <TextBox Text="{Binding StatusText}" Foreground="Gray" Margin="0,8,0,0" FontSize="11" TextWrapping="Wrap" MaxHeight="50" VerticalScrollBarVisibility="Auto" IsReadOnly="True" BorderThickness="0" Background="Transparent" />
+                                                        <TextBlock Text="{Binding TrafficText}" Foreground="#2196F3" FontSize="11" Margin="4,4,0,0" Visibility="{Binding IsStreaming, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                                     </StackPanel>
                                                 </Grid>
                                             </materialDesign:Card>

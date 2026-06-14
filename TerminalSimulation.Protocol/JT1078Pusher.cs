@@ -24,6 +24,10 @@ namespace TerminalSimulation.Protocol
         public event Action<string>? OnLog;
 
         public event Action<string>? OnStatusUpdate;
+        
+        public event Action? OnDisconnected;
+
+        public long TotalPushedBytes { get; private set; } = 0;
 
         public JT1078Pusher(string simCard, byte channelNo, string h264File, double targetFps, bool isConstantFps)
         {
@@ -78,7 +82,8 @@ namespace TerminalSimulation.Protocol
                 }
 
                 ushort sequence = 0;
-                ulong timestamp = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                double exactTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(); // 恢复为绝对系统时间，防止新平台在绝对时间对齐上出错
+                ulong timestamp = (ulong)exactTimestamp;
                 double sleepDelayMs = _targetFps > 0 ? (1000.0 / _targetFps) : 40.0;
                 
                 ulong lastIFrameTimestamp = timestamp;
@@ -91,7 +96,7 @@ namespace TerminalSimulation.Protocol
                 double expectedElapsedMs = 0;
 
                 int burstIFrameCount = 0;
-                bool isBursting = true;
+                bool isBursting = false; // 禁用极速爆发模式，防止实时流媒体平台因缓存溢出而导致画面慢动作和掉帧
 
                 while (!token.IsCancellationRequested)
                 {
@@ -101,18 +106,6 @@ namespace TerminalSimulation.Protocol
 
                         bool isIFrame = frame.IsIFrame;
                         byte[] frameData = frame.Data;
-
-                        if (isIFrame && isBursting)
-                        {
-                            burstIFrameCount++;
-                            if (burstIFrameCount >= 2)
-                            {
-                                isBursting = false;
-                                sw.Restart();
-                                expectedElapsedMs = 0;
-                                OnLog?.Invoke("首个 GOP (关键帧组) 极速推送完成，已解决平台 HLS 切片等待 404 问题，现恢复正常流速");
-                            }
-                        }
 
                         ushort lastIFrameInterval = 0;
                         ushort lastFrameInterval = 0;
@@ -158,6 +151,8 @@ namespace TerminalSimulation.Protocol
                         int offset = 0;
                         int remain = frameData.Length;
 
+                        using var framePayloadStream = new MemoryStream(frameData.Length + 1024);
+
                         while (remain > 0)
                         {
                             int chunkSize = Math.Min(remain, maxChunkSize);
@@ -191,11 +186,15 @@ namespace TerminalSimulation.Protocol
                             };
 
                             byte[] data = JT1078Serializer.Serialize(package);
-                            await stream.WriteAsync(data, token);
+                            framePayloadStream.Write(data, 0, data.Length);
 
                             offset += chunkSize;
                             remain -= chunkSize;
                         }
+
+                        byte[] finalFrameData = framePayloadStream.ToArray();
+                        await stream.WriteAsync(finalFrameData, token);
+                        TotalPushedBytes += finalFrameData.Length;
 
                         totalPushedFrames++;
                         if (totalPushedFrames % 10 == 0)
@@ -203,14 +202,9 @@ namespace TerminalSimulation.Protocol
                             OnStatusUpdate?.Invoke($"推流中... 已推送 {totalPushedFrames} 帧");
                         }
 
-                        // 时间戳以 1000/FPS 递增
-                        timestamp += (ulong)sleepDelayMs;
-
-                        if (isBursting)
-                        {
-                            // 极速模式下无任何延时，全速发包
-                            continue;
-                        }
+                        // 时间戳精确递增
+                        exactTimestamp += sleepDelayMs;
+                        timestamp = (ulong)exactTimestamp;
 
                         if (_isConstantFps)
                         {
@@ -226,11 +220,8 @@ namespace TerminalSimulation.Protocol
                                     await Task.Delay(delay - 15, token);
                                 }
                                 
-                                // 剩余的时间用自旋或短暂休眠等待，保证 60fps 这种高频调用的精确度
-                                while (sw.ElapsedMilliseconds < expectedElapsedMs && !token.IsCancellationRequested)
-                                {
-                                    System.Threading.Thread.Sleep(1);
-                                }
+                                // 剩余的时间用自旋等待，保证 60fps 这种高频调用的精确度
+                                System.Threading.SpinWait.SpinUntil(() => sw.ElapsedMilliseconds >= expectedElapsedMs || token.IsCancellationRequested);
                             }
                             else if (actualElapsed - expectedElapsedMs > 2000)
                             {
@@ -257,6 +248,10 @@ namespace TerminalSimulation.Protocol
             catch (Exception ex)
             {
                 OnLog?.Invoke($"推流异常: {ex.Message}");
+            }
+            finally
+            {
+                OnDisconnected?.Invoke();
             }
         }
 

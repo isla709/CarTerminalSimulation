@@ -52,7 +52,11 @@ namespace TerminalSimulation.Wpf.ViewModels
         [ObservableProperty] private double _targetFps = 25.0;
 
         [ObservableProperty] private string _statusText = "空闲";
+        [ObservableProperty] private string _trafficText = "";
         [ObservableProperty] private string _h264FilePath = "";
+
+        private long _lastTotalBytes = 0;
+        private DateTime _lastTrafficUpdateTime = DateTime.MinValue;
 
         private LibVLC _libVLC;
         [ObservableProperty] private MediaPlayer _mediaPlayer;
@@ -127,16 +131,6 @@ namespace TerminalSimulation.Wpf.ViewModels
                         FFmpeg.SetExecutablesPath(ffmpegPath);
                     }
 
-                    // Get FPS
-                    var mediaInfo = await FFmpeg.GetMediaInfo(VideoFilePath);
-                    var videoStream = mediaInfo.VideoStreams.FirstOrDefault();
-                    if (videoStream != null && videoStream.Framerate > 0)
-                    {
-                        // 自动平均帧率最后取整数发送
-                        TargetFps = Math.Round(videoStream.Framerate);
-                    }
-
-                    // Transcode to h264
                     string h264Dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "h264");
                     Directory.CreateDirectory(h264Dir);
                     string outputH264 = Path.Combine(h264Dir, $"{Path.GetFileNameWithoutExtension(VideoFilePath)}_{LogicalChannelNo}.h264");
@@ -146,10 +140,20 @@ namespace TerminalSimulation.Wpf.ViewModels
                         File.Delete(outputH264);
                     }
 
-                    StatusText = "正在转码为 H.264 裸流...";
-                    
+                    // 重新编码为标准流：25帧，2秒一个关键帧(GOP=50)，1Mbps码率，确保 HLS 切片正常且不卡顿
+                    TargetFps = 25.0;
                     var conversion = FFmpeg.Conversions.New()
-                        .AddParameter($"-i \"{VideoFilePath}\" -c:v libx264 -preset ultrafast -tune zerolatency -an -r {(int)TargetFps} -f h264 \"{outputH264}\"");
+                        .AddParameter($"-i \"{VideoFilePath}\"")
+                        .AddParameter("-c:v libx264 -preset ultrafast -r 25 -g 50 -b:v 1M -an -f h264")
+                        .SetOutput(outputH264);
+                    
+                    conversion.OnProgress += (sender, args) =>
+                    {
+                        Application.Current?.Dispatcher?.Invoke(() =>
+                        {
+                            StatusText = $"正在转码... {args.Percent}%";
+                        });
+                    };
 
                     await conversion.Start();
 
@@ -282,11 +286,27 @@ namespace TerminalSimulation.Wpf.ViewModels
             {
                 _logger?.Invoke("音视频", $"通道 {LogicalChannelNo}: {msg}");
             };
+            
+            _lastTrafficUpdateTime = DateTime.MinValue;
+            _lastTotalBytes = 0;
+            TrafficText = "计算中...";
+
             _pusher.OnStatusUpdate += msg =>
             {
                 Application.Current?.Dispatcher?.Invoke(() => 
                 {
                     StatusText = msg;
+                });
+            };
+
+            _pusher.OnDisconnected += () =>
+            {
+                Application.Current?.Dispatcher?.Invoke(() =>
+                {
+                    if (IsStreaming)
+                    {
+                        StopPushing();
+                    }
                 });
             };
 
@@ -315,6 +335,7 @@ namespace TerminalSimulation.Wpf.ViewModels
             }
             IsStreaming = false;
             StatusText = "已停止推流";
+            TrafficText = "";
 
             Application.Current?.Dispatcher?.Invoke(() => 
             {
@@ -604,6 +625,43 @@ namespace TerminalSimulation.Wpf.ViewModels
                 return $"{bytesPerSecond / 1024:F1} KB/s";
             return $"{bytesPerSecond / (1024 * 1024):F1} MB/s";
         }
+
+        public void UpdateTraffic()
+        {
+            if (_pusher == null || !IsStreaming)
+            {
+                TrafficText = "";
+                return;
+            }
+
+            long currentBytes = _pusher.TotalPushedBytes;
+            var now = DateTime.Now;
+
+            if (_lastTrafficUpdateTime == DateTime.MinValue)
+            {
+                _lastTrafficUpdateTime = now;
+                _lastTotalBytes = currentBytes;
+                TrafficText = "计算中...";
+                return;
+            }
+
+            double seconds = (now - _lastTrafficUpdateTime).TotalSeconds;
+            if (seconds > 0)
+            {
+                double speedBps = (currentBytes - _lastTotalBytes) / seconds;
+                string speedText = FormatSpeed(speedBps);
+                
+                double totalMb = currentBytes / (1024.0 * 1024.0);
+                string totalText = currentBytes < 1024 * 1024 ? $"{currentBytes / 1024.0:F1} KB" : $"{totalMb:F1} MB";
+
+                TrafficText = $"{speedText} | 总计 {totalText}";
+            }
+
+            _lastTrafficUpdateTime = now;
+            _lastTotalBytes = currentBytes;
+        }
+
+        public long CurrentPusherBytes => _pusher?.TotalPushedBytes ?? 0;
 
         private string? FindProjectFFmpegPath()
         {
