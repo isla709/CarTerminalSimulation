@@ -54,6 +54,8 @@ namespace TerminalSimulation.Wpf.ViewModels
         [ObservableProperty] private string _statusText = "空闲";
         [ObservableProperty] private string _trafficText = "";
         [ObservableProperty] private string _h264FilePath = "";
+        [ObservableProperty] private string _g711aFilePath = "";
+        [ObservableProperty] private string _aacFilePath = "";
 
         private long _lastTotalBytes = 0;
         private DateTime _lastTrafficUpdateTime = DateTime.MinValue;
@@ -140,6 +142,9 @@ namespace TerminalSimulation.Wpf.ViewModels
                         File.Delete(outputH264);
                     }
 
+                    var mediaInfo = await FFmpeg.GetMediaInfo(VideoFilePath);
+                    bool hasAudio = mediaInfo.AudioStreams.Any();
+
                     // 重新编码为标准流：25帧，2秒一个关键帧(GOP=50)，1Mbps码率，确保 HLS 切片正常且不卡顿
                     TargetFps = 25.0;
                     var conversion = FFmpeg.Conversions.New()
@@ -151,20 +156,58 @@ namespace TerminalSimulation.Wpf.ViewModels
                     {
                         Application.Current?.Dispatcher?.Invoke(() =>
                         {
-                            StatusText = $"正在转码... {args.Percent}%";
+                            StatusText = $"正在转码视频... {args.Percent}%";
                         });
                     };
 
                     await conversion.Start();
-
                     H264FilePath = outputH264;
-                    StatusText = $"转码完成就绪 ({TargetFps:F1} FPS)";
+
+                    if (hasAudio)
+                    {
+                        string outputG711a = Path.Combine(h264Dir, $"{Path.GetFileNameWithoutExtension(VideoFilePath)}_{LogicalChannelNo}.g711a");
+                        if (File.Exists(outputG711a)) File.Delete(outputG711a);
+
+                        string outputAac = Path.Combine(h264Dir, $"{Path.GetFileNameWithoutExtension(VideoFilePath)}_{LogicalChannelNo}.aac");
+                        if (File.Exists(outputAac)) File.Delete(outputAac);
+
+                        var audioConversion = FFmpeg.Conversions.New()
+                            .AddParameter($"-i \"{VideoFilePath}\"")
+                            .AddParameter("-vn -c:a pcm_alaw -ar 8000 -ac 1 -f alaw")
+                            .SetOutput(outputG711a);
+
+                        var aacConversion = FFmpeg.Conversions.New()
+                            .AddParameter($"-i \"{VideoFilePath}\"")
+                            .AddParameter("-vn -c:a aac -b:a 64k -ar 8000 -ac 1 -f adts")
+                            .SetOutput(outputAac);
+                        
+                        audioConversion.OnProgress += (sender, args) =>
+                        {
+                            Application.Current?.Dispatcher?.Invoke(() =>
+                            {
+                                StatusText = $"正在提取音频... {args.Percent}%";
+                            });
+                        };
+
+                        await audioConversion.Start();
+                        await aacConversion.Start();
+
+                        G711aFilePath = outputG711a;
+                        AacFilePath = outputAac;
+                    }
+
+                    StatusText = $"转码完成就绪 ({TargetFps:F1} FPS{(hasAudio ? ", 带音频" : "")})";
                 }
 
                 // 提取视频第一帧作为占位画面
                 StatusText = "正在生成占位图...";
                 await ExtractThumbnailAsync(VideoFilePath);
-                StatusText = string.IsNullOrEmpty(H264FilePath) ? "处理失败" : (Path.GetExtension(VideoFilePath).Equals(".h264", StringComparison.OrdinalIgnoreCase) ? "H.264 原生流，已就绪" : $"转码完成就绪 ({TargetFps:F1} FPS)");
+                
+                if (!string.IsNullOrEmpty(H264FilePath) && !Path.GetExtension(VideoFilePath).Equals(".h264", StringComparison.OrdinalIgnoreCase))
+                {
+                    bool hasAud = !string.IsNullOrEmpty(G711aFilePath);
+                    StatusText = $"转码完成就绪 ({TargetFps:F1} FPS{(hasAud ? ", 带音频" : "")})";
+                }
             }
             catch (Exception ex)
             {
@@ -266,12 +309,32 @@ namespace TerminalSimulation.Wpf.ViewModels
             });
         }
 
-        public void StartPushing(string ip, int port, string simCard)
+        public void StartPushing(string ip, int port, string simCard, int dataType = 1, int audioCodec = 0)
         {
-            if (string.IsNullOrEmpty(H264FilePath))
+            if (dataType == 2 || dataType == 3)
             {
-                StatusText = "无有效 H.264 视频源，无法推流";
-                return;
+                // 纯音频模式
+                if ((audioCodec == 0 && string.IsNullOrEmpty(G711aFilePath)) || 
+                    (audioCodec == 1 && string.IsNullOrEmpty(AacFilePath)))
+                {
+                    StatusText = "无有效音频源，纯音频模式推流失败";
+                    _logger?.Invoke("异常", $"通道 {LogicalChannelNo}: 平台请求音频流，但本地文件无音频轨道");
+                    return;
+                }
+            }
+            else
+            {
+                // 音视频或纯视频模式
+                if (string.IsNullOrEmpty(H264FilePath) || !File.Exists(H264FilePath))
+                {
+                    StatusText = "无有效 H.264 视频源，推流失败";
+                    return;
+                }
+            }
+
+            if (dataType == 0 && string.IsNullOrEmpty(G711aFilePath))
+            {
+                _logger?.Invoke("系统", $"通道 {LogicalChannelNo}: 平台请求音视频流，但本地无音频轨道，将回退为仅推送纯视频。");
             }
 
             if (IsPreviewing)
@@ -281,7 +344,14 @@ namespace TerminalSimulation.Wpf.ViewModels
 
             StopPushing();
 
-            _pusher = new TerminalSimulation.Protocol.JT1078Pusher(simCard, LogicalChannelNo, H264FilePath, TargetFps, IsConstantFramerate);
+            string? targetAudioFile = null;
+            if (dataType == 0 || dataType == 2 || dataType == 3)
+            {
+                targetAudioFile = audioCodec == 0 ? G711aFilePath : AacFilePath;
+                if (!File.Exists(targetAudioFile)) targetAudioFile = null;
+            }
+
+            _pusher = new TerminalSimulation.Protocol.JT1078Pusher(simCard, LogicalChannelNo, H264FilePath, targetAudioFile, dataType, audioCodec, TargetFps, IsConstantFramerate);
             _pusher.OnLog += msg => 
             {
                 _logger?.Invoke("音视频", $"通道 {LogicalChannelNo}: {msg}");

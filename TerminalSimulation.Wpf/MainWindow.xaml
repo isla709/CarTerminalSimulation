@@ -954,6 +954,11 @@
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
                                 <TextBlock Text="通道数量:" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <ComboBox ItemsSource="{Binding IntRange1to36}" SelectedItem="{Binding VideoChannelCount}" Width="80"/>
+                                <TextBlock Text="默认音频编码:" VerticalAlignment="Center" Margin="24,0,8,0"/>
+                                <ComboBox SelectedIndex="{Binding AudioCodecIndex}" Width="80">
+                                    <ComboBoxItem Content="G.711A" />
+                                    <ComboBoxItem Content="AAC" />
+                                </ComboBox>
                                 <TextBlock Text="实时总流量:" VerticalAlignment="Center" Margin="24,0,8,0" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
                                 <TextBlock Text="{Binding TotalVideoTrafficText}" VerticalAlignment="Center" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
                                 

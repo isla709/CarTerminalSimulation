@@ -29,11 +29,18 @@ namespace TerminalSimulation.Protocol
 
         public long TotalPushedBytes { get; private set; } = 0;
 
-        public JT1078Pusher(string simCard, byte channelNo, string h264File, double targetFps, bool isConstantFps)
+        private readonly string? _audioFile;
+        private readonly int _dataType;
+        private readonly int _audioCodec;
+
+        public JT1078Pusher(string simCard, byte channelNo, string h264File, string? audioFile, int dataType, int audioCodec, double targetFps, bool isConstantFps)
         {
             _simCard = simCard.PadLeft(12, '0');
             _channelNo = channelNo;
             _h264File = h264File;
+            _audioFile = audioFile;
+            _dataType = dataType;
+            _audioCodec = audioCodec;
             _targetFps = targetFps;
             _isConstantFps = isConstantFps;
         }
@@ -42,17 +49,37 @@ namespace TerminalSimulation.Protocol
         {
             _cts = new CancellationTokenSource();
 
-            if (!File.Exists(_h264File))
+            List<VideoFrame> frames = new List<VideoFrame>();
+            if (_dataType == 0 || _dataType == 1)
             {
-                OnLog?.Invoke($"视频裸流文件不存在: {_h264File}");
-                return;
+                if (!File.Exists(_h264File))
+                {
+                    OnLog?.Invoke($"视频裸流文件不存在: {_h264File}");
+                    return;
+                }
+
+                OnLog?.Invoke("正在解析视频文件，这可能需要一点时间...");
+                byte[] fileData = await File.ReadAllBytesAsync(_h264File, _cts.Token);
+                var nalus = SplitNalus(fileData);
+                frames = GroupNalusIntoFrames(nalus);
+                OnLog?.Invoke($"已成功切分并重组裸流，总 NALU 数: {nalus.Count}，总帧数: {frames.Count}");
             }
 
-            OnLog?.Invoke("正在解析视频文件，这可能需要一点时间...");
-            byte[] fileData = await File.ReadAllBytesAsync(_h264File, _cts.Token);
-            var nalus = SplitNalus(fileData);
-            var frames = GroupNalusIntoFrames(nalus);
-            OnLog?.Invoke($"已成功切分并重组裸流，总 NALU 数: {nalus.Count}，总帧数: {frames.Count}");
+            byte[]? audioData = null;
+            if ((_dataType == 0 || _dataType == 2 || _dataType == 3) && !string.IsNullOrEmpty(_audioFile) && File.Exists(_audioFile))
+            {
+                audioData = await File.ReadAllBytesAsync(_audioFile, _cts.Token);
+                OnLog?.Invoke($"已加载音频数据: {audioData.Length} 字节");
+            }
+
+            if (_dataType == 2 || _dataType == 3)
+            {
+                if (audioData == null || audioData.Length == 0)
+                {
+                    OnLog?.Invoke("纯音频模式但未提供音频文件，中止推流。");
+                    return;
+                }
+            }
 
             _client = new TcpClient();
             await _client.ConnectAsync(ip, port);
@@ -60,7 +87,14 @@ namespace TerminalSimulation.Protocol
             
             OnLog?.Invoke($"已连接到音视频服务器: {ip}:{port}");
             
-            _ = Task.Run(() => PushLoop(_cts.Token, frames), _cts.Token);
+            if (_dataType == 2 || _dataType == 3)
+            {
+                _ = Task.Run(() => PushAudioOnlyLoop(_cts.Token, audioData), _cts.Token);
+            }
+            else
+            {
+                _ = Task.Run(() => PushLoop(_cts.Token, frames, audioData), _cts.Token);
+            }
         }
 
         public void Stop()
@@ -70,7 +104,7 @@ namespace TerminalSimulation.Protocol
             _client?.Close();
         }
 
-        private async Task PushLoop(CancellationToken token, List<VideoFrame> frames)
+        private async Task PushLoop(CancellationToken token, List<VideoFrame> frames, byte[]? audioData)
         {
             try
             {
@@ -91,12 +125,12 @@ namespace TerminalSimulation.Protocol
                 ulong lastFrameTimestamp = timestamp;
                 bool hasPreviousFrame = false;
 
+                ulong lastAudioTimestamp = timestamp;
+                int audioOffset = 0;
+
                 long totalPushedFrames = 0;
                 var sw = System.Diagnostics.Stopwatch.StartNew();
                 double expectedElapsedMs = 0;
-
-                int burstIFrameCount = 0;
-                bool isBursting = false; // 禁用极速爆发模式，防止实时流媒体平台因缓存溢出而导致画面慢动作和掉帧
 
                 while (!token.IsCancellationRequested)
                 {
@@ -196,6 +230,119 @@ namespace TerminalSimulation.Protocol
                         await stream.WriteAsync(finalFrameData, token);
                         TotalPushedBytes += finalFrameData.Length;
 
+                        // ---- 穿插推送音频数据 (如果有) ----
+                        if (audioData != null && audioData.Length > 0)
+                        {
+                            long msElapsedForAudio = (long)(timestamp - lastAudioTimestamp);
+                            
+                            if (_audioCodec == 0) // G.711A
+                            {
+                                if (msElapsedForAudio >= 40) // 积攒40ms以上的音频数据再发送
+                                {
+                                    int bytesToPush = (int)(msElapsedForAudio * 8); // 8000Hz 8-bit mono = 8 bytes/ms
+                                    
+                                    while (bytesToPush > 0)
+                                    {
+                                        int chunkLen = Math.Min(320, bytesToPush); // 每包最多320字节(40ms)
+                                        if (chunkLen > audioData.Length) chunkLen = audioData.Length;
+                                        
+                                        byte[] audioChunk = new byte[chunkLen];
+                                        for(int i = 0; i < chunkLen; i++)
+                                        {
+                                            audioChunk[i] = audioData[(audioOffset + i) % audioData.Length];
+                                        }
+                                        audioOffset = (audioOffset + chunkLen) % audioData.Length;
+                                        bytesToPush -= chunkLen;
+
+                                        var audioPackage = new JT1078Package
+                                        {
+                                            Label1 = new JT1078Label1(0x80), // V=2, P=0, X=0, CC=0
+                                            Label2 = new JT1078Label2(136),  // M=1(128) + PT=8(PCMA)
+                                            Label3 = new JT1078Label3(0x30), // dataType=3 (音频)
+                                            SIM = _simCard,
+                                            LogicChannelNumber = _channelNo,
+                                            Timestamp = lastAudioTimestamp,
+                                            LastIFrameInterval = 0,
+                                            LastFrameInterval = 0,
+                                            SN = sequence++,
+                                            Bodies = audioChunk
+                                        };
+
+                                        byte[] aData = JT1078Serializer.Serialize(audioPackage);
+                                        await stream.WriteAsync(aData, token);
+                                        TotalPushedBytes += aData.Length;
+                                        
+                                        lastAudioTimestamp += (ulong)(chunkLen / 8);
+                                    }
+                                }
+                            }
+                            else if (_audioCodec == 1) // AAC
+                            {
+                                // AAC 1024 samples @ 8000Hz = 128ms per ADTS frame
+                                if (msElapsedForAudio >= 128) 
+                                {
+                                    while ((long)(timestamp - lastAudioTimestamp) >= 128)
+                                    {
+                                        // Parse ADTS Frame
+                                        if (audioOffset + 7 > audioData.Length) audioOffset = 0; // wrap around
+                                        
+                                        bool foundSync = false;
+                                        while (audioOffset + 7 <= audioData.Length)
+                                        {
+                                            if (audioData[audioOffset] == 0xFF && (audioData[audioOffset + 1] & 0xF0) == 0xF0)
+                                            {
+                                                foundSync = true;
+                                                break;
+                                            }
+                                            audioOffset++;
+                                        }
+
+                                        if (!foundSync) 
+                                        {
+                                            audioOffset = 0;
+                                            break;
+                                        }
+
+                                        int frameLength = ((audioData[audioOffset + 3] & 0x03) << 11) | 
+                                                          (audioData[audioOffset + 4] << 3) | 
+                                                          ((audioData[audioOffset + 5] & 0xE0) >> 5);
+
+                                        if (frameLength > 0 && audioOffset + frameLength <= audioData.Length)
+                                        {
+                                            byte[] audioChunk = new byte[frameLength];
+                                            Array.Copy(audioData, audioOffset, audioChunk, 0, frameLength);
+                                            audioOffset = (audioOffset + frameLength) % audioData.Length;
+
+                                            var audioPackage = new JT1078Package
+                                            {
+                                                Label1 = new JT1078Label1(0x80),
+                                                Label2 = new JT1078Label2(147),  // M=1(128) + PT=19(AAC)
+                                                Label3 = new JT1078Label3(0x30),
+                                                SIM = _simCard,
+                                                LogicChannelNumber = _channelNo,
+                                                Timestamp = lastAudioTimestamp,
+                                                LastIFrameInterval = 0,
+                                                LastFrameInterval = 0,
+                                                SN = sequence++,
+                                                Bodies = audioChunk
+                                            };
+
+                                            byte[] aData = JT1078Serializer.Serialize(audioPackage);
+                                            await stream.WriteAsync(aData, token);
+                                            TotalPushedBytes += aData.Length;
+                                        }
+                                        else
+                                        {
+                                            audioOffset = 0; // skip broken frame or end of file
+                                        }
+                                        
+                                        lastAudioTimestamp += 128;
+                                    }
+                                }
+                            }
+                        }
+                        // ------------------------------------
+
                         totalPushedFrames++;
                         if (totalPushedFrames % 10 == 0)
                         {
@@ -214,10 +361,9 @@ namespace TerminalSimulation.Protocol
                             if (expectedElapsedMs > actualElapsed)
                             {
                                 int delay = (int)(expectedElapsedMs - actualElapsed);
-                                if (delay > 15)
+                                if (delay > 0)
                                 {
-                                    // Task.Delay 精度较差，留出缓冲
-                                    await Task.Delay(delay - 15, token);
+                                    await Task.Delay(delay, token);
                                 }
                                 
                                 // 剩余的时间用自旋等待，保证 60fps 这种高频调用的精确度
@@ -248,6 +394,147 @@ namespace TerminalSimulation.Protocol
             catch (Exception ex)
             {
                 OnLog?.Invoke($"推流异常: {ex.Message}");
+            }
+            finally
+            {
+                OnDisconnected?.Invoke();
+            }
+        }
+
+        private async Task PushAudioOnlyLoop(CancellationToken token, byte[] audioData)
+        {
+            try
+            {
+                var stream = _stream;
+                if (stream == null || audioData == null || audioData.Length == 0) return;
+
+                ushort sequence = 0;
+                double exactTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                ulong timestamp = (ulong)exactTimestamp;
+                
+                int audioOffset = 0;
+                long totalPushedPackets = 0;
+                
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                double expectedElapsedMs = 0;
+
+                while (!token.IsCancellationRequested)
+                {
+                    if (_audioCodec == 0) // G.711A
+                    {
+                        int chunkLen = 320; // 40ms per packet
+                        byte[] audioChunk = new byte[chunkLen];
+                        for(int i = 0; i < chunkLen; i++)
+                        {
+                            audioChunk[i] = audioData[(audioOffset + i) % audioData.Length];
+                        }
+                        audioOffset = (audioOffset + chunkLen) % audioData.Length;
+
+                        var audioPackage = new JT1078Package
+                        {
+                            Label1 = new JT1078Label1(0x80), // V=2, CC=0
+                            Label2 = new JT1078Label2(136),  // M=1, PT=8 (PCMA)
+                            Label3 = new JT1078Label3(0x30), // dataType=3 (音频)
+                            SIM = _simCard,
+                            LogicChannelNumber = _channelNo,
+                            Timestamp = timestamp,
+                            LastIFrameInterval = 0,
+                            LastFrameInterval = 0,
+                            SN = sequence++,
+                            Bodies = audioChunk
+                        };
+
+                        byte[] aData = JT1078Serializer.Serialize(audioPackage);
+                        await stream.WriteAsync(aData, token);
+                        TotalPushedBytes += aData.Length;
+                        
+                        expectedElapsedMs += 40;
+                        timestamp += 40;
+                    }
+                    else if (_audioCodec == 1) // AAC
+                    {
+                        if (audioOffset + 7 > audioData.Length) audioOffset = 0;
+                        
+                        bool foundSync = false;
+                        while (audioOffset + 7 <= audioData.Length)
+                        {
+                            if (audioData[audioOffset] == 0xFF && (audioData[audioOffset + 1] & 0xF0) == 0xF0)
+                            {
+                                foundSync = true;
+                                break;
+                            }
+                            audioOffset++;
+                        }
+
+                        if (!foundSync) audioOffset = 0;
+
+                        int frameLength = 0;
+                        if (foundSync)
+                        {
+                            frameLength = ((audioData[audioOffset + 3] & 0x03) << 11) | 
+                                          (audioData[audioOffset + 4] << 3) | 
+                                          ((audioData[audioOffset + 5] & 0xE0) >> 5);
+                        }
+
+                        if (frameLength > 0 && audioOffset + frameLength <= audioData.Length)
+                        {
+                            byte[] audioChunk = new byte[frameLength];
+                            Array.Copy(audioData, audioOffset, audioChunk, 0, frameLength);
+                            audioOffset = (audioOffset + frameLength) % audioData.Length;
+
+                            var audioPackage = new JT1078Package
+                            {
+                                Label1 = new JT1078Label1(0x80),
+                                Label2 = new JT1078Label2(147),  // M=1, PT=19 (AAC)
+                                Label3 = new JT1078Label3(0x30),
+                                SIM = _simCard,
+                                LogicChannelNumber = _channelNo,
+                                Timestamp = timestamp,
+                                LastIFrameInterval = 0,
+                                LastFrameInterval = 0,
+                                SN = sequence++,
+                                Bodies = audioChunk
+                            };
+
+                            byte[] aData = JT1078Serializer.Serialize(audioPackage);
+                            await stream.WriteAsync(aData, token);
+                            TotalPushedBytes += aData.Length;
+                        }
+                        else
+                        {
+                            audioOffset = 0;
+                        }
+                        
+                        expectedElapsedMs += 128;
+                        timestamp += 128;
+                    }
+
+                    totalPushedPackets++;
+                    if (totalPushedPackets % 25 == 0)
+                    {
+                        OnStatusUpdate?.Invoke($"纯音频推流中... 已推送 {totalPushedPackets} 包");
+                    }
+
+                    exactTimestamp += 40.0;
+                    timestamp = (ulong)exactTimestamp;
+                    expectedElapsedMs += 40.0;
+
+                    long actualElapsed = sw.ElapsedMilliseconds;
+                    if (expectedElapsedMs > actualElapsed)
+                    {
+                        int delay = (int)(expectedElapsedMs - actualElapsed);
+                        await Task.Delay(delay, token);
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                OnLog?.Invoke("推流已手动中止");
+                OnStatusUpdate?.Invoke("推流已手动中止");
+            }
+            catch (Exception ex)
+            {
+                OnLog?.Invoke($"纯音频推流异常: {ex.Message}");
             }
             finally
             {

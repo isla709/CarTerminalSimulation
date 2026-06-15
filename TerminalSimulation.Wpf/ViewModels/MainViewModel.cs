@@ -1092,6 +1092,7 @@ namespace TerminalSimulation.Wpf.ViewModels
         [ObservableProperty] private int _serverPort = 808;
         [ObservableProperty] private string _terminalPhoneNo = "13812345678";
         [ObservableProperty] private string _authCode = "123456";
+        [ObservableProperty] private int _audioCodecIndex = 0;
         [ObservableProperty] private bool _isConnected = false;
 
         [ObservableProperty] private string _provinceIdInput = "11";
@@ -2682,7 +2683,7 @@ namespace TerminalSimulation.Wpf.ViewModels
                             var videoItem = VideoChannels.FirstOrDefault(c => c.LogicalChannelNo == channel);
                             if (videoItem != null)
                             {
-                                videoItem.StartPushing(ip, port, TerminalPhoneNo);
+                                videoItem.StartPushing(ip, port, TerminalPhoneNo, body.DataType, AudioCodecIndex);
                             }
                         }
 

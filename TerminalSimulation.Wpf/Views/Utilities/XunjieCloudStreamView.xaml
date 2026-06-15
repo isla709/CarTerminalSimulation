@@ -140,7 +140,7 @@
                             <TextBlock Text="状态: " FontWeight="Bold" />
                             <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="0,0,16,0" />
                             
-                            <TextBlock Text="网速: " FontWeight="Bold" />
+                            <TextBlock Text="码率: " FontWeight="Bold" />
                             <TextBlock Text="{Binding CurrentBitrate}" Foreground="Green" Margin="0,0,16,0" />
 
                             <TextBlock Text="音频: " FontWeight="Bold" />

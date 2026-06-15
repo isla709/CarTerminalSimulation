@@ -96,6 +96,10 @@ namespace TerminalSimulation.Wpf.ViewModels.Utilities
         private int _retryCount = 0;
         private const int MaxRetries = 3;
         private DispatcherTimer? _statsTimer;
+        
+        private long _lastReadBytes = 0;
+        private DateTime _lastReadTime = DateTime.MinValue;
+        private int _audioDetectTicks = 0;
 
         public XunjieCloudStreamViewModel()
         {
@@ -188,21 +192,57 @@ namespace TerminalSimulation.Wpf.ViewModels.Utilities
                 var stats = MediaPlayer.Media?.Statistics;
                 if (stats.HasValue)
                 {
-                    // InputBitrate is usually bits/s or bytes/s. Let's convert to KB/s
-                    float bytesPerSec = stats.Value.InputBitrate * 1000; // libvlc float bitrate
-                    if (bytesPerSec > 1024 * 1024)
+                    long currentBytes = stats.Value.DemuxReadBytes;
+                    var now = DateTime.Now;
+
+                    if (_lastReadTime != DateTime.MinValue && currentBytes >= _lastReadBytes)
                     {
-                        CurrentBitrate = $"{(bytesPerSec / (1024 * 1024)):F2} MB/s";
+                        double seconds = (now - _lastReadTime).TotalSeconds;
+                        if (seconds > 0)
+                        {
+                            double bytesPerSec = (currentBytes - _lastReadBytes) / seconds;
+                            if (bytesPerSec > 1024 * 1024)
+                            {
+                                CurrentBitrate = $"{(bytesPerSec / (1024 * 1024)):F2} MB/s";
+                            }
+                            else
+                            {
+                                CurrentBitrate = $"{(bytesPerSec / 1024):F1} KB/s";
+                            }
+                        }
+                    }
+                    else if (currentBytes < _lastReadBytes)
+                    {
+                        // Handle counter reset or new stream
+                        _lastReadBytes = currentBytes;
+                    }
+
+                    _lastReadBytes = currentBytes;
+                    _lastReadTime = now;
+                }
+
+                // 持续检测音轨，因为 HLS 的音轨经常是滞后解析出来的
+                if (MediaPlayer.Media != null && (HasAudioTrack == "检测中..." || HasAudioTrack == "无音频流"))
+                {
+                    bool hasAudio = MediaPlayer.Media.Tracks.Any(t => t.TrackType == TrackType.Audio);
+                    if (hasAudio)
+                    {
+                        HasAudioTrack = "包含音频";
                     }
                     else
                     {
-                        CurrentBitrate = $"{(bytesPerSec / 1024):F1} KB/s";
+                        _audioDetectTicks++;
+                        if (_audioDetectTicks >= 5)
+                        {
+                            HasAudioTrack = "未检测到音频";
+                        }
                     }
                 }
             }
             else
             {
-                CurrentBitrate = "0 KB/s";
+                CurrentBitrate = "0.0 KB/s";
+                _lastReadTime = DateTime.MinValue;
             }
         }
 
@@ -427,7 +467,10 @@ namespace TerminalSimulation.Wpf.ViewModels.Utilities
             LogNetwork("Player", $"尝试拉取视频流: {url}");
             StatusText = "正在连接...";
             HasAudioTrack = "检测中...";
+            _audioDetectTicks = 0;
             CurrentBitrate = "0 KB/s";
+            _lastReadTime = DateTime.MinValue;
+            _lastReadBytes = 0;
 
             var media = new Media(_libVLC, url, FromType.FromLocation);
             
@@ -461,7 +504,9 @@ namespace TerminalSimulation.Wpf.ViewModels.Utilities
             }
             IsPlaying = false;
             StatusText = "已停止";
-            CurrentBitrate = "0 KB/s";
+            CurrentBitrate = "0.0 KB/s";
+            _lastReadTime = DateTime.MinValue;
+            _lastReadBytes = 0;
             HasAudioTrack = "无";
             _statsTimer?.Stop();
         }
@@ -486,13 +531,8 @@ namespace TerminalSimulation.Wpf.ViewModels.Utilities
                 StatusText = "正在播放"; 
                 IsPlaying = true;
 
-                // 检测音频轨道
-                if (MediaPlayer?.Media != null)
-                {
-                    bool hasAudio = MediaPlayer.Media.Tracks.Any(t => t.TrackType == TrackType.Audio);
-                    HasAudioTrack = hasAudio ? "包含音频" : "无音频流";
-                    LogNetwork("Player", $"媒体解析完毕，{HasAudioTrack}");
-                }
+                StatusText = "正在播放"; 
+                IsPlaying = true;
             });
         }
 
