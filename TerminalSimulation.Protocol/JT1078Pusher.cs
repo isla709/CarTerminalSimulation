@@ -257,7 +257,7 @@ namespace TerminalSimulation.Protocol
                                         var audioPackage = new JT1078Package
                                         {
                                             Label1 = new JT1078Label1(0x80), // V=2, P=0, X=0, CC=0
-                                            Label2 = new JT1078Label2(136),  // M=1(128) + PT=8(PCMA)
+                                            Label2 = new JT1078Label2(134),  // M=1(128) + PT=6(G.711A in JT1078)
                                             Label3 = new JT1078Label3(0x30), // dataType=3 (音频)
                                             SIM = _simCard,
                                             LogicChannelNumber = _channelNo,
@@ -278,66 +278,71 @@ namespace TerminalSimulation.Protocol
                             }
                             else if (_audioCodec == 1) // AAC
                             {
-                                // AAC 1024 samples @ 8000Hz = 128ms per ADTS frame
-                                if (msElapsedForAudio >= 128) 
+                                while (true)
                                 {
-                                    while ((long)(timestamp - lastAudioTimestamp) >= 128)
+                                    if (audioOffset + 7 > audioData.Length) audioOffset = 0; // wrap around
+                                    
+                                    bool foundSync = false;
+                                    while (audioOffset + 7 <= audioData.Length)
                                     {
-                                        // Parse ADTS Frame
-                                        if (audioOffset + 7 > audioData.Length) audioOffset = 0; // wrap around
-                                        
-                                        bool foundSync = false;
-                                        while (audioOffset + 7 <= audioData.Length)
+                                        if (audioData[audioOffset] == 0xFF && (audioData[audioOffset + 1] & 0xF0) == 0xF0)
                                         {
-                                            if (audioData[audioOffset] == 0xFF && (audioData[audioOffset + 1] & 0xF0) == 0xF0)
-                                            {
-                                                foundSync = true;
-                                                break;
-                                            }
-                                            audioOffset++;
-                                        }
-
-                                        if (!foundSync) 
-                                        {
-                                            audioOffset = 0;
+                                            foundSync = true;
                                             break;
                                         }
-
-                                        int frameLength = ((audioData[audioOffset + 3] & 0x03) << 11) | 
-                                                          (audioData[audioOffset + 4] << 3) | 
-                                                          ((audioData[audioOffset + 5] & 0xE0) >> 5);
-
-                                        if (frameLength > 0 && audioOffset + frameLength <= audioData.Length)
-                                        {
-                                            byte[] audioChunk = new byte[frameLength];
-                                            Array.Copy(audioData, audioOffset, audioChunk, 0, frameLength);
-                                            audioOffset = (audioOffset + frameLength) % audioData.Length;
-
-                                            var audioPackage = new JT1078Package
-                                            {
-                                                Label1 = new JT1078Label1(0x80),
-                                                Label2 = new JT1078Label2(147),  // M=1(128) + PT=19(AAC)
-                                                Label3 = new JT1078Label3(0x30),
-                                                SIM = _simCard,
-                                                LogicChannelNumber = _channelNo,
-                                                Timestamp = lastAudioTimestamp,
-                                                LastIFrameInterval = 0,
-                                                LastFrameInterval = 0,
-                                                SN = sequence++,
-                                                Bodies = audioChunk
-                                            };
-
-                                            byte[] aData = JT1078Serializer.Serialize(audioPackage);
-                                            await stream.WriteAsync(aData, token);
-                                            TotalPushedBytes += aData.Length;
-                                        }
-                                        else
-                                        {
-                                            audioOffset = 0; // skip broken frame or end of file
-                                        }
-                                        
-                                        lastAudioTimestamp += 128;
+                                        audioOffset++;
                                     }
+
+                                    if (!foundSync) 
+                                    {
+                                        audioOffset = 0;
+                                        break;
+                                    }
+
+                                    int sampleRateIndex = (audioData[audioOffset + 2] & 0x3C) >> 2;
+                                    int[] sampleRates = { 96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350 };
+                                    int sampleRate = sampleRateIndex < sampleRates.Length ? sampleRates[sampleRateIndex] : 8000;
+                                    double frameDurationMs = 1024.0 * 1000.0 / sampleRate;
+
+                                    if ((long)(timestamp - lastAudioTimestamp) < (long)frameDurationMs)
+                                    {
+                                        break;
+                                    }
+
+                                    int frameLength = ((audioData[audioOffset + 3] & 0x03) << 11) | 
+                                                      (audioData[audioOffset + 4] << 3) | 
+                                                      ((audioData[audioOffset + 5] & 0xE0) >> 5);
+
+                                    if (frameLength > 0 && audioOffset + frameLength <= audioData.Length)
+                                    {
+                                        byte[] audioChunk = new byte[frameLength];
+                                        Array.Copy(audioData, audioOffset, audioChunk, 0, frameLength);
+                                        audioOffset = (audioOffset + frameLength) % audioData.Length;
+
+                                        var audioPackage = new JT1078Package
+                                        {
+                                            Label1 = new JT1078Label1(0x80),
+                                            Label2 = new JT1078Label2(147),  // M=1(128) + PT=19(AAC)
+                                            Label3 = new JT1078Label3(0x30),
+                                            SIM = _simCard,
+                                            LogicChannelNumber = _channelNo,
+                                            Timestamp = lastAudioTimestamp,
+                                            LastIFrameInterval = 0,
+                                            LastFrameInterval = 0,
+                                            SN = sequence++,
+                                            Bodies = audioChunk
+                                        };
+
+                                        byte[] aData = JT1078Serializer.Serialize(audioPackage);
+                                        await stream.WriteAsync(aData, token);
+                                        TotalPushedBytes += aData.Length;
+                                    }
+                                    else
+                                    {
+                                        audioOffset = 0; // skip broken frame or end of file
+                                    }
+                                    
+                                    lastAudioTimestamp += (ulong)frameDurationMs;
                                 }
                             }
                         }
@@ -371,8 +376,11 @@ namespace TerminalSimulation.Protocol
                             }
                             else if (actualElapsed - expectedElapsedMs > 2000)
                             {
-                                // 落后超过2秒，重置时间轴以防止瞬间大爆发
+                                // 落后超过2秒，说明网络拥堵或IO阻塞
+                                // 重置时间轴并同步跳过时间戳，防止播放端收到滞后时间戳而疯狂快进/抖动
+                                double skipMs = actualElapsed - expectedElapsedMs;
                                 expectedElapsedMs = actualElapsed;
+                                exactTimestamp += skipMs;
                             }
                         }
                         else
@@ -433,7 +441,7 @@ namespace TerminalSimulation.Protocol
                         var audioPackage = new JT1078Package
                         {
                             Label1 = new JT1078Label1(0x80), // V=2, CC=0
-                            Label2 = new JT1078Label2(136),  // M=1, PT=8 (PCMA)
+                            Label2 = new JT1078Label2(134),  // M=1, PT=6 (G.711A in JT1078)
                             Label3 = new JT1078Label3(0x30), // dataType=3 (音频)
                             SIM = _simCard,
                             LogicChannelNumber = _channelNo,
@@ -469,11 +477,16 @@ namespace TerminalSimulation.Protocol
                         if (!foundSync) audioOffset = 0;
 
                         int frameLength = 0;
+                        int sampleRate = 8000;
                         if (foundSync)
                         {
                             frameLength = ((audioData[audioOffset + 3] & 0x03) << 11) | 
                                           (audioData[audioOffset + 4] << 3) | 
                                           ((audioData[audioOffset + 5] & 0xE0) >> 5);
+                                          
+                            int sampleRateIndex = (audioData[audioOffset + 2] & 0x3C) >> 2;
+                            int[] sampleRates = { 96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350 };
+                            sampleRate = sampleRateIndex < sampleRates.Length ? sampleRates[sampleRateIndex] : 8000;
                         }
 
                         if (frameLength > 0 && audioOffset + frameLength <= audioData.Length)
@@ -505,8 +518,9 @@ namespace TerminalSimulation.Protocol
                             audioOffset = 0;
                         }
                         
-                        expectedElapsedMs += 128;
-                        timestamp += 128;
+                        double frameDurationMs = 1024.0 * 1000.0 / sampleRate;
+                        expectedElapsedMs += frameDurationMs;
+                        timestamp += (ulong)frameDurationMs;
                     }
 
                     totalPushedPackets++;

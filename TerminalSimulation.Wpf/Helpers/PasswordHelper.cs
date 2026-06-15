@@ -8,7 +8,7 @@ namespace TerminalSimulation.Wpf.Helpers
         public static readonly DependencyProperty PasswordProperty =
             DependencyProperty.RegisterAttached("Password",
             typeof(string), typeof(PasswordHelper),
-            new FrameworkPropertyMetadata(string.Empty, OnPasswordPropertyChanged));
+            new FrameworkPropertyMetadata(string.Empty, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault, OnPasswordPropertyChanged));
 
         public static readonly DependencyProperty AttachProperty =
             DependencyProperty.RegisterAttached("Attach",

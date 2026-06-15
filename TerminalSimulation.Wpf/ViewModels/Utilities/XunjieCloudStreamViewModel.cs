@@ -65,6 +65,7 @@ namespace TerminalSimulation.Wpf.ViewModels.Utilities
         [ObservableProperty] private string _token = "";
         [ObservableProperty] private string _statusText = "空闲";
         [ObservableProperty] private bool _isPlaying = false;
+        [ObservableProperty] private bool _isVideoViewVisible = false;
         
         [ObservableProperty] private ObservableCollection<string> _availableChannels = new();
         [ObservableProperty] private string? _selectedChannel;
@@ -478,13 +479,13 @@ namespace TerminalSimulation.Wpf.ViewModels.Utilities
             media.AddOption(":avcodec-hw=any"); // 开启硬解
             // 去除死板的静态缓存，使用针对 HLS 直播更友好的实时边沿缓冲策略
             media.AddOption(":hls-live-edge=3"); // 从直播边沿保留3个分片
-            media.AddOption(":clock-jitter=0");
-            media.AddOption(":clock-synchro=0");
-            media.AddOption(":network-caching=2000"); // 留有基础的 2 秒抗网络抖动
+            media.AddOption(":network-caching=1500"); // 基础网络抗抖动
+            media.AddOption(":live-caching=1500"); // 针对直播流的抗抖动缓存
 
             MediaPlayer.Play(media);
             MediaPlayer.Volume = Volume;
             IsPlaying = true;
+            IsVideoViewVisible = false;
             _statsTimer?.Start();
 
             if (IsLoggedIn)
@@ -503,6 +504,7 @@ namespace TerminalSimulation.Wpf.ViewModels.Utilities
                 LogNetwork("Player", "主动停止拉流");
             }
             IsPlaying = false;
+            IsVideoViewVisible = false;
             StatusText = "已停止";
             CurrentBitrate = "0.0 KB/s";
             _lastReadTime = DateTime.MinValue;
@@ -514,7 +516,7 @@ namespace TerminalSimulation.Wpf.ViewModels.Utilities
         private void MediaPlayer_EndReached(object? sender, EventArgs e)
         {
             LogNetwork("Player", "播放结束");
-            Application.Current?.Dispatcher?.InvokeAsync(() => { IsPlaying = false; _statsTimer?.Stop(); });
+            Application.Current?.Dispatcher?.InvokeAsync(() => { IsPlaying = false; IsVideoViewVisible = false; _statsTimer?.Stop(); });
         }
 
         private void MediaPlayer_Buffering(object? sender, MediaPlayerBufferingEventArgs e)
@@ -522,18 +524,25 @@ namespace TerminalSimulation.Wpf.ViewModels.Utilities
             Application.Current?.Dispatcher?.InvokeAsync(() => StatusText = $"缓冲中... {e.Cache}%");
         }
 
-        private void MediaPlayer_Playing(object? sender, EventArgs e)
+        private async void MediaPlayer_Playing(object? sender, EventArgs e)
         {
             LogNetwork("Player", "开始播放");
             _retryCount = 0; // 播放成功，重置重连计数
-            Application.Current?.Dispatcher?.InvokeAsync(() => 
+            Application.Current?.Dispatcher?.Invoke(() => 
             { 
                 StatusText = "正在播放"; 
                 IsPlaying = true;
-
-                StatusText = "正在播放"; 
-                IsPlaying = true;
             });
+            
+            // 延迟 300 毫秒，确保底层 D3D 画布已输出第一帧，防止白屏闪烁
+            await Task.Delay(300);
+            Application.Current?.Dispatcher?.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
+            {
+                if (IsPlaying)
+                {
+                    IsVideoViewVisible = true;
+                }
+            }));
         }
 
         private void MediaPlayer_EncounteredError(object? sender, EventArgs e)
@@ -543,6 +552,7 @@ namespace TerminalSimulation.Wpf.ViewModels.Utilities
             { 
                 StatusText = "播放错误"; 
                 IsPlaying = false;
+                IsVideoViewVisible = false;
                 _statsTimer?.Stop();
                 CurrentBitrate = "0 KB/s";
 

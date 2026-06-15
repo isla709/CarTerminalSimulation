@@ -144,12 +144,19 @@ namespace TerminalSimulation.Wpf.ViewModels
 
                     var mediaInfo = await FFmpeg.GetMediaInfo(VideoFilePath);
                     bool hasAudio = mediaInfo.AudioStreams.Any();
+                    var videoStream = mediaInfo.VideoStreams.FirstOrDefault();
 
-                    // 重新编码为标准流：25帧，2秒一个关键帧(GOP=50)，1Mbps码率，确保 HLS 切片正常且不卡顿
-                    TargetFps = 25.0;
+                    // 提取原始视频帧率，如果提取失败则默认 25
+                    double originalFps = videoStream?.Framerate ?? 25.0;
+                    if (originalFps <= 0) originalFps = 25.0;
+                    
+                    TargetFps = originalFps;
+                    int gop = (int)Math.Max(10, Math.Round(originalFps * 2)); // 2秒一个关键帧
+
+                    // 重新编码为标准流：保持原帧率，2秒一个关键帧，使用 CRF 26 并限制最高码率防止网络崩溃
                     var conversion = FFmpeg.Conversions.New()
                         .AddParameter($"-i \"{VideoFilePath}\"")
-                        .AddParameter("-c:v libx264 -preset ultrafast -r 25 -g 50 -b:v 1M -an -f h264")
+                        .AddParameter($"-c:v libx264 -preset veryfast -r {originalFps} -g {gop} -crf 26 -maxrate 2M -bufsize 4M -bf 0 -an -f h264")
                         .SetOutput(outputH264);
                     
                     conversion.OnProgress += (sender, args) =>
@@ -289,11 +296,12 @@ namespace TerminalSimulation.Wpf.ViewModels
             IsPreviewing = true;
             IsMuted = true; // 默认静音
 
-            Application.Current?.Dispatcher?.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() => 
+            Application.Current?.Dispatcher?.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(async () => 
             {
                 var media = CreateMedia(VideoFilePath);
                 MediaPlayer.Play(media);
-                MediaPlayer.Mute = true; // 强制静音
+                await Task.Delay(200); // 延迟设置静音，等待VLC初始化音频输出
+                MediaPlayer.Mute = IsMuted;
             }));
         }
 
@@ -385,13 +393,14 @@ namespace TerminalSimulation.Wpf.ViewModels
             IsMuted = true; // 默认静音
 
             // 播放视频并设置循环
-            Application.Current?.Dispatcher?.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() => 
+            Application.Current?.Dispatcher?.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(async () => 
             {
                 if (!string.IsNullOrEmpty(VideoFilePath) && File.Exists(VideoFilePath))
                 {
                     var media = CreateMedia(VideoFilePath);
                     MediaPlayer.Play(media);
-                    MediaPlayer.Mute = true; // 强制静音
+                    await Task.Delay(200); // 延迟设置静音，等待VLC初始化音频输出
+                    MediaPlayer.Mute = IsMuted;
                 }
             }));
         }

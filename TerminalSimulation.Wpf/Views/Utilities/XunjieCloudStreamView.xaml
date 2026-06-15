@@ -16,6 +16,7 @@
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
         <converters:InvertBooleanConverter x:Key="InvertBooleanConverter" />
+        <converters:BooleanToHiddenVisibilityConverter x:Key="BooleanToHiddenVisibilityConverter" />
     </UserControl.Resources>
     <Grid>
         <Grid.ColumnDefinitions>
@@ -26,7 +27,13 @@
         <!-- 左侧视频区域 -->
         <materialDesign:Card Grid.Column="0" Margin="0,0,8,0" Background="Black">
             <Grid>
-                <vlc:VideoView MediaPlayer="{Binding MediaPlayer}" />
+                <!-- 防闪烁底衬: 刚开始拉流但未实际出图时(300ms延迟)展示的黑底与图标 -->
+                <Grid Background="#151515" Visibility="{Binding IsVideoViewVisible, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                    <materialDesign:PackIcon Kind="VideoOutline" Width="32" Height="32" Foreground="#444" HorizontalAlignment="Center" VerticalAlignment="Center" 
+                                             Visibility="{Binding IsPlaying, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                </Grid>
+
+                <vlc:VideoView MediaPlayer="{Binding MediaPlayer}" Visibility="{Binding IsVideoViewVisible, Converter={StaticResource BooleanToHiddenVisibilityConverter}}" />
                 
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding IsPlaying, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
                     <materialDesign:PackIcon Kind="VideoOffOutline" Width="64" Height="64" Foreground="#888888" HorizontalAlignment="Center" />

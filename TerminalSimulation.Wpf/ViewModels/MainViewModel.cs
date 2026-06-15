@@ -178,6 +178,7 @@ namespace TerminalSimulation.Wpf.ViewModels
     {
         public string ServerIp { get; set; } = "127.0.0.1";
         public int ServerPort { get; set; } = 808;
+        public System.Collections.Generic.List<string> ServerAddressHistory { get; set; } = new();
         public string TerminalPhoneNo { get; set; } = "13812345678";
         public string AuthCode { get; set; } = "123456";
         public bool UseJT808_2019 { get; set; } = true;
@@ -764,6 +765,16 @@ namespace TerminalSimulation.Wpf.ViewModels
                         {
                             ServerIp = config.ServerIp;
                             ServerPort = config.ServerPort;
+                            ServerAddressInput = $"{ServerIp}:{ServerPort}";
+                            
+                            if (config.ServerAddressHistory != null)
+                            {
+                                ServerAddressHistory.Clear();
+                                foreach (var addr in config.ServerAddressHistory)
+                                {
+                                    ServerAddressHistory.Add(addr);
+                                }
+                            }
                             TerminalPhoneNo = config.TerminalPhoneNo;
                             AuthCode = config.AuthCode;
                             UseJT808_2019 = config.UseJT808_2019;
@@ -990,6 +1001,7 @@ namespace TerminalSimulation.Wpf.ViewModels
             {
                 ServerIp = ServerIp,
                 ServerPort = ServerPort,
+                ServerAddressHistory = ServerAddressHistory.ToList(),
                 TerminalPhoneNo = TerminalPhoneNo,
                 AuthCode = AuthCode,
                 UseJT808_2019 = UseJT808_2019,
@@ -1090,6 +1102,25 @@ namespace TerminalSimulation.Wpf.ViewModels
 
         [ObservableProperty] private string _serverIp = "127.0.0.1";
         [ObservableProperty] private int _serverPort = 808;
+        
+        public ObservableCollection<string> ServerAddressHistory { get; } = new();
+        [ObservableProperty] private string _serverAddressInput = "127.0.0.1:808";
+
+        partial void OnServerAddressInputChanged(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+            int lastColon = value.LastIndexOf(':');
+            if (lastColon > 0 && lastColon < value.Length - 1 && int.TryParse(value.Substring(lastColon + 1), out int port))
+            {
+                ServerIp = value.Substring(0, lastColon);
+                ServerPort = port;
+            }
+            else
+            {
+                ServerIp = value;
+                ServerPort = 808;
+            }
+        }
         [ObservableProperty] private string _terminalPhoneNo = "13812345678";
         [ObservableProperty] private string _authCode = "123456";
         [ObservableProperty] private int _audioCodecIndex = 0;
@@ -2753,6 +2784,21 @@ namespace TerminalSimulation.Wpf.ViewModels
         private async Task ConnectAsync()
         {
             if (IsConnected) return;
+
+            var addr = $"{ServerIp}:{ServerPort}";
+            int existingIndex = ServerAddressHistory.IndexOf(addr);
+            if (existingIndex < 0)
+            {
+                ServerAddressHistory.Insert(0, addr);
+                if (ServerAddressHistory.Count > 10) ServerAddressHistory.RemoveAt(ServerAddressHistory.Count - 1);
+            }
+            else if (existingIndex > 0)
+            {
+                ServerAddressHistory.Move(existingIndex, 0);
+            }
+            ServerAddressInput = addr; // Ensure the UI maintains the text
+            
+            SaveConfigDebounced();
 
             ConsoleLogger.LogAction("连接服务器", $"IP={ServerIp}, 端口={ServerPort}");
             try

@@ -282,8 +282,7 @@
             <!-- Top Config Area -->
             <materialDesign:Card Grid.Row="0" Margin="8">
                 <StackPanel Orientation="Horizontal" Margin="16">
-                <TextBox materialDesign:HintAssist.Hint="服务器 IP" Style="{StaticResource MaterialDesignFloatingHintTextBox}" Text="{Binding ServerIp}" Width="120" Margin="0,0,16,0" />
-                <TextBox materialDesign:HintAssist.Hint="端口" Style="{StaticResource MaterialDesignFloatingHintTextBox}" Text="{Binding ServerPort}" Width="60" Margin="0,0,16,0" />
+                <ComboBox materialDesign:HintAssist.Hint="服务器地址 (IP/域名:端口)" Style="{StaticResource MaterialDesignFloatingHintComboBox}" IsEditable="True" Text="{Binding ServerAddressInput, UpdateSourceTrigger=PropertyChanged}" ItemsSource="{Binding ServerAddressHistory}" Width="200" Margin="0,0,16,0" />
                 <TextBox materialDesign:HintAssist.Hint="终端手机号" Style="{StaticResource MaterialDesignFloatingHintTextBox}" Text="{Binding TerminalPhoneNo}" Width="150" Margin="0,0,16,0" />
                 <TextBox materialDesign:HintAssist.Hint="鉴权码" Style="{StaticResource MaterialDesignFloatingHintTextBox}" Text="{Binding AuthCode}" Width="100" Margin="0,0,16,0" />
                 <ComboBox materialDesign:HintAssist.Hint="协议版本" Style="{StaticResource MaterialDesignFloatingHintComboBox}" Width="100" Margin="0,0,16,0" SelectedIndex="{Binding ProtocolVersionIndex}">
@@ -1095,9 +1094,11 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <TabPanel x:Name="HeaderPanel" Grid.Column="0" Panel.ZIndex="1" IsItemsHost="True" KeyboardNavigation.TabIndex="1" VerticalAlignment="Bottom"/>
-                                <materialDesign:PopupBox Grid.Column="1" Width="28" Height="28" Margin="4,0,0,4" VerticalAlignment="Bottom" ToolTip="添加标签" Foreground="{DynamicResource MaterialDesignBodyLight}" PlacementMode="BottomAndAlignLeftEdges">
+                                <materialDesign:PopupBox Grid.Column="1" Width="28" Height="28" Margin="4,0,0,4" VerticalAlignment="Bottom" ToolTip="添加标签" PlacementMode="BottomAndAlignLeftEdges">
                                     <materialDesign:PopupBox.ToggleContent>
-                                        <materialDesign:PackIcon Kind="Plus" />
+                                        <Border Background="{DynamicResource MaterialDesignPaper}" CornerRadius="14" Opacity="0.8" Width="28" Height="28">
+                                            <materialDesign:PackIcon Kind="Plus" Foreground="{DynamicResource MaterialDesignBodyLight}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Border>
                                     </materialDesign:PopupBox.ToggleContent>
                                     <StackPanel Margin="8">
                                         <Button Content="讯洁云视频流拉取" Command="{Binding AddStreamTabCommand}" Style="{StaticResource MaterialDesignFlatButton}" HorizontalAlignment="Left" />
