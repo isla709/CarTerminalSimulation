@@ -1,0 +1,182 @@
+<UserControl x:Class="TerminalSimulation.Wpf.Views.Utilities.XunjieCloudStreamView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:TerminalSimulation.Wpf.Views.Utilities"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:vlc="clr-namespace:LibVLCSharp.WPF;assembly=LibVLCSharp.WPF"
+             xmlns:vm="clr-namespace:TerminalSimulation.Wpf.ViewModels.Utilities"
+             xmlns:converters="clr-namespace:TerminalSimulation.Wpf.Converters"
+             xmlns:helpers="clr-namespace:TerminalSimulation.Wpf.Helpers"
+             mc:Ignorable="d" 
+             d:DesignHeight="450" d:DesignWidth="800"
+             d:DataContext="{d:DesignInstance vm:XunjieCloudStreamViewModel}">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
+        <converters:InvertBooleanConverter x:Key="InvertBooleanConverter" />
+    </UserControl.Resources>
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="2*" />
+            <ColumnDefinition Width="1*" MinWidth="250" />
+        </Grid.ColumnDefinitions>
+
+        <!-- 左侧视频区域 -->
+        <materialDesign:Card Grid.Column="0" Margin="0,0,8,0" Background="Black">
+            <Grid>
+                <vlc:VideoView MediaPlayer="{Binding MediaPlayer}" />
+                
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding IsPlaying, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                    <materialDesign:PackIcon Kind="VideoOffOutline" Width="64" Height="64" Foreground="#888888" HorizontalAlignment="Center" />
+                    <TextBlock Text="尚未拉取视频流" Foreground="#888888" Margin="0,16,0,0" FontSize="16" HorizontalAlignment="Center" />
+                </StackPanel>
+            </Grid>
+        </materialDesign:Card>
+
+        <!-- 右侧控制与日志区域 -->
+        <materialDesign:Card Grid.Column="1" Margin="0">
+            <Grid Margin="16">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0" Margin="0,0,0,16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="流媒体拉取配置" Style="{StaticResource MaterialDesignHeadline6TextBlock}" VerticalAlignment="Center" />
+                    <Button Grid.Column="1" Content="退出登录" Command="{Binding LogoutCommand}" Style="{StaticResource MaterialDesignFlatButton}" Foreground="Red"
+                            Visibility="{Binding IsLoggedIn, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                </Grid>
+
+                <!-- 登录板块 -->
+                <StackPanel Grid.Row="1" Visibility="{Binding IsLoggedIn, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                    <ComboBox materialDesign:HintAssist.Hint="账号 (Username)" 
+                              IsEditable="True"
+                              Text="{Binding SelectedUsername, UpdateSourceTrigger=PropertyChanged}" 
+                              ItemsSource="{Binding SavedUsernames}"
+                              Style="{StaticResource MaterialDesignFloatingHintComboBox}" 
+                              Margin="0,0,0,16" />
+                    <PasswordBox materialDesign:HintAssist.Hint="密码 (Password)" 
+                             helpers:PasswordHelper.Attach="True"
+                             helpers:PasswordHelper.Password="{Binding Password, UpdateSourceTrigger=PropertyChanged}" 
+                             Style="{StaticResource MaterialDesignFloatingHintPasswordBox}" 
+                             Margin="0,0,0,24" />
+                    <Button Content="登录平台" Command="{Binding LoginCommand}" Margin="0,0,0,16" Foreground="White" />
+                </StackPanel>
+
+                <!-- 配置项 (已登录状态) -->
+                <StackPanel Grid.Row="1" Visibility="{Binding IsLoggedIn, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Grid Margin="0,0,0,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox materialDesign:HintAssist.Hint="设备号 (Device No)" 
+                                 Text="{Binding DeviceNo, UpdateSourceTrigger=PropertyChanged}" 
+                                 Style="{StaticResource MaterialDesignFloatingHintTextBox}" />
+                        <Button Grid.Column="2" Content="获取通道" Command="{Binding FetchChannelsCommand}" Foreground="White" />
+                    </Grid>
+
+                    <Grid Margin="0,0,0,24">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox materialDesign:HintAssist.Hint="选择通道 (Channel)" 
+                                  ItemsSource="{Binding AvailableChannels}"
+                                  SelectedItem="{Binding SelectedChannel}"
+                                  Style="{StaticResource MaterialDesignFloatingHintComboBox}" />
+                        
+                        <ComboBox Grid.Column="2" materialDesign:HintAssist.Hint="数据类型 (Data Type)" 
+                                  ItemsSource="{Binding DataTypes}"
+                                  SelectedItem="{Binding SelectedDataType}"
+                                  DisplayMemberPath="Name"
+                                  Style="{StaticResource MaterialDesignFloatingHintComboBox}" />
+                    </Grid>
+
+                    <!-- 操作按钮 -->
+                    <Grid Margin="0,0,0,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="8" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Button Grid.Row="0" Grid.Column="0" Content="开启通道" Command="{Binding OpenChannelCommand}" Foreground="White" />
+                        <Button Grid.Row="0" Grid.Column="2" Content="关闭通道" Command="{Binding CloseChannelCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" />
+                        
+                        <Button Grid.Row="2" Grid.Column="0" Content="开始拉取" Command="{Binding StartPlayCommand}" 
+                                Foreground="White"
+                                IsEnabled="{Binding IsPlaying, Converter={StaticResource InvertBooleanConverter}}" />
+                        <Button Grid.Row="2" Grid.Column="2" Content="结束拉取" Command="{Binding StopPlayCommand}" 
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                IsEnabled="{Binding IsPlaying}" />
+                    </Grid>
+                </StackPanel>
+
+                <!-- 状态与日志 -->
+                <Grid Grid.Row="3">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    
+                    <StackPanel Grid.Row="0" Margin="0,0,0,8">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <TextBlock Text="状态: " FontWeight="Bold" />
+                            <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="0,0,16,0" />
+                            
+                            <TextBlock Text="网速: " FontWeight="Bold" />
+                            <TextBlock Text="{Binding CurrentBitrate}" Foreground="Green" Margin="0,0,16,0" />
+
+                            <TextBlock Text="音频: " FontWeight="Bold" />
+                            <TextBlock Text="{Binding HasAudioTrack}" Foreground="Orange" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <materialDesign:PackIcon Kind="VolumeHigh" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <Slider Minimum="0" Maximum="100" Value="{Binding Volume}" Width="150" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding NetworkLogs}" 
+                              AutoGenerateColumns="False" CanUserAddRows="False" 
+                              Background="{DynamicResource MaterialDesignPaper}"
+                              HeadersVisibility="Column"
+                              RowBackground="Transparent"
+                              AlternatingRowBackground="#F5F5F5"
+                              GridLinesVisibility="None"
+                              BorderThickness="1" BorderBrush="#E0E0E0">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="时间" Binding="{Binding Time}" Width="Auto" FontFamily="Consolas" FontSize="11" />
+                            <DataGridTextColumn Header="类型" Binding="{Binding Type}" Width="Auto" FontWeight="Bold" FontSize="11" />
+                            <DataGridTextColumn Header="请求/日志详情" Binding="{Binding Message}" Width="*">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="TextWrapping" Value="Wrap" />
+                                        <Setter Property="FontFamily" Value="Consolas" />
+                                        <Setter Property="FontSize" Value="11" />
+                                        <Setter Property="Padding" Value="4,2" />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </Grid>
+        </materialDesign:Card>
+    </Grid>
+</UserControl>

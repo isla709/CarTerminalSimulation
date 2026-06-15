@@ -9,6 +9,8 @@
         xmlns:local="clr-namespace:TerminalSimulation.Wpf"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         xmlns:vlc="clr-namespace:LibVLCSharp.WPF;assembly=LibVLCSharp.WPF"
+        xmlns:utils="clr-namespace:TerminalSimulation.Wpf.Views.Utilities"
+        xmlns:vmut="clr-namespace:TerminalSimulation.Wpf.ViewModels.Utilities"
         mc:Ignorable="d"
         TextElement.Foreground="{DynamicResource MaterialDesignBody}"
         TextElement.FontWeight="Regular"
@@ -32,6 +34,10 @@
         <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
         <converters:WidthToColumnsConverter x:Key="WidthToColumnsConverter" />
         <converters:AspectRatioConverter x:Key="AspectRatioConverter" />
+        
+        <DataTemplate DataType="{x:Type vmut:XunjieCloudStreamViewModel}">
+            <utils:XunjieCloudStreamView />
+        </DataTemplate>
         
         <!-- Ensure Cards respond dynamically to background brush changes -->
         <Style TargetType="{x:Type materialDesign:Card}" BasedOn="{StaticResource {x:Type materialDesign:Card}}">
@@ -215,10 +221,10 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Analyzer Button -->
-                    <ToggleButton IsChecked="{Binding IsAnalyzerVisible}" Style="{StaticResource MaterialDesignActionToggleButton}" Width="30" Height="30" Background="Transparent" BorderThickness="0" ToolTip="报文解析器" Foreground="White" Margin="0,0,8,0">
+                    <!-- Utilities Button -->
+                    <ToggleButton IsChecked="{Binding IsUtilitiesVisible}" Style="{StaticResource MaterialDesignActionToggleButton}" Width="30" Height="30" Background="Transparent" BorderThickness="0" ToolTip="实用工具" Foreground="White" Margin="0,0,8,0">
                         <ToggleButton.Content>
-                            <materialDesign:PackIcon Kind="CodeJson" Width="18" Height="18" />
+                            <materialDesign:PackIcon Kind="Toolbox" Width="18" Height="18" />
                         </ToggleButton.Content>
                         <materialDesign:ToggleButtonAssist.OnContent>
                             <materialDesign:PackIcon Kind="KeyboardReturn" Width="18" Height="18" />
@@ -253,10 +259,10 @@
                     <Setter Property="Visibility" Value="Visible" />
                     <Setter Property="Opacity" Value="1" />
                     <Style.Triggers>
-                        <DataTrigger Binding="{Binding IsAnalyzerVisible}" Value="True">
+                        <DataTrigger Binding="{Binding IsUtilitiesVisible}" Value="True">
                             <Setter Property="Visibility" Value="Collapsed" />
                         </DataTrigger>
-                        <DataTrigger Binding="{Binding IsAnalyzerVisible}" Value="False">
+                        <DataTrigger Binding="{Binding IsUtilitiesVisible}" Value="False">
                             <DataTrigger.EnterActions>
                                 <BeginStoryboard>
                                     <Storyboard>
@@ -1049,14 +1055,14 @@
         </Grid>
         </Grid> <!-- Closes Normal Main Content Wrapper -->
 
-        <!-- Analyzer View -->
+        <!-- Utilities View -->
         <Grid Grid.Row="1" Grid.RowSpan="2" Margin="8">
             <Grid.Style>
                 <Style TargetType="Grid">
                     <Setter Property="Visibility" Value="Collapsed" />
                     <Setter Property="Opacity" Value="1" />
                     <Style.Triggers>
-                        <DataTrigger Binding="{Binding IsAnalyzerVisible}" Value="True">
+                        <DataTrigger Binding="{Binding IsUtilitiesVisible}" Value="True">
                             <Setter Property="Visibility" Value="Visible" />
                             <DataTrigger.EnterActions>
                                 <BeginStoryboard>
@@ -1069,78 +1075,177 @@
                     </Style.Triggers>
                 </Style>
             </Grid.Style>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-            </Grid.RowDefinitions>
-            <materialDesign:Card Grid.Row="0" Margin="0,0,0,8">
-                <Grid Margin="16">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBox Grid.Column="0" materialDesign:HintAssist.Hint="输入 JT808 16进制原始报文" Style="{StaticResource MaterialDesignOutlinedTextBox}" Text="{Binding AnalyzerInputHex}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Height="80" Margin="0,0,16,0" FontFamily="Consolas" />
-                    <StackPanel Grid.Column="1" Orientation="Vertical" VerticalAlignment="Center" Width="120">
-                        <Button Command="{Binding AnalyzeMessageCommand}" Content="解析报文" Height="40" Style="{StaticResource MaterialDesignRaisedButton}" Foreground="White" Cursor="Hand" Margin="0,0,0,8" />
-                        <ComboBox SelectedIndex="{Binding AnalyzerMode}" materialDesign:HintAssist.Hint="解析模式">
-                            <ComboBoxItem Content="表格解析模式" />
-                            <ComboBoxItem Content="树状解析模式" />
-                        </ComboBox>
-                    </StackPanel>
-                </Grid>
-            </materialDesign:Card>
             
-            <materialDesign:Card Grid.Row="1">
-                <Grid>
-                    <TreeView x:Name="AnalyzerTreeView" PreviewKeyDown="AnalyzerTreeView_PreviewKeyDown" ItemsSource="{Binding AnalyzerResultTree}" Margin="8" FontFamily="Consolas" FontSize="14">
-                        <TreeView.Style>
-                            <Style TargetType="TreeView" BasedOn="{StaticResource MaterialDesignTreeView}">
-                                <Setter Property="Visibility" Value="Collapsed" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding AnalyzerMode}" Value="1">
-                                        <Setter Property="Visibility" Value="Visible" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TreeView.Style>
-                        <TreeView.ItemContainerStyle>
-                            <Style TargetType="TreeViewItem" BasedOn="{StaticResource MaterialDesignTreeViewItem}">
-                                <Setter Property="IsExpanded" Value="True" />
-                            </Style>
-                        </TreeView.ItemContainerStyle>
-                        <TreeView.ItemTemplate>
-                            <HierarchicalDataTemplate ItemsSource="{Binding Children}">
-                                <StackPanel Orientation="Horizontal" Margin="0,2">
-                                    <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Margin="0,0,8,0" />
-                                    <TextBlock Text="{Binding Value}" Foreground="{DynamicResource MaterialDesignBody}" />
-                                </StackPanel>
-                            </HierarchicalDataTemplate>
-                        </TreeView.ItemTemplate>
-                    </TreeView>
-                    
-                    <DataGrid ItemsSource="{Binding AnalyzerResultTable}" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True" Margin="8" FontFamily="Consolas" FontSize="14" HeadersVisibility="Column" SelectionUnit="Cell" SelectionMode="Extended" ClipboardCopyMode="ExcludeHeader">
-                        <DataGrid.Style>
-                            <Style TargetType="DataGrid" BasedOn="{StaticResource MaterialDesignDataGrid}">
-                                <Setter Property="Visibility" Value="Collapsed" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding AnalyzerMode}" Value="0">
-                                        <Setter Property="Visibility" Value="Visible" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </DataGrid.Style>
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="字段" Binding="{Binding Field}" CanUserSort="False" />
-                            <DataGridTextColumn Header="报文原数据" Binding="{Binding HexData}" SortMemberPath="Index" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" FontWeight="Bold" />
-                            <DataGridTextColumn Header="数据类型" Binding="{Binding DataType}" SortMemberPath="Index" />
-                            <DataGridTextColumn Header="起始位" Binding="{Binding OffsetStr}" SortMemberPath="Index" />
-                            <DataGridTextColumn Header="数据长度" Binding="{Binding LengthStr}" SortMemberPath="Index" />
-                            <DataGridTextColumn Header="分析结果" Binding="{Binding Result}" Width="*" SortMemberPath="Index" />
-                        </DataGrid.Columns>
-                    </DataGrid>
-                </Grid>
-            </materialDesign:Card>
+            <TabControl Background="Transparent" BorderThickness="0" Padding="0">
+                <TabControl.Template>
+                    <ControlTemplate TargetType="TabControl">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Grid Grid.Row="0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TabPanel x:Name="HeaderPanel" Grid.Column="0" Panel.ZIndex="1" IsItemsHost="True" KeyboardNavigation.TabIndex="1" VerticalAlignment="Bottom"/>
+                                <materialDesign:PopupBox Grid.Column="1" Width="28" Height="28" Margin="4,0,0,4" VerticalAlignment="Bottom" ToolTip="添加标签" Foreground="{DynamicResource MaterialDesignBodyLight}" PlacementMode="BottomAndAlignLeftEdges">
+                                    <materialDesign:PopupBox.ToggleContent>
+                                        <materialDesign:PackIcon Kind="Plus" />
+                                    </materialDesign:PopupBox.ToggleContent>
+                                    <StackPanel Margin="8">
+                                        <Button Content="讯洁云视频流拉取" Command="{Binding AddStreamTabCommand}" Style="{StaticResource MaterialDesignFlatButton}" HorizontalAlignment="Left" />
+                                    </StackPanel>
+                                </materialDesign:PopupBox>
+                            </Grid>
+                            <Border Grid.Row="1" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                                <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent" Margin="{TemplateBinding Padding}"/>
+                            </Border>
+                        </Grid>
+                    </ControlTemplate>
+                </TabControl.Template>
+                <TabControl.Resources>
+                    <Style TargetType="TabItem">
+                        <Setter Property="Background" Value="{DynamicResource MaterialDesignPaper}" />
+                        <Setter Property="Foreground" Value="{DynamicResource MaterialDesignBody}" />
+                        <Setter Property="Height" Value="36" />
+                        <Setter Property="MaxWidth" Value="200" />
+                        <Setter Property="MinWidth" Value="120" />
+                        <Setter Property="Padding" Value="16,0,16,0" />
+                        <Setter Property="Margin" Value="2,0,2,0" />
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="TabItem">
+                                    <Grid x:Name="RootGrid">
+                                        <Border x:Name="BgBorder" Background="{TemplateBinding Background}" CornerRadius="8,8,0,0" Opacity="0.8" Margin="{TemplateBinding Margin}"/>
+                                        <Border x:Name="Border" CornerRadius="8,8,0,0" Padding="{TemplateBinding Padding}" Margin="{TemplateBinding Margin}">
+                                            <ContentPresenter ContentSource="Header" HorizontalAlignment="Left" VerticalAlignment="Center" />
+                                        </Border>
+                                    </Grid>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="BgBorder" Property="Background" Value="{DynamicResource MaterialDesignCardBackground}" />
+                                            <Setter TargetName="BgBorder" Property="Opacity" Value="1.0" />
+                                            <Setter Property="FontWeight" Value="SemiBold" />
+                                            <Setter Property="Panel.ZIndex" Value="100" />
+                                        </Trigger>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="BgBorder" Property="Background" Value="{DynamicResource MaterialDesignSelection}" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </TabControl.Resources>
+                
+                <TabControl.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="{Binding IconKind}" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding Title}" VerticalAlignment="Center"/>
+                            <Button Command="{Binding CloseCommand}" Visibility="{Binding IsClosable, Converter={StaticResource BooleanToVisibilityConverter}}" Style="{StaticResource MaterialDesignToolButton}" Width="20" Height="20" Margin="8,0,-8,0">
+                                <materialDesign:PackIcon Kind="Close" Width="12" Height="12" />
+                            </Button>
+                        </StackPanel>
+                    </DataTemplate>
+                </TabControl.ItemTemplate>
+                
+                <TabControl.ItemsSource>
+                    <CompositeCollection>
+                <TabItem>
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="CodeJson" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="报文解析器" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </TabItem.Header>
+                        
+                        <materialDesign:Card Margin="0" Background="{DynamicResource MaterialDesignCardBackground}">
+                            <Grid Margin="8">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            
+                            <materialDesign:Card Grid.Row="0" Margin="0,0,0,8" Background="Transparent" materialDesign:ElevationAssist.Elevation="Dp0">
+                                <Grid Margin="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0" materialDesign:HintAssist.Hint="输入 JT808 16进制原始报文" Style="{StaticResource MaterialDesignOutlinedTextBox}" Text="{Binding AnalyzerInputHex}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Height="80" Margin="0,0,16,0" FontFamily="Consolas" />
+                                    <StackPanel Grid.Column="1" Orientation="Vertical" VerticalAlignment="Center" Width="120">
+                                        <Button Command="{Binding AnalyzeMessageCommand}" Content="解析报文" Height="40" Style="{StaticResource MaterialDesignRaisedButton}" Foreground="White" Cursor="Hand" Margin="0,0,0,8" />
+                                        <ComboBox SelectedIndex="{Binding AnalyzerMode}" materialDesign:HintAssist.Hint="解析模式">
+                                            <ComboBoxItem Content="表格解析模式" />
+                                            <ComboBoxItem Content="树状解析模式" />
+                                        </ComboBox>
+                                    </StackPanel>
+                                </Grid>
+                            </materialDesign:Card>
+                            
+                            <materialDesign:Card Grid.Row="1" Background="Transparent" materialDesign:ElevationAssist.Elevation="Dp0">
+                                <Grid>
+                                    <TreeView x:Name="AnalyzerTreeView" PreviewKeyDown="AnalyzerTreeView_PreviewKeyDown" ItemsSource="{Binding AnalyzerResultTree}" Margin="8" FontFamily="Consolas" FontSize="14">
+                                        <TreeView.Style>
+                                            <Style TargetType="TreeView" BasedOn="{StaticResource MaterialDesignTreeView}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding AnalyzerMode}" Value="1">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TreeView.Style>
+                                        <TreeView.ItemContainerStyle>
+                                            <Style TargetType="TreeViewItem" BasedOn="{StaticResource MaterialDesignTreeViewItem}">
+                                                <Setter Property="IsExpanded" Value="True" />
+                                            </Style>
+                                        </TreeView.ItemContainerStyle>
+                                        <TreeView.ItemTemplate>
+                                            <HierarchicalDataTemplate ItemsSource="{Binding Children}">
+                                                <StackPanel Orientation="Horizontal" Margin="0,2">
+                                                    <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Margin="0,0,8,0" />
+                                                    <TextBlock Text="{Binding Value}" Foreground="{DynamicResource MaterialDesignBody}" />
+                                                </StackPanel>
+                                            </HierarchicalDataTemplate>
+                                        </TreeView.ItemTemplate>
+                                    </TreeView>
+                                    
+                                    <DataGrid ItemsSource="{Binding AnalyzerResultTable}" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True" Margin="8" FontFamily="Consolas" FontSize="14" HeadersVisibility="Column" SelectionUnit="Cell" SelectionMode="Extended" ClipboardCopyMode="ExcludeHeader">
+                                        <DataGrid.Style>
+                                            <Style TargetType="DataGrid" BasedOn="{StaticResource MaterialDesignDataGrid}">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding AnalyzerMode}" Value="0">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </DataGrid.Style>
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Header="字段" Binding="{Binding Field}" CanUserSort="False" />
+                                            <DataGridTextColumn Header="报文原数据" Binding="{Binding HexData}" SortMemberPath="Index" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" FontWeight="Bold" />
+                                            <DataGridTextColumn Header="数据类型" Binding="{Binding DataType}" SortMemberPath="Index" />
+                                            <DataGridTextColumn Header="起始位" Binding="{Binding OffsetStr}" SortMemberPath="Index" />
+                                            <DataGridTextColumn Header="数据长度" Binding="{Binding LengthStr}" SortMemberPath="Index" />
+                                            <DataGridTextColumn Header="分析结果" Binding="{Binding Result}" Width="*" SortMemberPath="Index" />
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                </Grid>
+                            </materialDesign:Card>
+                        </Grid>
+                        </materialDesign:Card>
+                    </TabItem>
+                    <CollectionContainer Collection="{Binding Source={x:Reference DummyDynamicTabs}, Path=DataContext.DynamicUtilityTabs}" />
+                    </CompositeCollection>
+                </TabControl.ItemsSource>
+            </TabControl>
         </Grid>
+        
+        <FrameworkElement x:Name="DummyDynamicTabs" Visibility="Collapsed" />
 
         </Grid>
     </Grid>

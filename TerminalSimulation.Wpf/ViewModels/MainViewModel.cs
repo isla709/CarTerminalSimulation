@@ -1251,7 +1251,18 @@ namespace TerminalSimulation.Wpf.ViewModels
 
         [ObservableProperty] private bool _autoScrollLogs = true;
         [ObservableProperty] private ObservableCollection<LogMessageItem> _logMessages = new();
-        [ObservableProperty] private bool _isAnalyzerVisible = false;
+        [ObservableProperty] private bool _isUtilitiesVisible = false;
+        
+        public ObservableCollection<TerminalSimulation.Wpf.ViewModels.Utilities.UtilityTabViewModelBase> DynamicUtilityTabs { get; } = new();
+
+        [RelayCommand]
+        private void AddStreamTab()
+        {
+            var tab = new TerminalSimulation.Wpf.ViewModels.Utilities.XunjieCloudStreamViewModel();
+            tab.RequestClose += (t) => DynamicUtilityTabs.Remove(t);
+            DynamicUtilityTabs.Add(tab);
+        }
+
         [ObservableProperty] private string _analyzerInputHex = "";
         public ObservableCollection<AnalyzerNode> AnalyzerResultTree { get; } = new();
         
