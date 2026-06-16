@@ -15,7 +15,23 @@ public partial class App : Application
         base.OnStartup(e);
         try
         {
-            LibVLCSharp.Shared.Core.Initialize();
+            string tempDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "CarTerminalSim_LibVLC_x64");
+            if (!System.IO.File.Exists(System.IO.Path.Combine(tempDir, "libvlc.dll")))
+            {
+                if (!System.IO.Directory.Exists(tempDir)) System.IO.Directory.CreateDirectory(tempDir);
+                using var stream = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("libvlc.zip");
+                if (stream != null)
+                {
+                    using var archive = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Read);
+                    System.IO.Compression.ZipFileExtensions.ExtractToDirectory(archive, tempDir, true);
+                }
+                else
+                {
+                    var names = string.Join(", ", System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceNames());
+                    MessageBox.Show("Cannot find libvlc.zip. Available resources: " + names);
+                }
+            }
+            LibVLCSharp.Shared.Core.Initialize(tempDir);
         }
         catch (Exception ex)
         {

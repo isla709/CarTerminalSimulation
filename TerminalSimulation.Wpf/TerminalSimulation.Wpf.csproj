@@ -13,7 +13,7 @@
     <PackageReference Include="System.IO.Ports" Version="8.0.0" />
     <PackageReference Include="System.Speech" Version="8.0.0" />
     <PackageReference Include="System.Text.Json" Version="9.0.0" />
-    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.23.1" />
+    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.23.1" ExcludeAssets="build" GeneratePathProperty="true" />
     <PackageReference Include="Xabe.FFmpeg" Version="6.0.2" />
     <PackageReference Include="Xabe.FFmpeg.Downloader" Version="6.0.2" />
   </ItemGroup>
@@ -27,8 +27,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DebugType>embedded</DebugType>
+    <PublishDocumentationFiles>false</PublishDocumentationFiles>
+    <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
+    <PublishDir>bin\Publish\</PublishDir>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(Configuration)' == 'Debug'">
@@ -70,6 +75,21 @@ public static class AppVersionInfo
     <ItemGroup>
       <Compile Include="$(IntermediateOutputPath)AppVersionInfo.g.cs" />
     </ItemGroup>
+  </Target>
+
+  <ItemGroup>
+    <EmbeddedResource Include="$(IntermediateOutputPath)libvlc.zip">
+      <LogicalName>libvlc.zip</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <Target Name="EmbedLibVLC" BeforeTargets="BeforeResGen;PrepareForBuild">
+    <PropertyGroup>
+      <LibVlcSourceDir>$(PkgVideoLAN_LibVLC_Windows)\build\x64</LibVlcSourceDir>
+      <LibVlcZipPath>$(IntermediateOutputPath)libvlc.zip</LibVlcZipPath>
+    </PropertyGroup>
+    <!-- 动态压缩 LibVLC 的原生库并作为内嵌资源嵌入 -->
+    <ZipDirectory SourceDirectory="$(LibVlcSourceDir)" DestinationFile="$(LibVlcZipPath)" Overwrite="true" Condition="Exists('$(LibVlcSourceDir)')" />
   </Target>
 
 </Project>
