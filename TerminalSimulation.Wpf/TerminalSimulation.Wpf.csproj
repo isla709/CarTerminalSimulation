@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\TerminalSimulation.Protocol\TerminalSimulation.Protocol.csproj" />
     <ProjectReference Include="..\TerminalSimulation.Network\TerminalSimulation.Network.csproj" />
+    <ProjectReference Include="..\TerminalSimulation.PluginBase\TerminalSimulation.PluginBase.csproj" />
   </ItemGroup>
 
   <ItemGroup>

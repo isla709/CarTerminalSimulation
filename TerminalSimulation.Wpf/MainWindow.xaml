@@ -9,8 +9,8 @@
         xmlns:local="clr-namespace:TerminalSimulation.Wpf"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         xmlns:vlc="clr-namespace:LibVLCSharp.WPF;assembly=LibVLCSharp.WPF"
-        xmlns:utils="clr-namespace:TerminalSimulation.Wpf.Views.Utilities"
-        xmlns:vmut="clr-namespace:TerminalSimulation.Wpf.ViewModels.Utilities"
+        xmlns:plugins_vm="clr-namespace:TerminalSimulation.Wpf.ViewModels.Plugins"
+        xmlns:plugin="clr-namespace:TerminalSimulation.PluginBase;assembly=TerminalSimulation.PluginBase"
         mc:Ignorable="d"
         TextElement.Foreground="{DynamicResource MaterialDesignBody}"
         TextElement.FontWeight="Regular"
@@ -34,10 +34,9 @@
         <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
         <converters:WidthToColumnsConverter x:Key="WidthToColumnsConverter" />
         <converters:AspectRatioConverter x:Key="AspectRatioConverter" />
+        <converters:PluginToContentConverter x:Key="PluginToContentConverter" />
         
-        <DataTemplate DataType="{x:Type vmut:XunjieCloudStreamViewModel}">
-            <utils:XunjieCloudStreamView />
-        </DataTemplate>
+        
         
         <!-- Ensure Cards respond dynamically to background brush changes -->
         <Style TargetType="{x:Type materialDesign:Card}" BasedOn="{StaticResource {x:Type materialDesign:Card}}">
@@ -1054,7 +1053,37 @@
                             </ScrollViewer>
                         </Grid>
                     </TabItem>
-                </TabControl>
+                
+                    <!-- 插件面板 -->
+                    <TabItem>
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="Puzzle" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="插件功能" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </TabItem.Header>
+                        <Grid Margin="8">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding MainPlugins}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <materialDesign:Card Margin="0,0,0,16" Padding="16">
+                                                <StackPanel>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                        <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="18" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" />
+                                                        <TextBlock Text="{Binding Version}" Margin="8,0,0,0" VerticalAlignment="Bottom" Foreground="Gray" FontSize="12" />
+                                                    </StackPanel>
+                                                    <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Margin="0,0,0,16" Foreground="Gray" FontSize="14" />
+                                                    <ContentControl Content="{Binding Converter={StaticResource PluginToContentConverter}}" />
+                                                </StackPanel>
+                                            </materialDesign:Card>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Grid>
+                    </TabItem>
+</TabControl>
             </materialDesign:Card>
         </Grid>
         </Grid> <!-- Closes Normal Main Content Wrapper -->
@@ -1094,16 +1123,23 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <TabPanel x:Name="HeaderPanel" Grid.Column="0" Panel.ZIndex="1" IsItemsHost="True" KeyboardNavigation.TabIndex="1" VerticalAlignment="Bottom"/>
-                                <materialDesign:PopupBox Grid.Column="1" Width="28" Height="28" Margin="4,0,0,4" VerticalAlignment="Bottom" ToolTip="添加标签" PlacementMode="BottomAndAlignLeftEdges">
+                                <materialDesign:PopupBox Grid.Column="1" Width="28" Height="28" Margin="4,0,0,4" VerticalAlignment="Bottom" ToolTip="添加工具" PlacementMode="BottomAndAlignLeftEdges">
                                     <materialDesign:PopupBox.ToggleContent>
                                         <Border Background="{DynamicResource MaterialDesignPaper}" CornerRadius="14" Opacity="0.8" Width="28" Height="28">
                                             <materialDesign:PackIcon Kind="Plus" Foreground="{DynamicResource MaterialDesignBodyLight}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                         </Border>
                                     </materialDesign:PopupBox.ToggleContent>
                                     <StackPanel Margin="8">
-                                        <Button Content="讯洁云视频流拉取" Command="{Binding AddStreamTabCommand}" Style="{StaticResource MaterialDesignFlatButton}" HorizontalAlignment="Left" />
+                                        <ItemsControl ItemsSource="{Binding UtilityPlugins}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Button Content="{Binding Name}" Command="{Binding DataContext.OpenUtilityPluginCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" Style="{StaticResource MaterialDesignFlatButton}" HorizontalAlignment="Left" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
                                     </StackPanel>
                                 </materialDesign:PopupBox>
+                                
                             </Grid>
                             <Border Grid.Row="1" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
                                 <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent" Margin="{TemplateBinding Padding}"/>
@@ -1112,6 +1148,9 @@
                     </ControlTemplate>
                 </TabControl.Template>
                 <TabControl.Resources>
+                    <DataTemplate DataType="{x:Type plugins_vm:OpenedPluginTab}">
+                        <ContentControl Content="{Binding Content}" />
+                    </DataTemplate>
                     <Style TargetType="TabItem">
                         <Setter Property="Background" Value="{DynamicResource MaterialDesignPaper}" />
                         <Setter Property="Foreground" Value="{DynamicResource MaterialDesignBody}" />
@@ -1151,7 +1190,7 @@
                         <StackPanel Orientation="Horizontal">
                             <materialDesign:PackIcon Kind="{Binding IconKind}" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
                             <TextBlock Text="{Binding Title}" VerticalAlignment="Center"/>
-                            <Button Command="{Binding CloseCommand}" Visibility="{Binding IsClosable, Converter={StaticResource BooleanToVisibilityConverter}}" Style="{StaticResource MaterialDesignToolButton}" Width="20" Height="20" Margin="8,0,-8,0">
+                            <Button Command="{Binding CloseCommand}" Style="{StaticResource MaterialDesignToolButton}" Width="20" Height="20" Margin="8,0,-8,0">
                                 <materialDesign:PackIcon Kind="Close" Width="12" Height="12" />
                             </Button>
                         </StackPanel>
@@ -1245,7 +1284,7 @@
                         </Grid>
                         </materialDesign:Card>
                     </TabItem>
-                    <CollectionContainer Collection="{Binding Source={x:Reference DummyDynamicTabs}, Path=DataContext.DynamicUtilityTabs}" />
+                    <CollectionContainer Collection="{Binding Source={x:Reference DummyDynamicTabs}, Path=DataContext.OpenedUtilityTabs}" />
                     </CompositeCollection>
                 </TabControl.ItemsSource>
             </TabControl>
@@ -1253,6 +1292,7 @@
         
         <FrameworkElement x:Name="DummyDynamicTabs" Visibility="Collapsed" />
 
-        </Grid>
+
+                </Grid>
     </Grid>
 </Window>

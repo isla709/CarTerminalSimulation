@@ -269,7 +269,7 @@ namespace TerminalSimulation.Wpf.ViewModels
         public bool UseAppVersionAsFirmwareVersion { get; set; } = true;
     }
 
-    public partial class MainViewModel : ObservableObject, IDisposable
+    public partial class MainViewModel : ObservableObject, IDisposable, TerminalSimulation.PluginBase.IPluginContext
     {
         private readonly TerminalNetworkClient _networkClient;
         private readonly JT808Manager _protocolManager;
@@ -424,7 +424,6 @@ namespace TerminalSimulation.Wpf.ViewModels
         }
 
         public string AppTitle => $"车载定位终端模拟系统 (JT808) {AppVersionInfo.FullVersion}";
-
         public MainViewModel()
         {
             InitializeFlags();
@@ -471,6 +470,9 @@ namespace TerminalSimulation.Wpf.ViewModels
             LoadRegions();
             InitThemeImages();
             RefreshSerialPorts();
+
+            // Load Plugins
+            InitializePlugins();
 
             // 监听属性变化并保存配置
             this.PropertyChanged += (s, e) =>
@@ -1285,15 +1287,6 @@ namespace TerminalSimulation.Wpf.ViewModels
         [ObservableProperty] private ObservableCollection<LogMessageItem> _logMessages = new();
         [ObservableProperty] private bool _isUtilitiesVisible = false;
         
-        public ObservableCollection<TerminalSimulation.Wpf.ViewModels.Utilities.UtilityTabViewModelBase> DynamicUtilityTabs { get; } = new();
-
-        [RelayCommand]
-        private void AddStreamTab()
-        {
-            var tab = new TerminalSimulation.Wpf.ViewModels.Utilities.XunjieCloudStreamViewModel();
-            tab.RequestClose += (t) => DynamicUtilityTabs.Remove(t);
-            DynamicUtilityTabs.Add(tab);
-        }
 
         [ObservableProperty] private string _analyzerInputHex = "";
         public ObservableCollection<AnalyzerNode> AnalyzerResultTree { get; } = new();
@@ -3120,6 +3113,9 @@ namespace TerminalSimulation.Wpf.ViewModels
                     Log("系统", $"自定义附加字段[{attach.AttachId}]解析失败: {ex.Message}");
                 }
             }
+            
+            TriggerOnLocationReporting(rawAppendBytesList);
+            
             if (standardAttachBytes.Count > 0)
             {
                 rawAppendBytesList.InsertRange(0, standardAttachBytes);
@@ -3786,6 +3782,15 @@ namespace TerminalSimulation.Wpf.ViewModels
                 SaveConfig();
             }
         }
+
+        
+
+        public void LogMessage(string source, string message)
+        {
+            Log(source, message);
+        }
+
+        
     }
 
     public class GeoPoint

@@ -5,7 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
-namespace TerminalSimulation.Wpf.Services
+namespace TerminalSimulation.Plugins.XunjieCloud.Services
 {
     public class SavedAccount
     {
@@ -21,7 +21,7 @@ namespace TerminalSimulation.Wpf.Services
 
     public static class UtilitySettingsManager
     {
-        private static readonly string SettingsFile = Path.Combine(TerminalSimulation.Wpf.Helpers.PathHelper.ExeDir, "utility_settings.json");
+        private static readonly string SettingsFile = Path.Combine(AppContext.BaseDirectory, "utility_settings.json");
         private static readonly byte[] Key = Encoding.UTF8.GetBytes("TerminalSimUtili808AESKey123456!"); // 32 bytes
         private static readonly byte[] Iv = Encoding.UTF8.GetBytes("TerminalSimIV123"); // 16 bytes
 

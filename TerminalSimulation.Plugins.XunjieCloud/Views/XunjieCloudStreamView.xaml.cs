@@ -1,6 +1,6 @@
 using System.Windows.Controls;
 
-namespace TerminalSimulation.Wpf.Views.Utilities
+namespace TerminalSimulation.Plugins.XunjieCloud.Views
 {
     public partial class XunjieCloudStreamView : UserControl
     {

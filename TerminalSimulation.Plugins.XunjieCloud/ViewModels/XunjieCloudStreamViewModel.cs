@@ -9,11 +9,11 @@ using LibVLCSharp.Shared;
 using System.Net.Http;
 using System.Text.Json;
 using System.Text;
-using TerminalSimulation.Wpf.Services;
+using TerminalSimulation.Plugins.XunjieCloud.Services;
 using System.Linq;
 using System.Text.RegularExpressions;
 
-namespace TerminalSimulation.Wpf.ViewModels.Utilities
+namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
 {
     public class NetworkLogItem
     {
@@ -28,7 +28,7 @@ namespace TerminalSimulation.Wpf.ViewModels.Utilities
         public int Value { get; set; }
     }
 
-    public partial class XunjieCloudStreamViewModel : UtilityTabViewModelBase
+    public partial class XunjieCloudStreamViewModel : ObservableObject, IDisposable
     {
         // Login properties
         [ObservableProperty] private bool _isLoggedIn = false;
@@ -104,9 +104,6 @@ namespace TerminalSimulation.Wpf.ViewModels.Utilities
 
         public XunjieCloudStreamViewModel()
         {
-            Title = "讯洁云视频流拉取";
-            IconKind = "VideoWireless";
-            
             DataTypes.Add(new StreamDataType { Name = "音视频 (Audio & Video)", Value = 0 });
             DataTypes.Add(new StreamDataType { Name = "仅视频 (Video Only)", Value = 1 });
             DataTypes.Add(new StreamDataType { Name = "双向对讲 (Two-way Audio)", Value = 2 });
@@ -571,7 +568,7 @@ namespace TerminalSimulation.Wpf.ViewModels.Utilities
             });
         }
 
-        public override void Dispose()
+        public void Dispose()
         {
             StopPlay();
             _statsTimer?.Stop();
@@ -591,7 +588,6 @@ namespace TerminalSimulation.Wpf.ViewModels.Utilities
                 _libVLC.Dispose();
                 _libVLC = null;
             }
-            base.Dispose();
         }
     }
 }
