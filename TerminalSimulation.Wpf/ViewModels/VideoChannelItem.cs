@@ -106,7 +106,7 @@ namespace TerminalSimulation.Wpf.ViewModels
                 else
                 {
                     // Check and download FFmpeg
-                    string ffmpegPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ffmpeg");
+                    string ffmpegPath = GetResolvedFFmpegPath();
                     if (!Directory.Exists(ffmpegPath) || !File.Exists(Path.Combine(ffmpegPath, "ffmpeg.exe")))
                     {
                         var fileEx = new FileNotFoundException("未在本地找到 FFmpeg 转码组件，准备从备用网络源自动下载。");
@@ -133,7 +133,7 @@ namespace TerminalSimulation.Wpf.ViewModels
                         FFmpeg.SetExecutablesPath(ffmpegPath);
                     }
 
-                    string h264Dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "h264");
+                    string h264Dir = Path.Combine(TerminalSimulation.Wpf.Helpers.PathHelper.ExeDir, "h264");
                     Directory.CreateDirectory(h264Dir);
                     string outputH264 = Path.Combine(h264Dir, $"{Path.GetFileNameWithoutExtension(VideoFilePath)}_{LogicalChannelNo}.h264");
 
@@ -431,11 +431,24 @@ namespace TerminalSimulation.Wpf.ViewModels
 
         private void EnsureFFmpegPath()
         {
-            string ffmpegPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ffmpeg");
+            string ffmpegPath = GetResolvedFFmpegPath();
             if (Directory.Exists(ffmpegPath) && File.Exists(Path.Combine(ffmpegPath, "ffmpeg.exe")))
             {
                 FFmpeg.SetExecutablesPath(ffmpegPath);
             }
+        }
+
+        private string GetResolvedFFmpegPath()
+        {
+            // First check if it's bundled in AppDir (extracted temp folder)
+            string appFFmpeg = Path.Combine(TerminalSimulation.Wpf.Helpers.PathHelper.AppDir, "ffmpeg");
+            if (Directory.Exists(appFFmpeg) && File.Exists(Path.Combine(appFFmpeg, "ffmpeg.exe")))
+            {
+                return appFFmpeg;
+            }
+
+            // Otherwise, default to ExeDir so downloads persist
+            return Path.Combine(TerminalSimulation.Wpf.Helpers.PathHelper.ExeDir, "ffmpeg");
         }
 
         private async Task ExtractThumbnailAsync(string videoPath)
@@ -443,7 +456,7 @@ namespace TerminalSimulation.Wpf.ViewModels
             try
             {
                 EnsureFFmpegPath();
-                string thumbDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "thumbnails");
+                string thumbDir = Path.Combine(TerminalSimulation.Wpf.Helpers.PathHelper.ExeDir, "thumbnails");
                 Directory.CreateDirectory(thumbDir);
 
                 // Clean up old thumbnail if any

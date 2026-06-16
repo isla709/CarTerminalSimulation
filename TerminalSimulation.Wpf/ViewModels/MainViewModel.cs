@@ -676,7 +676,7 @@ namespace TerminalSimulation.Wpf.ViewModels
             }
         }
 
-        private readonly string ConfigFile = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.json");
+        private readonly string ConfigFile = System.IO.Path.Combine(TerminalSimulation.Wpf.Helpers.PathHelper.ExeDir, "config.json");
 
         private void InitializeFlags()
         {

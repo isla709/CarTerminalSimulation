@@ -21,7 +21,7 @@ namespace TerminalSimulation.Wpf.Services
 
     public static class UtilitySettingsManager
     {
-        private static readonly string SettingsFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "utility_settings.json");
+        private static readonly string SettingsFile = Path.Combine(TerminalSimulation.Wpf.Helpers.PathHelper.ExeDir, "utility_settings.json");
         private static readonly byte[] Key = Encoding.UTF8.GetBytes("TerminalSimUtili808AESKey123456!"); // 32 bytes
         private static readonly byte[] Iv = Encoding.UTF8.GetBytes("TerminalSimIV123"); // 16 bytes
 
