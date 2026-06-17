@@ -25,7 +25,7 @@
 
   <PropertyGroup>
     <!-- 手动修改程序版本号 -->
-    <AppVersion>preview2</AppVersion>
+    <AppVersion>preview3</AppVersion>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
