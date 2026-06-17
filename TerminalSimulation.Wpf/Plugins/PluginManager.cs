@@ -20,8 +20,8 @@ namespace TerminalSimulation.Wpf.Plugins
                 return;
             }
 
-            var dllFiles = Directory.GetFiles(pluginsDir, "*.dll");
-            foreach (var file in dllFiles)
+            var pluginFiles = Directory.GetFiles(pluginsDir, "*.Plugin");
+            foreach (var file in pluginFiles)
             {
                 try
                 {

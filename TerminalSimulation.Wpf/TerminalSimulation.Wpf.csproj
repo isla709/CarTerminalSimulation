@@ -19,6 +19,10 @@
     <PackageReference Include="Xabe.FFmpeg.Downloader" Version="6.0.2" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Resource Include="splash_bg.png" />
+  </ItemGroup>
+
   <PropertyGroup>
     <!-- 手动修改程序版本号 -->
     <AppVersion>preview2</AppVersion>

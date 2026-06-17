@@ -1,0 +1,18 @@
+# AI Assistant & Development Rules
+
+You are an AI programming assistant working on the CarTerminalSimulation project. 
+Please adhere strictly to the following directory structure and behavioral rules:
+
+## 1. Scripts & Temporary Files
+- **Rule**: NEVER place auxiliary scripts, one-off patches, or temporary python/bash scripts in the project root directory.
+- **Action**: All such files (e.g., `patch_*.py`, test scripts, transition scripts) MUST be placed inside the `Scripts/` folder.
+- **Exception**: Official project tools and utilities intended for users/developers (like `create_plugin.py`) should remain in the root directory as documented.
+- **Reason**: Keep the root directory clean and maintain project structural integrity.
+
+## 2. Plugin Development
+- **Rule**: Third-party plugins are developed independently. 
+- **Action**: Plugin projects should configure their `TargetExt` to `.Plugin` and output the compiled plugin file locally in their own `bin` directory. They should NOT automatically inject themselves into the main application's directory during the build process, unless they are official built-in plugins.
+- **Action**: Use the `create_plugin.py` script to generate standardized plugin scaffolds.
+
+## 3. General Cleanliness
+- Ensure that you clean up any scratch files or test artifacts generated during your debugging sessions.

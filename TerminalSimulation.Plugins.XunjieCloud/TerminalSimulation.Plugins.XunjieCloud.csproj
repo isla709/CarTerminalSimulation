@@ -19,7 +19,7 @@
   </PropertyGroup>
 
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Command="xcopy /Y /I &quot;$(TargetDir)$(TargetName).dll&quot; &quot;$(ProjectDir)..\TerminalSimulation.Wpf\bin\$(Configuration)\$(TargetFramework)\win-x64\Plugins\&quot;" />
+    <Copy SourceFiles="$(TargetDir)$(TargetName).dll" DestinationFiles="$(ProjectDir)..\TerminalSimulation.Wpf\bin\$(Configuration)\$(TargetFramework)\win-x64\Plugins\$(TargetName).Plugin" />
   </Target>
 
 </Project>
