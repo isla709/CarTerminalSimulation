@@ -1,0 +1,79 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\TerminalSimulation.Protocol\TerminalSimulation.Protocol.csproj" />
+    <ProjectReference Include="..\TerminalSimulation.Network\TerminalSimulation.Network.csproj" />
+    <ProjectReference Include="..\TerminalSimulation.PluginBase.Avalonia\TerminalSimulation.PluginBase.Avalonia.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.14" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.14" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.14" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.14" />
+    <PackageReference Include="Avalonia.Diagnostics" Version="11.3.14" Condition="'$(Configuration)' == 'Debug'" />
+    <PackageReference Include="SukiUI" Version="6.1.1" />
+    <PackageReference Include="Material.Icons.Avalonia" Version="2.1.10" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="LibVLCSharp.Avalonia" Version="3.9.7.1" />
+    <PackageReference Include="System.IO.Ports" Version="8.0.0" />
+    <PackageReference Include="System.Text.Json" Version="9.0.0" />
+    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.23.1" />
+    <PackageReference Include="Xabe.FFmpeg" Version="6.0.2" />
+    <PackageReference Include="Xabe.FFmpeg.Downloader" Version="6.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+    <AvaloniaResource Include="Themes\**" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <AppVersion>preview3-avalonia</AppVersion>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+    <DebugType>embedded</DebugType>
+    <PublishDocumentationFiles>false</PublishDocumentationFiles>
+    <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
+    <PublishDir>bin\Publish\</PublishDir>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(Configuration)' == 'Debug'">
+    <None Include="..\FFmpeg\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>ffmpeg\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Remove="Regions.json" />
+    <AvaloniaResource Include="Regions.json" />
+  </ItemGroup>
+
+  <Target Name="GenerateBuildVersion" BeforeTargets="BeforeCompile">
+    <PropertyGroup>
+      <BuildDate>$([System.DateTime]::Now.ToString("yyyyMMdd"))</BuildDate>
+      <RandomNum>$([System.Guid]::NewGuid().ToString().Substring(0, 4))</RandomNum>
+      <RandomBuildString>build.$(BuildDate).$(RandomNum)</RandomBuildString>
+      <VersionFileContent>
+// &lt;auto-generated/&gt;
+namespace TerminalSimulation.Avalonia%3B
+public static class AppVersionInfo
+{
+    public const string AppVersion = "$(AppVersion)"%3B
+    public const string BuildVersion = "$(RandomBuildString)"%3B
+    public const string FullVersion = AppVersion + "-" + BuildVersion%3B
+}
+      </VersionFileContent>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(IntermediateOutputPath)AppVersionInfo.g.cs" Lines="$(VersionFileContent)" Overwrite="true" WriteOnlyWhenDifferent="false" />
+    <ItemGroup>
+      <Compile Include="$(IntermediateOutputPath)AppVersionInfo.g.cs" />
+    </ItemGroup>
+  </Target>
+
+</Project>

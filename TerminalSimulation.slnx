@@ -1,7 +1,10 @@
 <Solution>
   <Project Path="TerminalSimulation.Network/TerminalSimulation.Network.csproj" />
   <Project Path="TerminalSimulation.PluginBase/TerminalSimulation.PluginBase.csproj" />
+  <Project Path="TerminalSimulation.PluginBase.Avalonia/TerminalSimulation.PluginBase.Avalonia.csproj" />
   <Project Path="TerminalSimulation.Plugins.XunjieCloud/TerminalSimulation.Plugins.XunjieCloud.csproj" />
+  <Project Path="TerminalSimulation.Plugins.XunjieCloud.Avalonia/TerminalSimulation.Plugins.XunjieCloud.Avalonia.csproj" />
   <Project Path="TerminalSimulation.Protocol/TerminalSimulation.Protocol.csproj" />
   <Project Path="TerminalSimulation.Wpf/TerminalSimulation.Wpf.csproj" />
+  <Project Path="TerminalSimulation.Avalonia/TerminalSimulation.Avalonia.csproj" />
 </Solution>

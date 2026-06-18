@@ -1,0 +1,25 @@
+<Window x:Class="TerminalSimulation.Avalonia.ThemeSettingsWindow"
+        xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="using:TerminalSimulation.Avalonia"
+        SystemDecorations="None" TransparencyLevelHint="Transparent" Background="Transparent"
+        ShowInTaskbar="False" CanResize="False"
+        Title="个性化设置" WindowStartupLocation="CenterOwner">
+    <!--
+        Note: Open/Close transition animations (Storyboard/DoubleAnimation from WPF)
+        have been removed and should be implemented in code-behind in Avalonia.
+        Named elements BgOverlay and SettingsControl are preserved so code-behind
+        can animate Opacity and ScaleTransform properties.
+    -->
+
+    <Grid>
+        <!-- Background semi-transparent overlay to block main window input and close settings on left-click -->
+        <Grid x:Name="BgOverlay" Background="#A0000000" Tapped="BgOverlay_Tapped" />
+        <!-- The actual settings control centered -->
+        <local:ThemeSettingsControl x:Name="SettingsControl" HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5">
+            <local:ThemeSettingsControl.RenderTransform>
+                <ScaleTransform ScaleX="1" ScaleY="1" />
+            </local:ThemeSettingsControl.RenderTransform>
+        </local:ThemeSettingsControl>
+    </Grid>
+</Window>

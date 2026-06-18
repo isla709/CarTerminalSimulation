@@ -1,0 +1,43 @@
+<Window x:Class="TerminalSimulation.Avalonia.SplashWindow"
+        xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Loading..."
+        Height="450" Width="800"
+        SystemDecorations="None"
+        WindowStartupLocation="CenterScreen"
+        TransparencyLevelHint="Transparent"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False">
+    <Grid>
+        <Grid.Background>
+            <ImageBrush Source="avares://TerminalSimulation.Avalonia/Assets/splash_bg.png" Stretch="UniformToFill" />
+        </Grid.Background>
+
+        <TextBlock x:Name="LoadingText"
+                   Text="Loading....."
+                   HorizontalAlignment="Left"
+                   VerticalAlignment="Bottom"
+                   Margin="40,0,0,40"
+                   FontSize="18"
+                   FontFamily="Segoe UI"
+                   FontWeight="SemiBold"
+                   Foreground="#FF555555">
+            <TextBlock.Styles>
+                <Style Selector="TextBlock">
+                    <Style.Animations>
+                        <Animation Duration="0:0:1" IterationCount="INFINITE"
+                                   PlaybackDirection="Alternate">
+                            <KeyFrame Cue="0%">
+                                <Setter Property="Opacity" Value="1.0" />
+                            </KeyFrame>
+                            <KeyFrame Cue="100%">
+                                <Setter Property="Opacity" Value="0.3" />
+                            </KeyFrame>
+                        </Animation>
+                    </Style.Animations>
+                </Style>
+            </TextBlock.Styles>
+        </TextBlock>
+    </Grid>
+</Window>
