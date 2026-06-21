@@ -1442,17 +1442,17 @@
                             </Style>
                             <Style Selector="TabItem.BrowserTab:selected">
                                 <Setter Property="Background" Value="{DynamicResource SukiCardBackground}" />
-                                <Setter Property="BorderBrush" Value="{DynamicResource SukiBorderBrush}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}" />
                                 <Setter Property="BorderThickness" Value="1,1,1,0" />
                                 <Setter Property="Foreground" Value="{DynamicResource SukiPrimaryBrush}" />
                             </Style>
                             <Style Selector="Border.TabContentOuter">
                                 <Setter Property="Background" Value="{DynamicResource SukiCardBackground}" />
-                                <Setter Property="BorderBrush" Value="{DynamicResource SukiBorderBrush}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}" />
                                 <Setter Property="BorderThickness" Value="1,0,1,1" />
                                 <Setter Property="CornerRadius" Value="0,8,8,8" />
                                 <Setter Property="Margin" Value="0" />
-                                <Setter Property="BoxShadow" Value="0 4 15 0 #15000000" />
+                                <Setter Property="BoxShadow" Value="0 2 12 0 #15000000" />
                             </Style>
                             <Style Selector="Border.TabContentInner">
                                 <Setter Property="BorderBrush" Value="{DynamicResource SukiBorderBrush}" />
@@ -1472,11 +1472,12 @@
                             </TabItem.Header>
 
                             <Border Classes="TabContentOuter">
-                                <Grid Margin="16">
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="*" />
-                                    </Grid.RowDefinitions>
+                                <suki:GlassCard CornerRadius="0,8,8,8" Margin="0" BorderThickness="0" Padding="0">
+                                    <Grid Margin="16">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="*" />
+                                        </Grid.RowDefinitions>
 
                                     <!-- Input Area -->
                                     <Border BorderBrush="{DynamicResource SukiBorderBrush}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,16" Grid.Row="0">
@@ -1545,7 +1546,8 @@
                                             </DataGrid>
                                         </Grid>
                                     </Border>
-                                </Grid>
+                                    </Grid>
+                                </suki:GlassCard>
                             </Border>
                         </TabItem>
                     </TabControl>

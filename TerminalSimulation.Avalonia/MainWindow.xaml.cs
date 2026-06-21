@@ -518,8 +518,17 @@ public partial class MainWindow : SukiWindow
                     
                     var outerGrid = new Grid { Margin = new global::Avalonia.Thickness(16) };
                     outerGrid.Children.Add(innerBorder);
-                    
-                    var outerBorder = new Border { Child = outerGrid };
+
+                    var glassCard = new SukiUI.Controls.GlassCard
+                    {
+                        CornerRadius = new global::Avalonia.CornerRadius(0, 8, 8, 8),
+                        Margin = new global::Avalonia.Thickness(0),
+                        BorderThickness = new global::Avalonia.Thickness(0),
+                        Padding = new global::Avalonia.Thickness(0),
+                        Content = outerGrid
+                    };
+
+                    var outerBorder = new Border { Child = glassCard };
                     outerBorder.Classes.Add("TabContentOuter");
                     
                     tabItem.Content = outerBorder;
