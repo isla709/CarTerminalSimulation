@@ -6,7 +6,7 @@
         xmlns:viewmodels="using:TerminalSimulation.Avalonia.ViewModels"
         xmlns:converters="using:TerminalSimulation.Avalonia.Converters"
         xmlns:local="using:TerminalSimulation.Avalonia"
-        xmlns:vlc="using:LibVLCSharp.Avalonia"
+        xmlns:vlc="clr-namespace:LibVLCSharp.Avalonia;assembly=LibVLCSharp.Avalonia"
         xmlns:plugins_vm="using:TerminalSimulation.Avalonia.ViewModels.Plugins"
         xmlns:plugin="using:TerminalSimulation.PluginBase.Avalonia"
         Title="{Binding AppTitle}"
@@ -33,10 +33,10 @@
 
     <suki:SukiWindow.RightWindowTitleBarControls>
         <!-- Terminal Status Badge -->
-        <Border Background="White" CornerRadius="12" Margin="0,0,8,0" Padding="12,0" VerticalAlignment="Center">
+        <Border Background="{DynamicResource SukiControlBackground}" CornerRadius="12" Margin="0,0,8,0" Padding="12,0" VerticalAlignment="Center">
             <StackPanel Orientation="Horizontal">
                 <Ellipse Width="8" Height="8" Fill="{Binding TerminalStatusColor}" Margin="0,0,6,0"/>
-                <TextBlock Text="{Binding TerminalStatusText}" Foreground="#333" FontSize="12" FontWeight="Bold"/>
+                <TextBlock Text="{Binding TerminalStatusText}" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="12" FontWeight="Bold"/>
             </StackPanel>
         </Border>
         <!-- Utilities Toggle -->
@@ -73,6 +73,7 @@
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Padding" Value="12,4"/>
             <Setter Property="Margin" Value="0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
         </Style>
 
     </Window.Styles>
@@ -95,7 +96,7 @@
         <!-- Blurred Background Layer for Glass Effect -->
         <Grid x:Name="RootBlurredImage" Grid.RowSpan="2" ZIndex="-3">
             <Image Source="{Binding BackgroundImageSource}" Stretch="UniformToFill" />
-            <Border Background="White" Opacity="{Binding BackgroundOpacity}" />
+            <Border Background="{DynamicResource SystemRegionBrush}" Opacity="{Binding BackgroundOpacity}" />
         </Grid>
 
         <!-- ==================== Normal Main Content Wrapper ==================== -->
@@ -107,25 +108,59 @@
             </Grid.RowDefinitions>
 
             <!-- Top Config Area -->
-            <suki:GlassCard Grid.Row="0" Margin="8">
+            <Border BoxShadow="0 2 12 0 #15000000" CornerRadius="12" Margin="8" Grid.Row="0">
+<suki:GlassCard  Margin="0" BorderThickness="1" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" CornerRadius="12">
                 <StackPanel Orientation="Horizontal" Margin="16" VerticalAlignment="Center">
                     <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
-                        <TextBlock Text="服务器地址" FontSize="12" Foreground="Gray" Margin="12,0,0,4"/>
-                        <ComboBox IsEditable="True" Text="{Binding ServerAddressInput, UpdateSourceTrigger=PropertyChanged}" ItemsSource="{Binding ServerAddressHistory}" Width="200" />
+                        <TextBlock Text="服务器地址" FontSize="12" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" Margin="12,0,0,4"/>
+                        <Grid Width="200">
+                            <AutoCompleteBox x:Name="ServerAddressAutoComplete" Text="{Binding ServerAddressInput, Mode=TwoWay}" ItemsSource="{Binding ServerAddressHistory}" MinimumPrefixLength="0" FilterMode="None" Padding="10,0,30,0">
+                                <AutoCompleteBox.Styles>
+                                    <Style Selector="ListBoxItem">
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                    </Style>
+                                </AutoCompleteBox.Styles>
+                                <AutoCompleteBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid HorizontalAlignment="Stretch">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding}" VerticalAlignment="Center" HorizontalAlignment="Left" />
+                                            <Button Grid.Column="1" Classes="Basic" Padding="4" Command="{Binding #ServerAddressAutoComplete.DataContext.DeleteServerAddressCommand}" CommandParameter="{Binding}" ToolTip.Tip="删除历史记录" Focusable="False" Cursor="Hand" Margin="8,0,0,0">
+                                                <Button.Styles>
+                                                    <Style Selector="Button">
+                                                        <Setter Property="Foreground" Value="Gray" />
+                                                    </Style>
+                                                    <Style Selector="Button:pointerover">
+                                                        <Setter Property="Foreground" Value="Red" />
+                                                    </Style>
+                                                </Button.Styles>
+                                                <materialIcons:MaterialIcon Kind="Close" Width="14" Height="14" />
+                                            </Button>
+                                        </Grid>
+                                    </DataTemplate>
+                                </AutoCompleteBox.ItemTemplate>
+                            </AutoCompleteBox>
+                            <ToggleButton IsChecked="{Binding #ServerAddressAutoComplete.IsDropDownOpen, Mode=TwoWay}" HorizontalAlignment="Right" VerticalAlignment="Stretch" Classes="Basic" Padding="4,0" Cursor="Hand" Focusable="False">
+                                <materialIcons:MaterialIcon Kind="ChevronDown" />
+                            </ToggleButton>
+                        </Grid>
                     </StackPanel>
                     
                     <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
-                        <TextBlock Text="终端手机号" FontSize="12" Foreground="Gray" Margin="12,0,0,4"/>
+                        <TextBlock Text="终端手机号" FontSize="12" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" Margin="12,0,0,4"/>
                         <TextBox Text="{Binding TerminalPhoneNo}" Watermark="例如: 13812345678" Width="150" />
                     </StackPanel>
                     
                     <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
-                        <TextBlock Text="鉴权码" FontSize="12" Foreground="Gray" Margin="12,0,0,4"/>
-                        <TextBox Text="{Binding AuthCode}" Watermark="例如: 123456" Width="100" />
+                        <TextBlock Text="鉴权码" FontSize="12" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" Margin="12,0,0,4"/>
+                        <TextBox Text="{Binding AuthCode}" Watermark="例如: 123456" Width="150" />
                     </StackPanel>
                     
                     <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
-                        <TextBlock Text="协议版本" FontSize="12" Foreground="Gray" Margin="12,0,0,4"/>
+                        <TextBlock Text="协议版本" FontSize="12" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" Margin="12,0,0,4"/>
                         <ComboBox Width="160" SelectedIndex="{Binding ProtocolVersionIndex}">
                             <ComboBoxItem Content="JT808-2013" />
                             <ComboBoxItem Content="JT808-2019" />
@@ -154,6 +189,7 @@
                     </StackPanel>
                 </StackPanel>
             </suki:GlassCard>
+</Border>
 
             <Grid Grid.Row="1" Margin="8,0,8,8">
                 <Grid.ColumnDefinitions>
@@ -167,7 +203,8 @@
                     <StackPanel>
 
                         <!-- Device Registration Card -->
-                        <suki:GlassCard Margin="0,0,0,8">
+                        <Border BoxShadow="0 2 12 0 #15000000" CornerRadius="12" Margin="0,0,0,8">
+<suki:GlassCard  Margin="0" BorderThickness="1" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" CornerRadius="12">
                             <StackPanel Margin="16">
                                 <TextBlock Text="设备注册与鉴权"
                                            FontWeight="Bold" FontSize="16"
@@ -182,16 +219,18 @@
                                 </StackPanel>
                             </StackPanel>
                         </suki:GlassCard>
+</Border>
 
                         <!-- Heartbeat Card -->
-                        <suki:GlassCard Margin="0,0,0,8">
+                        <Border BoxShadow="0 2 12 0 #15000000" CornerRadius="12" Margin="0,0,0,8">
+<suki:GlassCard  Margin="0" BorderThickness="1" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" CornerRadius="12">
                             <StackPanel Margin="16">
                                 <TextBlock Text="终端心跳保活 (0x0002)"
                                            FontWeight="Bold" FontSize="16"
                                            Margin="0,0,0,16" />
                                 <StackPanel Orientation="Horizontal">
                                     <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
-                                        <TextBlock Text="心跳间隔 (秒)" FontSize="12" Foreground="Gray" Margin="12,0,0,4"/>
+                                        <TextBlock Text="心跳间隔 (秒)" FontSize="12" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" Margin="12,0,0,4"/>
                                         <TextBox Text="{Binding HeartbeatInterval}" Width="100"
                                                  IsEnabled="{Binding IsHeartbeatDisabled, Converter={StaticResource InvertBooleanConverter}}" />
                                     </StackPanel>
@@ -199,15 +238,17 @@
                                         <TextBlock Text=" " FontSize="12" Margin="0,0,0,4"/>
                                         <StackPanel Orientation="Horizontal">
                                             <ToggleSwitch IsChecked="{Binding IsHeartbeatDisabled}" Margin="0,0,8,0" />
-                                            <TextBlock Text="关闭自动心跳" VerticalAlignment="Center" Foreground="#666" />
+                                            <TextBlock Text="关闭自动心跳" VerticalAlignment="Center" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
                                         </StackPanel>
                                     </StackPanel>
                                 </StackPanel>
                             </StackPanel>
                         </suki:GlassCard>
+</Border>
 
                         <!-- Location Report Card -->
-                        <suki:GlassCard Margin="0,0,0,8">
+                        <Border BoxShadow="0 2 12 0 #15000000" CornerRadius="12" Margin="0,0,0,8">
+<suki:GlassCard  Margin="0" BorderThickness="1" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" CornerRadius="12">
                             <StackPanel Margin="16">
                                 <TextBlock Text="位置汇报 (0x0200)"
                                            FontWeight="Bold" FontSize="16"
@@ -220,11 +261,11 @@
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                                        <TextBlock Text="纬度 (Lat)" FontSize="12" Foreground="Gray" Margin="12,0,0,4"/>
+                                        <TextBlock Text="纬度 (Lat)" FontSize="12" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" Margin="12,0,0,4"/>
                                         <TextBox Text="{Binding Latitude}" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Margin="8,0,0,0">
-                                        <TextBlock Text="经度 (Lng)" FontSize="12" Foreground="Gray" Margin="12,0,0,4"/>
+                                        <TextBlock Text="经度 (Lng)" FontSize="12" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" Margin="12,0,0,4"/>
                                         <TextBox Text="{Binding Longitude}" />
                                     </StackPanel>
                                 </Grid>
@@ -239,15 +280,15 @@
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Grid.Column="0">
-                                        <TextBlock Text="速度 (km/h)" FontSize="12" Foreground="Gray" Margin="12,0,0,4"/>
+                                        <TextBlock Text="速度 (km/h)" FontSize="12" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" Margin="12,0,0,4"/>
                                         <TextBox Text="{Binding Speed}" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="2">
-                                        <TextBlock Text="方向 (0-359)" FontSize="12" Foreground="Gray" Margin="12,0,0,4"/>
+                                        <TextBlock Text="方向 (0-359)" FontSize="12" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" Margin="12,0,0,4"/>
                                         <TextBox Text="{Binding Direction}" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="4">
-                                        <TextBlock Text="高程 (m)" FontSize="12" Foreground="Gray" Margin="12,0,0,4"/>
+                                        <TextBlock Text="高程 (m)" FontSize="12" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" Margin="12,0,0,4"/>
                                         <TextBox Text="{Binding Altitude}" />
                                     </StackPanel>
                                 </Grid>
@@ -255,7 +296,7 @@
                                 <!-- Alarm Flags Expander -->
                                 <Expander Header="报警标志设置" Margin="0,0,0,8"
                                           Background="Transparent" BorderThickness="1"
-                                          BorderBrush="#E0E0E0">
+                                          BorderBrush="{DynamicResource SukiBorderBrush}">
                                     <ItemsControl ItemsSource="{Binding AlarmFlags}" Margin="8">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
@@ -275,7 +316,7 @@
                                 <!-- Status Flags Expander -->
                                 <Expander Header="车辆状态设置" Margin="0,0,0,16"
                                           Background="Transparent" BorderThickness="1"
-                                          BorderBrush="#E0E0E0">
+                                          BorderBrush="{DynamicResource SukiBorderBrush}">
                                     <ItemsControl ItemsSource="{Binding StatusFlags}" Margin="8">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
@@ -296,7 +337,7 @@
                                 <Expander Header="标准附加信息 (0x0200)" IsExpanded="False"
                                           Background="Transparent" Margin="0,0,0,8"
                                           BorderThickness="1"
-                                          BorderBrush="#E0E0E0">
+                                          BorderBrush="{DynamicResource SukiBorderBrush}">
                                     <WrapPanel Orientation="Horizontal" Margin="8">
 
                                         <!-- 0x01 Mileage -->
@@ -390,8 +431,8 @@
                                                 <Popup IsOpen="{Binding IsChecked, ElementName=VehSigDetailsButton}"
                                                        PlacementTarget="{Binding #VehSigDetailsButton}"
                                                        PlacementMode="Bottom">
-                                                    <Border Background="White"
-                                                            BorderBrush="#E0E0E0"
+                                                    <Border Background="{DynamicResource SukiControlBackground}"
+                                                            BorderBrush="{DynamicResource SukiBorderBrush}"
                                                             BorderThickness="1" CornerRadius="4"
                                                             Padding="12" Width="360">
                                                         <Grid>
@@ -446,8 +487,8 @@
                                                 <Popup IsOpen="{Binding IsChecked, ElementName=IOStatusDetailsButton}"
                                                        PlacementTarget="{Binding #IOStatusDetailsButton}"
                                                        PlacementMode="Bottom">
-                                                    <Border Background="White"
-                                                            BorderBrush="#E0E0E0"
+                                                    <Border Background="{DynamicResource SukiControlBackground}"
+                                                            BorderBrush="{DynamicResource SukiBorderBrush}"
                                                             BorderThickness="1" CornerRadius="4"
                                                             Padding="12" Width="360">
                                                         <Grid>
@@ -601,31 +642,38 @@
                                 </ItemsControl>
 
                                 <!-- Send Location Row -->
-                                <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <Button Content="发送位置汇报"
-                                            Classes="Primary" CornerRadius="4" Height="36" Padding="16,0"
-                                            Margin="0,0,16,8"
-                                            Command="{Binding ReportLocationCommand}" />
-
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,8">
+                                <StackPanel Margin="0,8,0,0">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,16">
                                         <TextBlock Text="自动发送" VerticalAlignment="Center" Margin="0,0,8,0" />
                                         <ToggleSwitch IsChecked="{Binding IsAutoReporting, Mode=OneWay}"
                                                       Command="{Binding ToggleAutoReportCommand}"
                                                       ToolTip.Tip="开启/关闭自动循环发送" VerticalAlignment="Center" Margin="0,0,16,0" />
 
-                                        <TextBlock Text="间隔(秒):" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="Gray" FontSize="12" />
+                                        <TextBlock Text="间隔(秒):" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="12" />
                                         <TextBox Width="70"
                                                  Text="{Binding AutoReportInterval}" VerticalAlignment="Center" />
                                     </StackPanel>
-                                </WrapPanel>
+                                    
+                                    <Button Content="发送位置汇报"
+                                            Classes="Primary" CornerRadius="4" Height="36"
+                                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                            Command="{Binding ReportLocationCommand}" />
+                                </StackPanel>
                             </StackPanel>
                         </suki:GlassCard>
+</Border>
                     </StackPanel>
                 </ScrollViewer>
 
                 <!-- ========== Right Advanced & Logs Area ========== -->
-                <suki:GlassCard Grid.Column="1">
+                <Border BoxShadow="0 2 12 0 #15000000" CornerRadius="12" Margin="0" Grid.Column="1">
+<suki:GlassCard  Margin="0" BorderThickness="1" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" CornerRadius="12">
                     <TabControl x:Name="MainTabControl">
+                        <TabControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <UniformGrid Rows="1" />
+                            </ItemsPanelTemplate>
+                        </TabControl.ItemsPanel>
 
                         <!-- ===== Tab 1: 通信日志 ===== -->
                         <TabItem Header="通信日志">
@@ -642,7 +690,7 @@
                                 </StackPanel>
                                 <ListBox Grid.Row="1" x:Name="LogListBox"
                                          ItemsSource="{Binding LogMessages}"
-                                         Background="#1E1E1E" Foreground="#D4D4D4"
+                                         Background="Transparent" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
                                          Margin="8,0,8,8" Padding="4"
                                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                          ScrollViewer.VerticalScrollBarVisibility="Auto">
@@ -672,7 +720,7 @@
                                                     <ColumnDefinition Width="*" />
                                                 </Grid.ColumnDefinitions>
                                                 <SelectableTextBlock Grid.Column="0" Text="{Binding TimestampStr}"
-                                                                     Foreground="#888888" FontFamily="Consolas"
+                                                                     Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontFamily="Consolas"
                                                                      FontSize="13" Margin="0,0,8,0"
                                                                      VerticalAlignment="Top" />
                                                 <SelectableTextBlock Grid.Column="1" Text="{Binding DirectionStr}"
@@ -687,7 +735,7 @@
                                                         FontSize="10"
                                                         VerticalAlignment="Top" />
                                                 <SelectableTextBlock Grid.Column="3" Text="{Binding Message}"
-                                                                     Background="Transparent" Foreground="#D4D4D4"
+                                                                     Background="Transparent" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
                                                                      FontFamily="Consolas" FontSize="13"
                                                                      VerticalAlignment="Top"
                                                                      TextWrapping="Wrap" />
@@ -702,7 +750,7 @@
                         <TabItem Header="地图选点">
                             <Grid>
                                 <!-- WebView2 placeholder; replace with Avalonia.WebView when available -->
-                                <Border x:Name="MapWebView" Background="#222222"
+                                <Border x:Name="MapWebView" Background="Transparent"
                                         HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
                             </Grid>
                         </TabItem>
@@ -718,8 +766,8 @@
 
                                 <!-- Top Control Bar -->
                                 <Border Grid.Row="0"
-                                        Background="#F5F5F5"
-                                        BorderBrush="#E0E0E0"
+                                        Background="{DynamicResource SukiControlBackground}"
+                                        BorderBrush="{DynamicResource SukiBorderBrush}"
                                         BorderThickness="0,0,0,1" Padding="8">
                                     <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
                                         <TextBlock Text="串口:" VerticalAlignment="Center" Margin="0,0,4,0" />
@@ -769,16 +817,16 @@
                                                     <StackPanel Grid.Column="0" HorizontalAlignment="Left"
                                                                 IsVisible="{Binding IsFromServer, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                         <TextBlock Text="{Binding Time}" FontSize="10"
-                                                                   Foreground="Gray" Margin="4,0,0,2" />
-                                                        <Border Background="#F5F5F5"
-                                                                BorderBrush="#E0E0E0"
+                                                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" Margin="4,0,0,2" />
+                                                        <Border Background="{DynamicResource SukiControlBackground}"
+                                                                BorderBrush="{DynamicResource SukiBorderBrush}"
                                                                 BorderThickness="1" CornerRadius="8" Padding="10,6">
                                                             <StackPanel>
                                                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
                                                                     <TextBlock Text="{Binding TypeHex, StringFormat='类型: 0x{0}'}"
-                                                                               FontSize="10" Foreground="Gray" />
+                                                                               FontSize="10" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
                                                                     <TextBlock Text="{Binding Label}" FontSize="10"
-                                                                               Foreground="Gray" Margin="8,0,0,0" />
+                                                                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" Margin="8,0,0,0" />
                                                                 </StackPanel>
                                                                 <TextBlock Text="{Binding Content}" TextWrapping="Wrap"
                                                                            MaxWidth="300" />
@@ -789,10 +837,10 @@
                                                     <!-- Terminal Message (Right) -->
                                                     <StackPanel Grid.Column="1" HorizontalAlignment="Right"
                                                                 IsVisible="{Binding IsFromServer, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
-                                                        <TextBlock Text="{Binding Time}" FontSize="10" Foreground="Gray"
+                                                        <TextBlock Text="{Binding Time}" FontSize="10" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
                                                                    Margin="0,0,4,2" HorizontalAlignment="Right" />
                                                         <Border Background="{DynamicResource SukiPrimaryColor}"
-                                                                BorderBrush="#E0E0E0"
+                                                                BorderBrush="{DynamicResource SukiBorderBrush}"
                                                                 BorderThickness="1" CornerRadius="8" Padding="10,6">
                                                             <StackPanel>
                                                                 <StackPanel Orientation="Horizontal"
@@ -815,8 +863,8 @@
 
                                 <!-- Bottom Input Bar -->
                                 <Border Grid.Row="2"
-                                        Background="#F5F5F5"
-                                        BorderBrush="#E0E0E0"
+                                        Background="{DynamicResource SukiControlBackground}"
+                                        BorderBrush="{DynamicResource SukiBorderBrush}"
                                         BorderThickness="0,1,0,0" Padding="8">
                                     <Grid>
                                         <Grid.RowDefinitions>
@@ -885,8 +933,8 @@
 
                                 <!-- Top Control Panel (TTS settings) -->
                                 <Border Grid.Row="0"
-                                        Background="#F5F5F5"
-                                        BorderBrush="#E0E0E0"
+                                        Background="{DynamicResource SukiControlBackground}"
+                                        BorderBrush="{DynamicResource SukiBorderBrush}"
                                         BorderThickness="0,0,0,1" Padding="12">
                                     <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,24,8">
@@ -905,7 +953,7 @@
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,8">
                                             <TextBlock Text="文本解析编码 (Encoding):" VerticalAlignment="Center" Margin="0,0,8,0" />
                                             <ComboBox SelectedIndex="{Binding TextDownlinkEncodingIndex}"
-                                                      Width="100" VerticalAlignment="Center">
+                                                      Width="130" VerticalAlignment="Center">
                                                 <ComboBoxItem Content="UTF-8" />
                                                 <ComboBoxItem Content="GBK" />
                                             </ComboBox>
@@ -926,8 +974,8 @@
 
                                                     <!-- Message Bubble -->
                                                     <Border Grid.Column="0"
-                                                            Background="#F5F5F5"
-                                                            BorderBrush="#E0E0E0"
+                                                            Background="{DynamicResource SukiControlBackground}"
+                                                            BorderBrush="{DynamicResource SukiBorderBrush}"
                                                             BorderThickness="1"
                                                             CornerRadius="8" Padding="12" MaxWidth="640"
                                                             HorizontalAlignment="Left">
@@ -939,7 +987,7 @@
                                                                     <ColumnDefinition Width="*"/>
                                                                 </Grid.ColumnDefinitions>
                                                                 <TextBlock Grid.Column="0" Text="{Binding Time}"
-                                                                           FontSize="11" Foreground="Gray"
+                                                                           FontSize="11" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
                                                                            VerticalAlignment="Center"/>
                                                                 <Border Grid.Column="1"
                                                                         Background="{DynamicResource SukiPrimaryColor}"
@@ -1065,9 +1113,9 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
                                     <TextBlock Text="通道数量:" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                     <ComboBox ItemsSource="{Binding IntRange1to36}"
-                                              SelectedItem="{Binding VideoChannelCount}" Width="80"/>
+                                              SelectedItem="{Binding VideoChannelCount}" Width="120"/>
                                     <TextBlock Text="默认音频编码:" VerticalAlignment="Center" Margin="24,0,8,0"/>
-                                    <ComboBox SelectedIndex="{Binding AudioCodecIndex}" Width="80">
+                                    <ComboBox SelectedIndex="{Binding AudioCodecIndex}" Width="120">
                                         <ComboBoxItem Content="G.711A" />
                                         <ComboBoxItem Content="AAC" />
                                     </ComboBox>
@@ -1076,14 +1124,40 @@
                                                FontWeight="Bold"
                                                Foreground="{DynamicResource SukiPrimaryColor}"/>
 
-                                    <Button Content="中断推流" Command="{Binding StopAllPushStreamsCommand}"
-                                            Classes="Outlined"
-                                            Height="30" Margin="32,0,0,0" Foreground="#E53935"
-                                            ToolTip.Tip="强制断开所有运行中的视频推流"/>
+                                    <Button Command="{Binding StopAllPushStreamsCommand}"
+                                            Margin="32,0,0,0" Padding="0" Background="Transparent" BorderThickness="0"
+                                            FocusAdorner="{x:Null}"
+                                            ToolTip.Tip="强制断开所有运行中的视频推流">
+                                        <Button.Template>
+                                            <ControlTemplate>
+                                                <Border x:Name="HoverBorder" 
+                                                        Background="Transparent"
+                                                        BorderBrush="#E53935"
+                                                        BorderThickness="1"
+                                                        CornerRadius="16"
+                                                        Padding="16,0"
+                                                        Height="32">
+                                                    <TextBlock x:Name="HoverText" 
+                                                               Text="中断推流" 
+                                                               Foreground="#E53935" 
+                                                               FontWeight="SemiBold"
+                                                               VerticalAlignment="Center" 
+                                                               HorizontalAlignment="Center"/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                        <Button.Styles>
+                                            <Style Selector="Button:pointerover /template/ Border#HoverBorder">
+                                                <Setter Property="Background" Value="#E53935"/>
+                                            </Style>
+                                            <Style Selector="Button:pointerover /template/ TextBlock#HoverText">
+                                                <Setter Property="Foreground" Value="White"/>
+                                            </Style>
+                                        </Button.Styles>
+                                    </Button>
                                 </StackPanel>
 
-                                <ScrollViewer x:Name="VideoScrollViewer" Grid.Row="1"
-                                              VerticalScrollBarVisibility="Auto">
+                                <ScrollViewer x:Name="VideoScrollViewerContainer" Grid.Row="1">
                                     <ItemsControl x:Name="VideoItemsControl"
                                                   ItemsSource="{Binding VideoChannels}">
                                         <ItemsControl.ItemsPanel>
@@ -1093,8 +1167,9 @@
                                         </ItemsControl.ItemsPanel>
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <suki:GlassCard Margin="8"
-                                                               HorizontalAlignment="Stretch">
+                                                <Border BoxShadow="0 2 12 0 #15000000" CornerRadius="12" Margin="8">
+<suki:GlassCard 
+                                                               HorizontalAlignment="Stretch" Margin="0" BorderThickness="1" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" CornerRadius="12">
                                                     <Grid Margin="12">
                                                         <Grid.RowDefinitions>
                                                             <RowDefinition Height="Auto"/>
@@ -1105,10 +1180,10 @@
                                                         <TextBlock Text="{Binding LogicalChannelNo, StringFormat='通道 {0}'}"
                                                                    FontWeight="Bold" Margin="0,0,0,8"/>
 
-                                                        <Border Grid.Row="1" Background="#1E1E1E"
+                                                        <Border Grid.Row="1" Background="Transparent"
                                                                 Margin="0,0,0,12" CornerRadius="4"
                                                                 ClipToBounds="True"
-                                                                Height="{Binding ElementName=VideoScrollViewer, Path=ActualWidth, Converter={StaticResource AspectRatioConverter}, ConverterParameter=0.5625}">
+                                                                Height="{Binding Bounds.Width, RelativeSource={RelativeSource Self}, Converter={StaticResource AspectRatioConverter}, ConverterParameter=0.5625}">
                                                             <Grid>
                                                                 <!-- Placeholder (when not streaming/previewing) -->
                                                                 <Grid Background="#151515"
@@ -1157,7 +1232,7 @@
                                                                 <Button Grid.Column="1" Content="..."
                                                                         Command="{Binding SelectVideoFileCommand}"
                                                                         Classes="Outlined"
-                                                                        Padding="8,0" Height="24" Margin="8,0,0,0"/>
+                                                                        Margin="8,0,0,0" VerticalAlignment="Center"/>
                                                             </Grid>
                                                             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                                                                 <ToggleSwitch IsChecked="{Binding IsConstantFramerate}"
@@ -1165,17 +1240,17 @@
                                                                 <TextBlock Text="匀速" VerticalAlignment="Center"
                                                                            Margin="4,0,16,0"/>
 
-                                                                <TextBox Text="{Binding TargetFps}" Width="40"
+                                                                <TextBox Text="{Binding TargetFps}" Width="70"
                                                                          VerticalAlignment="Center"
                                                                          IsReadOnly="{Binding IsConstantFramerate}"
                                                                          Watermark="FPS"/>
                                                                 <TextBlock Text="FPS" VerticalAlignment="Center"
-                                                                           Margin="4,0,0,0"/>
+                                                                           Margin="8,0,0,0"/>
                                                                 <Button Content="{Binding PreviewButtonText}"
                                                                         Command="{Binding TogglePreviewCommand}"
                                                                         IsVisible="{Binding IsPreviewBtnVisible, Converter={StaticResource BooleanToVisibilityConverter}}"
                                                                         Classes="Outlined"
-                                                                        Height="24" Padding="8,0" Margin="16,0,0,0"
+                                                                        Margin="16,0,0,0"
                                                                         VerticalAlignment="Center"/>
 
                                                                 <!-- Mute Control Button -->
@@ -1188,7 +1263,7 @@
                                                                     <materialIcons:MaterialIcon Kind="{Binding MuteIcon}" Width="18" Height="18"/>
                                                                 </Button>
                                                             </StackPanel>
-                                                            <TextBox Text="{Binding StatusText}" Foreground="Gray"
+                                                            <TextBox Text="{Binding StatusText}" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
                                                                      Margin="0,8,0,0" FontSize="11" TextWrapping="Wrap"
                                                                      MaxHeight="50"
                                                                      IsReadOnly="True" BorderThickness="0"
@@ -1199,6 +1274,7 @@
                                                         </StackPanel>
                                                     </Grid>
                                                 </suki:GlassCard>
+</Border>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
@@ -1220,7 +1296,8 @@
                                     <ItemsControl ItemsSource="{Binding MainPlugins}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <suki:GlassCard Margin="0,0,0,16" Padding="16">
+                                                <Border BoxShadow="0 2 12 0 #15000000" CornerRadius="12" Margin="0,0,0,16">
+<suki:GlassCard  Padding="16" Margin="0" BorderThickness="1" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" CornerRadius="12">
                                                     <StackPanel>
                                                         <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                                                             <TextBlock Text="{Binding Name}" FontWeight="Bold"
@@ -1228,13 +1305,14 @@
                                                                        Foreground="{DynamicResource SukiPrimaryColor}" />
                                                             <TextBlock Text="{Binding Version}" Margin="8,0,0,0"
                                                                        VerticalAlignment="Bottom"
-                                                                       Foreground="Gray" FontSize="12" />
+                                                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="12" />
                                                         </StackPanel>
                                                         <TextBlock Text="{Binding Description}" TextWrapping="Wrap"
-                                                                   Margin="0,0,0,16" Foreground="Gray" FontSize="14" />
+                                                                   Margin="0,0,0,16" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="14" />
                                                         <ContentControl Content="{Binding Converter={StaticResource PluginToContentConverter}}" />
                                                     </StackPanel>
                                                 </suki:GlassCard>
+</Border>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
@@ -1243,6 +1321,7 @@
                         </TabItem>
                     </TabControl>
                 </suki:GlassCard>
+</Border>
             </Grid>
         </Grid> <!-- End Normal Main Content Wrapper -->
 
@@ -1320,7 +1399,8 @@
                                 </StackPanel>
                             </TabItem.Header>
 
-                            <suki:GlassCard Margin="0">
+                            <Border BoxShadow="0 2 12 0 #15000000" CornerRadius="12" Margin="0">
+<suki:GlassCard  Margin="0" BorderThickness="1" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" CornerRadius="12">
                                 <Grid Margin="8">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
@@ -1328,7 +1408,8 @@
                                     </Grid.RowDefinitions>
 
                                     <!-- Input Area -->
-                                    <suki:GlassCard Grid.Row="0" Margin="0,0,0,8" Background="Transparent">
+                                    <Border BoxShadow="0 2 12 0 #15000000" CornerRadius="12" Margin="0,0,0,8" Grid.Row="0">
+<suki:GlassCard  Background="Transparent" Margin="0" BorderThickness="1" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" CornerRadius="12">
                                         <Grid Margin="16">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
@@ -1351,9 +1432,11 @@
                                             </StackPanel>
                                         </Grid>
                                     </suki:GlassCard>
+</Border>
 
                                     <!-- Result Area -->
-                                    <suki:GlassCard Grid.Row="1" Background="Transparent">
+                                    <Border BoxShadow="0 2 12 0 #15000000" CornerRadius="12" Margin="0" Grid.Row="1">
+<suki:GlassCard  Background="Transparent" Margin="0" BorderThickness="1" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" CornerRadius="12">
                                         <Grid>
                                             <!-- Tree View (AnalyzerMode = 1) -->
                                             <TreeView x:Name="AnalyzerTreeView" KeyDown="AnalyzerTreeView_KeyDown"
@@ -1394,8 +1477,10 @@
                                             </DataGrid>
                                         </Grid>
                                     </suki:GlassCard>
+</Border>
                                 </Grid>
                             </suki:GlassCard>
+</Border>
                         </TabItem>
                     </TabControl>
 

@@ -3,116 +3,136 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:materialIcons="using:Material.Icons.Avalonia"
              xmlns:suki="clr-namespace:SukiUI.Controls;assembly=SukiUI"
-             Width="650" Height="600">
-    <suki:GlassCard Margin="16">
+             Width="650" Height="680">
+    <Border Background="{DynamicResource SukiCardBackground}" 
+            BorderBrush="{DynamicResource SukiBorderBrush}"
+            BorderThickness="1"
+            CornerRadius="12" 
+            Margin="16" 
+            BoxShadow="0 8 32 0 #80000000"
+            Padding="24">
         <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
-
-        <Grid Margin="0,0,0,16">
-            <TextBlock Text="个性化设置" FontSize="24" FontWeight="Bold" VerticalAlignment="Center"/>
-            <Button Command="{Binding CloseSettingsCommand}" Classes="Icon"
-                    HorizontalAlignment="Right" Width="30" Height="30" Padding="0" Background="Transparent" BorderThickness="0" ToolTip.Tip="关闭">
-                <materialIcons:MaterialIcon Kind="Close" Width="20" Height="20"/>
-            </Button>
-        </Grid>
-
-        <TextBlock Grid.Row="1" Text="外观模式" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"/>
-        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,40,0,24">
-            <RadioButton Content="浅色 (Light)" x:Name="RbLight" Margin="0,0,16,0" Checked="ThemeMode_Checked"/>
-            <RadioButton Content="深色 (Dark)" x:Name="RbDark" Checked="ThemeMode_Checked"/>
-        </StackPanel>
-
-        <TextBlock Grid.Row="2" Text="主题色" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"/>
-        <ItemsControl Grid.Row="3" x:Name="ColorsItemsControl" Margin="0,0,0,24">
-            <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                    <WrapPanel />
-                </ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-            <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                    <Button Width="36" Height="36" Margin="4"
-                            Background="{Binding Brush}"
-                            BorderThickness="0"
-                            Click="ColorButton_Click"
-                            Tag="{Binding Color}"
-                            Classes="Icon"
-                            ToolTip.Tip="{Binding Name}">
-                        <materialIcons:MaterialIcon Kind="Palette" Foreground="White" Width="18" Height="18" />
-                    </Button>
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-        </ItemsControl>
-
-        <Grid Grid.Row="4" Margin="0,0,0,16">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-            <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                <TextBlock Text="背景效果模式" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"/>
-                <ComboBox SelectedIndex="{Binding BackgroundEffectModeIndex}" Classes="Outlined">
-                    <ComboBoxItem Content="无效果 (None)" />
-                    <ComboBoxItem Content="普通半透明 (Translucent)" />
-                    <ComboBoxItem Content="毛玻璃 (Blur)" />
-                    <ComboBoxItem Content="亚克力 (Acrylic)" />
-                </ComboBox>
-            </StackPanel>
-            <StackPanel Grid.Column="1" Margin="8,0,0,0">
-                <TextBlock Text="板块透明度 (Opacity)" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"/>
-                <StackPanel Orientation="Horizontal">
-                    <Slider Minimum="0" Maximum="1" Value="{Binding BackgroundOpacity}" Width="150" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding BackgroundOpacity, StringFormat={}{0:P0}}" VerticalAlignment="Center"/>
-                </StackPanel>
-            </StackPanel>
-        </Grid>
-
-        <Grid Grid.Row="5">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                <TextBlock Text="自定义背景图片" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,16,0"/>
-                <Button Content="添加图片" Command="{Binding AddThemeImageCommand}" Classes="Outlined" Height="30" Padding="8,0"/>
+
+            <!-- Header -->
+            <Grid Margin="0,0,0,24">
+                <TextBlock Text="个性化设置" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+                <Button Command="{Binding CloseSettingsCommand}" Classes="Basic"
+                        HorizontalAlignment="Right" Width="32" Height="32" Padding="0" CornerRadius="16" ToolTip.Tip="关闭" Cursor="Hand">
+                    <materialIcons:MaterialIcon Kind="Close" Width="20" Height="20"/>
+                </Button>
+            </Grid>
+
+            <!-- Theme Mode -->
+            <TextBlock Grid.Row="1" Text="外观模式" FontSize="14" Foreground="{DynamicResource SukiText}" FontWeight="SemiBold" Margin="0,0,0,8"/>
+            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,28,0,16">
+                <RadioButton x:Name="RbLight" GroupName="ThemeMode" Margin="0,0,24,0" Checked="RbLight_Checked">
+                    <TextBlock Text="浅色 (Light)" Foreground="{DynamicResource SukiText}" />
+                </RadioButton>
+                <RadioButton x:Name="RbDark" GroupName="ThemeMode" Checked="RbDark_Checked">
+                    <TextBlock Text="深色 (Dark)" Foreground="{DynamicResource SukiText}" />
+                </RadioButton>
             </StackPanel>
 
-            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                <ItemsControl ItemsSource="{Binding ThemeImages}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <WrapPanel />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Border Margin="4" BorderThickness="2" CornerRadius="4" Cursor="Hand" Tapped="ThemeImageBorder_Tapped">
-                                <Grid Width="120" Height="90" Background="#EEEEEE">
-                                    <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" />
-                                    <TextBlock Text="{Binding FileName}" Background="#80000000" Foreground="White"
-                                               VerticalAlignment="Bottom" HorizontalAlignment="Stretch" TextAlignment="Center" Padding="2" FontSize="10" />
+            <!-- Theme Color -->
+            <TextBlock Grid.Row="2" Text="主题色" FontSize="14" Foreground="{DynamicResource SukiText}" FontWeight="SemiBold" Margin="0,0,0,8"/>
+            <ItemsControl Grid.Row="3" x:Name="ColorsItemsControl" Margin="0,0,0,20">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Button Width="36" Height="36" Margin="4"
+                                Background="{Binding Brush}"
+                                BorderThickness="0"
+                                CornerRadius="18"
+                                Classes="Basic"
+                                Click="ColorButton_Click"
+                                Tag="{Binding Color}"
+                                ToolTip.Tip="{Binding Name}"
+                                Cursor="Hand">
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
 
-                                    <Button Classes="Icon" IsVisible="{Binding IsUserAdded}"
-                                            Command="{Binding DataContext.DeleteThemeImageCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                            CommandParameter="{Binding}"
-                                            Background="#DDFF5252" BorderBrush="Transparent"
-                                            Width="24" Height="24" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="4">
-                                        <materialIcons:MaterialIcon Kind="Close" Width="16" Height="16" Foreground="White"/>
-                                    </Button>
-                                </Grid>
-                            </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </ScrollViewer>
+            <!-- Effects -->
+            <Grid Grid.Row="4" Margin="0,0,0,20">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                    <TextBlock Text="背景效果模式" FontSize="14" Foreground="{DynamicResource SukiText}" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                    <ComboBox SelectedIndex="{Binding BackgroundEffectModeIndex}" HorizontalAlignment="Stretch">
+                        <ComboBoxItem Content="无效果 (None)" />
+                        <ComboBoxItem Content="普通半透明 (Translucent)" />
+                        <ComboBoxItem Content="毛玻璃 (Blur)" />
+                        <ComboBoxItem Content="亚克力 (Acrylic)" />
+                    </ComboBox>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Margin="16,0,0,0">
+                    <TextBlock Text="板块透明度 (Opacity)" FontSize="14" Foreground="{DynamicResource SukiText}" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <Slider Minimum="0" Maximum="1" Value="{Binding BackgroundOpacity}" Width="150" Margin="0,0,16,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding BackgroundOpacity, StringFormat={}{0:P0}}" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+
+            <!-- Custom Images -->
+            <Grid Grid.Row="5">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <Grid Margin="0,0,0,12">
+                    <TextBlock Text="自定义背景图片" FontSize="14" Foreground="Gray" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <Button Content="添加图片" Command="{Binding AddThemeImageCommand}" Classes="Primary" HorizontalAlignment="Right" Height="32" Padding="16,0" CornerRadius="16" Cursor="Hand"/>
+                </Grid>
+
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding ThemeImages}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="4" BorderThickness="2" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" CornerRadius="8" Cursor="Hand" Tapped="ThemeImageBorder_Tapped" ClipToBounds="True">
+                                    <Grid Width="140" Height="100" Background="Transparent">
+                                        <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" />
+                                        
+                                        <Border Background="#A0000000" VerticalAlignment="Bottom" HorizontalAlignment="Stretch">
+                                            <TextBlock Text="{Binding FileName}" Foreground="White"
+                                                       TextAlignment="Center" Padding="4" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                                        </Border>
+
+                                        <Button Classes="Basic" IsVisible="{Binding IsUserAdded}"
+                                                Command="{Binding DataContext.DeleteThemeImageCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Padding="4" CornerRadius="12"
+                                                Width="24" Height="24" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="4"
+                                                Cursor="Hand">
+                                            <materialIcons:MaterialIcon Kind="Close" Width="14" Height="14" Foreground="IndianRed"/>
+                                        </Button>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
         </Grid>
-        </Grid>
-    </suki:GlassCard>
+    </Border>
 </UserControl>

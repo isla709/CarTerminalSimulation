@@ -12,13 +12,14 @@
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.14" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.14" />
     <PackageReference Include="Avalonia.Diagnostics" Version="11.3.14" Condition="'$(Configuration)' == 'Debug'" />
+    <PackageReference Include="HanumanInstitute.LibMpv.Avalonia" Version="0.9.1" />
+    <PackageReference Include="LibVLCSharp.Avalonia" Version="3.10.0" />
     <PackageReference Include="SukiUI" Version="6.1.1" />
     <PackageReference Include="Material.Icons.Avalonia" Version="2.1.10" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-    <PackageReference Include="LibVLCSharp.Avalonia" Version="3.9.7.1" />
     <PackageReference Include="System.IO.Ports" Version="8.0.0" />
     <PackageReference Include="System.Text.Json" Version="9.0.0" />
-    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.23.1" />
+    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.23.1" ExcludeAssets="build" GeneratePathProperty="true" />
     <PackageReference Include="Xabe.FFmpeg" Version="6.0.2" />
     <PackageReference Include="Xabe.FFmpeg.Downloader" Version="6.0.2" />
   </ItemGroup>
@@ -30,8 +31,9 @@
 
   <PropertyGroup>
     <AppVersion>preview3-avalonia</AppVersion>
-    <OutputType>WinExe</OutputType>
+    <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
@@ -74,6 +76,20 @@ public static class AppVersionInfo
     <ItemGroup>
       <Compile Include="$(IntermediateOutputPath)AppVersionInfo.g.cs" />
     </ItemGroup>
+  </Target>
+
+  <ItemGroup>
+    <EmbeddedResource Include="$(IntermediateOutputPath)libvlc.zip">
+      <LogicalName>libvlc.zip</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <Target Name="EmbedLibVLC" BeforeTargets="BeforeResGen;PrepareForBuild">
+    <PropertyGroup>
+      <LibVlcSourceDir>$(PkgVideoLAN_LibVLC_Windows)\build\x64</LibVlcSourceDir>
+      <LibVlcZipPath>$(IntermediateOutputPath)libvlc.zip</LibVlcZipPath>
+    </PropertyGroup>
+    <ZipDirectory SourceDirectory="$(LibVlcSourceDir)" DestinationFile="$(LibVlcZipPath)" Overwrite="true" Condition="Exists('$(LibVlcSourceDir)')" />
   </Target>
 
 </Project>

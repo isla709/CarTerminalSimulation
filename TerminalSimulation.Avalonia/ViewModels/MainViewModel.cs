@@ -768,6 +768,10 @@ namespace TerminalSimulation.Avalonia.ViewModels
                                     ServerAddressHistory.Add(addr);
                                 }
                             }
+                            if (ServerAddressHistory.Count == 0)
+                            {
+                                ServerAddressHistory.Add("127.0.0.1:6608");
+                            }
                             TerminalPhoneNo = config.TerminalPhoneNo;
                             AuthCode = config.AuthCode;
                             UseJT808_2019 = config.UseJT808_2019;
@@ -1096,8 +1100,8 @@ namespace TerminalSimulation.Avalonia.ViewModels
         [ObservableProperty] private string _serverIp = "127.0.0.1";
         [ObservableProperty] private int _serverPort = 808;
         
-        public ObservableCollection<string> ServerAddressHistory { get; } = new();
-        [ObservableProperty] private string _serverAddressInput = "127.0.0.1:808";
+        public ObservableCollection<string> ServerAddressHistory { get; } = new() { "127.0.0.1:6608" };
+        [ObservableProperty] private string _serverAddressInput = "127.0.0.1:6608";
 
         partial void OnServerAddressInputChanged(string value)
         {
@@ -2663,6 +2667,15 @@ namespace TerminalSimulation.Avalonia.ViewModels
             catch (Exception ex)
             {
                 Log("解析异常", ex.Message);
+            }
+        }
+
+        [RelayCommand]
+        private void DeleteServerAddress(string address)
+        {
+            if (ServerAddressHistory.Contains(address))
+            {
+                ServerAddressHistory.Remove(address);
             }
         }
 
