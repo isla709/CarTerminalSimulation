@@ -13,6 +13,8 @@ using SukiUI.Controls;
 using TerminalSimulation.PluginBase.Avalonia;
 using TerminalSimulation.Avalonia;
 using TerminalSimulation.Avalonia.ViewModels;
+using TerminalSimulation.Avalonia.ViewModels.Plugins;
+using System.Linq;
 
 namespace TerminalSimulation.Avalonia;
 
@@ -24,18 +26,18 @@ public partial class MainWindow : SukiWindow
     public MainWindow()
     {
         InitializeComponent();
-        // TODO: Phase 4 — Reimplement map with Avalonia.WebView once available
-        // InitializeMapAsync();
+        InitializeMap();
         this.Loaded += MainWindow_Loaded;
     }
 
-    // TODO: Phase 4 — Reimplement map initialization with Avalonia.WebView
-    /*
-    private async void InitializeMapAsync()
+    private global::AvaloniaWebView.WebView _mapWebView;
+
+    private void InitializeMap()
     {
         try
         {
-            await MapWebView.EnsureCoreWebView2Async(null);
+            _mapWebView = new global::AvaloniaWebView.WebView();
+            MapWebViewContainer.Child = _mapWebView;
 
             string mapHtml = @"
 <!DOCTYPE html>
@@ -335,23 +337,20 @@ public partial class MainWindow : SukiWindow
     </script>
 </body>
 </html>";
-            MapWebView.NavigateToString(mapHtml);
-            MapWebView.WebMessageReceived += MapWebView_WebMessageReceived;
+            _mapWebView.HtmlContent = mapHtml;
+            _mapWebView.WebMessageReceived += MapWebView_WebMessageReceived;
         }
-        catch
+        catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine("WebView2 init failed.");
+            System.Diagnostics.Debug.WriteLine($"WebView init failed: {ex.Message}");
         }
     }
-    */
 
-    // TODO: Phase 4 — Reimplement map message handling with Avalonia.WebView
-    /*
-    private void MapWebView_WebMessageReceived(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
+    private void MapWebView_WebMessageReceived(object? sender, global::WebViewCore.Events.WebViewMessageReceivedEventArgs e)
     {
         try
         {
-            var json = e.TryGetWebMessageAsString();
+            var json = e.Message;
             if (!string.IsNullOrEmpty(json))
             {
                 var data = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.Nodes.JsonObject>(json);
@@ -393,11 +392,11 @@ public partial class MainWindow : SukiWindow
                             }
                             vm.OnMapCarMoved = (lat, lng) =>
                             {
-                                MapWebView.CoreWebView2.ExecuteScriptAsync($"updateCarLocation({lat}, {lng}, {vm.Direction})");
+                                _mapWebView.ExecuteScriptAsync($"updateCarLocation({lat}, {lng}, {vm.Direction})");
                             };
                             vm.OnSimulationFinished = () =>
                             {
-                                MapWebView.CoreWebView2.ExecuteScriptAsync("simulationFinished()");
+                                _mapWebView.ExecuteScriptAsync("simulationFinished()");
                             };
                             vm.StartPathSimulation(geoPoints);
                         }
@@ -418,7 +417,6 @@ public partial class MainWindow : SukiWindow
         }
         catch { }
     }
-    */
 
     private void LogMessages_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
     {
@@ -452,6 +450,7 @@ public partial class MainWindow : SukiWindow
         {
             vm.LogMessages.CollectionChanged += LogMessages_CollectionChanged;
             vm.PropertyChanged += Vm_PropertyChanged;
+            vm.OpenedUtilityTabs.CollectionChanged += OpenedUtilityTabs_CollectionChanged;
         }
 
         try
@@ -460,6 +459,87 @@ public partial class MainWindow : SukiWindow
             var config = System.Text.Json.JsonSerializer.Deserialize<AppConfig>(configJson);
         }
         catch { }
+    }
+
+    private void OpenedUtilityTabs_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Add && e.NewItems != null)
+        {
+            foreach (OpenedPluginTab tabData in e.NewItems)
+            {
+                var stackPanel = new StackPanel { Orientation = global::Avalonia.Layout.Orientation.Horizontal };
+                
+                var iconKind = Material.Icons.MaterialIconKind.Toolbox;
+                if (!string.IsNullOrEmpty(tabData.IconKind) && Enum.TryParse<Material.Icons.MaterialIconKind>(tabData.IconKind, true, out var parsedKind))
+                {
+                    iconKind = parsedKind;
+                }
+
+                var icon = new Material.Icons.Avalonia.MaterialIcon 
+                { 
+                    Kind = iconKind,
+                    Width = 16, Height = 16,
+                    Margin = new global::Avalonia.Thickness(0, 0, 8, 0),
+                    VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center
+                };
+                
+                var textBlock = new TextBlock 
+                { 
+                    Text = tabData.Title,
+                    VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
+                    FontWeight = global::Avalonia.Media.FontWeight.SemiBold
+                };
+                
+                var closeButton = new Button 
+                { 
+                    Width = 20, Height = 20,
+                    Margin = new global::Avalonia.Thickness(8, 0, -8, 0),
+                    Padding = new global::Avalonia.Thickness(0),
+                    Command = tabData.CloseCommand
+                };
+                closeButton.Classes.Add("Icon");
+                closeButton.Content = new Material.Icons.Avalonia.MaterialIcon { Kind = Material.Icons.MaterialIconKind.Close, Width = 12, Height = 12 };
+                
+                stackPanel.Children.Add(icon);
+                stackPanel.Children.Add(textBlock);
+                stackPanel.Children.Add(closeButton);
+
+                var tabItem = new TabItem
+                {
+                    Header = stackPanel,
+                    Tag = tabData
+                };
+                tabItem.Classes.Add("BrowserTab");
+                
+                if (tabData.Content is Control control)
+                {
+                    var innerBorder = new Border { Child = control };
+                    innerBorder.Classes.Add("TabContentInner");
+                    
+                    var outerGrid = new Grid { Margin = new global::Avalonia.Thickness(16) };
+                    outerGrid.Children.Add(innerBorder);
+                    
+                    var outerBorder = new Border { Child = outerGrid };
+                    outerBorder.Classes.Add("TabContentOuter");
+                    
+                    tabItem.Content = outerBorder;
+                }
+
+                UtilitiesTabControl.Items.Add(tabItem);
+                UtilitiesTabControl.SelectedItem = tabItem;
+            }
+        }
+        else if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Remove && e.OldItems != null)
+        {
+            foreach (OpenedPluginTab tabData in e.OldItems)
+            {
+                var tabItem = UtilitiesTabControl.Items.OfType<TabItem>().FirstOrDefault(t => t.Tag == tabData);
+                if (tabItem != null)
+                {
+                    UtilitiesTabControl.Items.Remove(tabItem);
+                }
+            }
+        }
     }
 
     private void Vm_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)

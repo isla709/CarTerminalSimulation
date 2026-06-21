@@ -9,7 +9,7 @@
             BorderThickness="1"
             CornerRadius="12" 
             Margin="16" 
-            BoxShadow="0 8 32 0 #80000000"
+            BoxShadow="0 10 40 0 #B0000000"
             Padding="24">
         <Grid>
             <Grid.RowDefinitions>

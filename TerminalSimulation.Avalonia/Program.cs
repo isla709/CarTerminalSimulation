@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.WebView.Desktop;
 
 namespace TerminalSimulation.Avalonia;
 
@@ -14,5 +15,6 @@ class Program
         => AppBuilder.Configure<App>()
             .UsePlatformDetect()
             .WithInterFont()
+            .UseDesktopWebView()
             .LogToTrace();
 }

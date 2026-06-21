@@ -151,17 +151,17 @@
                     
                     <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
                         <TextBlock Text="终端手机号" FontSize="12" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" Margin="12,0,0,4"/>
-                        <TextBox Text="{Binding TerminalPhoneNo}" Watermark="例如: 13812345678" Width="150" />
+                        <TextBox Text="{Binding TerminalPhoneNo}" Watermark="例如: 13812345678" Width="180" />
                     </StackPanel>
                     
                     <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
                         <TextBlock Text="鉴权码" FontSize="12" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" Margin="12,0,0,4"/>
-                        <TextBox Text="{Binding AuthCode}" Watermark="例如: 123456" Width="150" />
+                        <TextBox Text="{Binding AuthCode}" Watermark="例如: 123456" Width="180" />
                     </StackPanel>
                     
                     <StackPanel Margin="0,0,16,0" VerticalAlignment="Center">
                         <TextBlock Text="协议版本" FontSize="12" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" Margin="12,0,0,4"/>
-                        <ComboBox Width="160" SelectedIndex="{Binding ProtocolVersionIndex}">
+                        <ComboBox Width="180" SelectedIndex="{Binding ProtocolVersionIndex}">
                             <ComboBoxItem Content="JT808-2013" />
                             <ComboBoxItem Content="JT808-2019" />
                         </ComboBox>
@@ -346,7 +346,7 @@
                                                 <CheckBox IsChecked="{Binding Enable0x01}"
                                                           Content="0x01 里程(1/10km):"
                                                           VerticalAlignment="Center" Width="190" />
-                                                <TextBox Text="{Binding Mileage0x01}" Width="70"
+                                                <TextBox Text="{Binding Mileage0x01}" Width="100"
                                                          IsEnabled="{Binding Enable0x01}"
                                                          VerticalAlignment="Center" />
                                             </StackPanel>
@@ -363,7 +363,7 @@
                                                 <CheckBox IsChecked="{Binding Enable0x02}"
                                                           Content="0x02 油量(1/10L):"
                                                           VerticalAlignment="Center" Width="190" />
-                                                <TextBox Text="{Binding Oil0x02}" Width="70"
+                                                <TextBox Text="{Binding Oil0x02}" Width="100"
                                                          IsEnabled="{Binding Enable0x02}"
                                                          VerticalAlignment="Center" />
                                             </StackPanel>
@@ -372,7 +372,7 @@
                                                           Content="自动消耗" VerticalAlignment="Center"
                                                           Margin="0,0,8,0"
                                                           ToolTip.Tip="开启后根据设定的百公里油耗自动扣减"/>
-                                                <TextBox Text="{Binding OilConsumptionRate}" Width="50"
+                                                <TextBox Text="{Binding OilConsumptionRate}" Width="80"
                                                          IsEnabled="{Binding EnableOilConsumption}"
                                                          VerticalAlignment="Center"
                                                          ToolTip.Tip="百公里油耗 (L)"/>
@@ -387,7 +387,7 @@
                                                 <CheckBox IsChecked="{Binding Enable0x03}"
                                                           Content="0x03 速度(1/10km/h):"
                                                           VerticalAlignment="Center" Width="190" />
-                                                <TextBox Text="{Binding Speed0x03}" Width="70"
+                                                <TextBox Text="{Binding Speed0x03}" Width="100"
                                                          IsEnabled="{Binding Enable0x03}"
                                                          VerticalAlignment="Center" />
                                             </StackPanel>
@@ -404,7 +404,7 @@
                                                 <CheckBox IsChecked="{Binding Enable0x04}"
                                                           Content="0x04 报警事件ID:"
                                                           VerticalAlignment="Center" Width="190" />
-                                                <TextBox Text="{Binding AlarmEventId0x04}" Width="70"
+                                                <TextBox Text="{Binding AlarmEventId0x04}" Width="100"
                                                          IsEnabled="{Binding Enable0x04}"
                                                          VerticalAlignment="Center" />
                                             </StackPanel>
@@ -416,7 +416,7 @@
                                                 <CheckBox IsChecked="{Binding Enable0x25}"
                                                           Content="0x25 车辆信号状态:"
                                                           VerticalAlignment="Center" Width="190" />
-                                                <TextBox Text="{Binding ExtVehicleSignal0x25}" Width="70"
+                                                <TextBox Text="{Binding ExtVehicleSignal0x25}" Width="100"
                                                          IsEnabled="{Binding Enable0x25}"
                                                          VerticalAlignment="Center" />
                                                 <ToggleButton x:Name="VehSigDetailsButton"
@@ -472,7 +472,7 @@
                                                 <CheckBox IsChecked="{Binding Enable0x2A}"
                                                           Content="0x2A IO状态位:"
                                                           VerticalAlignment="Center" Width="190" />
-                                                <TextBox Text="{Binding IOStatus0x2A}" Width="70"
+                                                <TextBox Text="{Binding IOStatus0x2A}" Width="100"
                                                          IsEnabled="{Binding Enable0x2A}"
                                                          VerticalAlignment="Center" />
                                                 <ToggleButton x:Name="IOStatusDetailsButton"
@@ -537,7 +537,7 @@
                                                         Value="{Binding AnalogAD1}" Width="100"
                                                         IsEnabled="{Binding Enable0x2B}"
                                                         VerticalAlignment="Center" Margin="0,0,8,0" />
-                                                <TextBox Text="{Binding AnalogAD1}" Width="45"
+                                                <TextBox Text="{Binding AnalogAD1}" Width="80"
                                                          IsEnabled="{Binding Enable0x2B}"
                                                          VerticalAlignment="Center" />
                                             </StackPanel>
@@ -548,7 +548,7 @@
                                                         Value="{Binding AnalogAD0}" Width="100"
                                                         IsEnabled="{Binding Enable0x2B}"
                                                         VerticalAlignment="Center" Margin="0,0,8,0" />
-                                                <TextBox Text="{Binding AnalogAD0}" Width="45"
+                                                <TextBox Text="{Binding AnalogAD0}" Width="80"
                                                          IsEnabled="{Binding Enable0x2B}"
                                                          VerticalAlignment="Center" Margin="0,0,16,0" />
                                             </StackPanel>
@@ -560,7 +560,7 @@
                                                 <CheckBox IsChecked="{Binding Enable0x30}"
                                                           Content="0x30 网络信号强度:"
                                                           VerticalAlignment="Center" Width="190" />
-                                                <TextBox Text="{Binding NetworkSignal0x30}" Width="70"
+                                                <TextBox Text="{Binding NetworkSignal0x30}" Width="100"
                                                          IsEnabled="{Binding Enable0x30}"
                                                          VerticalAlignment="Center" />
                                             </StackPanel>
@@ -577,7 +577,7 @@
                                                 <CheckBox IsChecked="{Binding Enable0x31}"
                                                           Content="0x31 GNSS卫星数:"
                                                           VerticalAlignment="Center" Width="190" />
-                                                <TextBox Text="{Binding GNSSCount0x31}" Width="70"
+                                                <TextBox Text="{Binding GNSSCount0x31}" Width="100"
                                                          IsEnabled="{Binding Enable0x31}"
                                                          VerticalAlignment="Center" />
                                             </StackPanel>
@@ -650,7 +650,7 @@
                                                       ToolTip.Tip="开启/关闭自动循环发送" VerticalAlignment="Center" Margin="0,0,16,0" />
 
                                         <TextBlock Text="间隔(秒):" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="12" />
-                                        <TextBox Width="70"
+                                        <TextBox Width="100"
                                                  Text="{Binding AutoReportInterval}" VerticalAlignment="Center" />
                                     </StackPanel>
                                     
@@ -668,6 +668,7 @@
                 <!-- ========== Right Advanced & Logs Area ========== -->
                 <Border BoxShadow="0 2 12 0 #15000000" CornerRadius="12" Margin="0" Grid.Column="1">
 <suki:GlassCard  Margin="0" BorderThickness="1" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" CornerRadius="12">
+                <Grid>
                     <TabControl x:Name="MainTabControl">
                         <TabControl.ItemsPanel>
                             <ItemsPanelTemplate>
@@ -747,12 +748,8 @@
                         </TabItem>
 
                         <!-- ===== Tab 2: 地图选点 ===== -->
-                        <TabItem Header="地图选点">
-                            <Grid>
-                                <!-- WebView2 placeholder; replace with Avalonia.WebView when available -->
-                                <Border x:Name="MapWebView" Background="Transparent"
-                                        HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
-                            </Grid>
+                        <TabItem x:Name="MapTabItem" Header="地图选点">
+                            <Grid x:Name="MapPlaceholder" />
                         </TabItem>
 
                         <!-- ===== Tab 3: 数据透传 ===== -->
@@ -946,7 +943,7 @@
                                             <TextBlock Text="语音声音风格 (Voice):" VerticalAlignment="Center" Margin="0,0,8,0" />
                                             <ComboBox ItemsSource="{Binding InstalledTTSVoices}"
                                                       SelectedItem="{Binding SelectedTTSVoice}"
-                                                      Width="150" VerticalAlignment="Center"
+                                                      Width="180" VerticalAlignment="Center"
                                                       IsEnabled="{Binding EnableTTSPlayback}" />
                                         </StackPanel>
 
@@ -1240,7 +1237,7 @@
                                                                 <TextBlock Text="匀速" VerticalAlignment="Center"
                                                                            Margin="4,0,16,0"/>
 
-                                                                <TextBox Text="{Binding TargetFps}" Width="70"
+                                                                <TextBox Text="{Binding TargetFps}" Width="100"
                                                                          VerticalAlignment="Center"
                                                                          IsReadOnly="{Binding IsConstantFramerate}"
                                                                          Watermark="FPS"/>
@@ -1320,7 +1317,14 @@
                             </Grid>
                         </TabItem>
                     </TabControl>
-                </suki:GlassCard>
+                    
+                    <!-- Floating Map Container over TabControl content to prevent WebView detachment -->
+                    <Border x:Name="MapWebViewContainer" Background="Transparent"
+                            IsVisible="{Binding #MapTabItem.IsSelected}"
+                            Margin="0,48,0,0"
+                            HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+                </Grid>
+            </suki:GlassCard>
 </Border>
             </Grid>
         </Grid> <!-- End Normal Main Content Wrapper -->
@@ -1343,73 +1347,139 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
-                <!-- Tab strip header row with TabControl tabs on left, add button on right -->
+                <!-- Tab strip header row with TabControl tabs and add button -->
                 <Grid Grid.Row="0" ZIndex="1">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-
-                    <!-- TabControl provides the tab strip -->
-                    <TabControl Grid.Column="0" x:Name="UtilitiesTabControl"
+                    <TabControl x:Name="UtilitiesTabControl" Classes="BrowserTabs"
                                 Background="Transparent" BorderThickness="0" Padding="0" Margin="0">
 
-                        <TabControl.ItemTemplate>
-                            <DataTemplate DataType="plugins_vm:OpenedPluginTab">
-                                <ContentControl Content="{Binding Content}" />
-                            </DataTemplate>
-                        </TabControl.ItemTemplate>
-
                         <TabControl.Styles>
-                            <Style Selector="TabItem">
-                                <Setter Property="Height" Value="36" />
-                                <Setter Property="MaxWidth" Value="200" />
-                                <Setter Property="MinWidth" Value="120" />
-                                <Setter Property="Padding" Value="16,0" />
-                                <Setter Property="Margin" Value="2,0" />
-                                <Setter Property="FontSize" Value="13" />
+                            <Style Selector="TabControl.BrowserTabs">
+                                <Setter Property="Template">
+                                    <ControlTemplate>
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="*"/>
+                                            </Grid.RowDefinitions>
+                                            
+                                            <!-- Tab Headers and Add Button -->
+                                            <StackPanel Orientation="Horizontal" Grid.Row="0" VerticalAlignment="Bottom">
+                                                <ItemsPresenter Name="PART_ItemsPresenter"
+                                                                ItemsPanel="{TemplateBinding ItemsPanel}" />
+                                                
+                                                <!-- "Add Tool" button injected right after tabs -->
+                                                <Button Width="28" Height="28" Margin="8,0,0,0"
+                                                        VerticalAlignment="Center"
+                                                        CornerRadius="14"
+                                                        Padding="0"
+                                                        HorizontalContentAlignment="Center"
+                                                        VerticalContentAlignment="Center"
+                                                        Background="#22888888"
+                                                        ToolTip.Tip="添加工具"
+                                                        Classes="Flat">
+                                                    <Button.Flyout>
+                                                        <Flyout Placement="BottomEdgeAlignedLeft">
+                                                            <StackPanel Margin="8">
+                                                                <ItemsControl ItemsSource="{Binding UtilityPlugins}">
+                                                                    <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate>
+                                                                            <Button Content="{Binding Name}"
+                                                                                    Command="{Binding DataContext.OpenUtilityPluginCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                                    CommandParameter="{Binding}"
+                                                                                    Classes="Flat" HorizontalAlignment="Stretch" />
+                                                                        </DataTemplate>
+                                                                    </ItemsControl.ItemTemplate>
+                                                                </ItemsControl>
+                                                            </StackPanel>
+                                                        </Flyout>
+                                                    </Button.Flyout>
+                                                    <materialIcons:MaterialIcon Kind="Plus" Width="16" Height="16" />
+                                                </Button>
+                                            </StackPanel>
+                                            
+                                            <!-- Tab Content Area -->
+                                            <ContentPresenter Name="PART_SelectedContentHost"
+                                                              Grid.Row="1"
+                                                              Margin="{TemplateBinding Padding}"
+                                                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                              Content="{TemplateBinding SelectedContent}"
+                                                              ContentTemplate="{TemplateBinding SelectedContentTemplate}" />
+                                        </Grid>
+                                    </ControlTemplate>
+                                </Setter>
                             </Style>
-                            <Style Selector="TabItem:selected">
-                                <Setter Property="FontWeight" Value="SemiBold" />
+                            <Style Selector="TabItem.BrowserTab">
+                                <Setter Property="Height" Value="36" />
+                                <Setter Property="MinWidth" Value="120" />
+                                <Setter Property="MaxWidth" Value="240" />
+                                <Setter Property="Margin" Value="2,0,2,0" />
+                                <Setter Property="Padding" Value="16,0" />
+                                <Setter Property="Background" Value="Transparent" />
+                                <Setter Property="BorderBrush" Value="Transparent" />
+                                <Setter Property="BorderThickness" Value="1,1,1,0" />
+                                <Setter Property="CornerRadius" Value="8,8,0,0" />
+                                <Setter Property="VerticalContentAlignment" Value="Center" />
+                                <Setter Property="Foreground" Value="{DynamicResource SukiTextBrush}" />
+                                <Setter Property="Template">
+                                    <ControlTemplate>
+                                        <Border Background="{TemplateBinding Background}"
+                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                BorderThickness="{TemplateBinding BorderThickness}"
+                                                CornerRadius="{TemplateBinding CornerRadius}">
+                                            <ContentPresenter Name="PART_ContentPresenter"
+                                                              ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                                              Content="{TemplateBinding Header}"
+                                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                              Margin="{TemplateBinding Padding}" />
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter>
+                            </Style>
+                            <Style Selector="TabItem.BrowserTab:pointerover">
+                                <Setter Property="Background" Value="#15888888" />
+                            </Style>
+                            <Style Selector="TabItem.BrowserTab:selected">
+                                <Setter Property="Background" Value="{DynamicResource SukiCardBackground}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource SukiBorderBrush}" />
+                                <Setter Property="BorderThickness" Value="1,1,1,0" />
+                                <Setter Property="Foreground" Value="{DynamicResource SukiPrimaryBrush}" />
+                            </Style>
+                            <Style Selector="Border.TabContentOuter">
+                                <Setter Property="Background" Value="{DynamicResource SukiCardBackground}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource SukiBorderBrush}" />
+                                <Setter Property="BorderThickness" Value="1,0,1,1" />
+                                <Setter Property="CornerRadius" Value="0,8,8,8" />
+                                <Setter Property="Margin" Value="0" />
+                                <Setter Property="BoxShadow" Value="0 4 15 0 #15000000" />
+                            </Style>
+                            <Style Selector="Border.TabContentInner">
+                                <Setter Property="BorderBrush" Value="{DynamicResource SukiBorderBrush}" />
+                                <Setter Property="BorderThickness" Value="1" />
+                                <Setter Property="CornerRadius" Value="8" />
                             </Style>
                         </TabControl.Styles>
 
-                        <!-- Template for dynamic utility tabs (icon + title + close button) -->
-                        <TabControl.ItemTemplate>
-                            <DataTemplate>
-                                <StackPanel Orientation="Horizontal">
-                                    <materialIcons:MaterialIcon Kind="{Binding IconKind}" Width="16" Height="16"
-                                                                 Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Title}" VerticalAlignment="Center"/>
-                                    <Button Command="{Binding CloseCommand}" Classes="Icon"
-                                            Width="20" Height="20" Margin="8,0,-8,0" Padding="0">
-                                        <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12" />
-                                    </Button>
-                                </StackPanel>
-                            </DataTemplate>
-                        </TabControl.ItemTemplate>
-
                         <!-- Static tab: 报文解析器 -->
-                        <TabItem>
+                        <TabItem Classes="BrowserTab">
                             <TabItem.Header>
                                 <StackPanel Orientation="Horizontal">
                                     <materialIcons:MaterialIcon Kind="CodeJson" Width="16" Height="16"
                                                                  Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="报文解析器" VerticalAlignment="Center"/>
+                                    <TextBlock Text="报文解析器" VerticalAlignment="Center" FontWeight="SemiBold"/>
                                 </StackPanel>
                             </TabItem.Header>
 
-                            <Border BoxShadow="0 2 12 0 #15000000" CornerRadius="12" Margin="0">
-<suki:GlassCard  Margin="0" BorderThickness="1" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" CornerRadius="12">
-                                <Grid Margin="8">
+                            <Border Classes="TabContentOuter">
+                                <Grid Margin="16">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="*" />
                                     </Grid.RowDefinitions>
 
                                     <!-- Input Area -->
-                                    <Border BoxShadow="0 2 12 0 #15000000" CornerRadius="12" Margin="0,0,0,8" Grid.Row="0">
-<suki:GlassCard  Background="Transparent" Margin="0" BorderThickness="1" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" CornerRadius="12">
+                                    <Border BorderBrush="{DynamicResource SukiBorderBrush}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,16" Grid.Row="0">
                                         <Grid Margin="16">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
@@ -1431,12 +1501,10 @@
                                                 </ComboBox>
                                             </StackPanel>
                                         </Grid>
-                                    </suki:GlassCard>
-</Border>
+                                    </Border>
 
                                     <!-- Result Area -->
-                                    <Border BoxShadow="0 2 12 0 #15000000" CornerRadius="12" Margin="0" Grid.Row="1">
-<suki:GlassCard  Background="Transparent" Margin="0" BorderThickness="1" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" CornerRadius="12">
+                                    <Border BorderBrush="{DynamicResource SukiBorderBrush}" BorderThickness="1" CornerRadius="8" Margin="0" Grid.Row="1">
                                         <Grid>
                                             <!-- Tree View (AnalyzerMode = 1) -->
                                             <TreeView x:Name="AnalyzerTreeView" KeyDown="AnalyzerTreeView_KeyDown"
@@ -1476,37 +1544,11 @@
                                                 </DataGrid.Columns>
                                             </DataGrid>
                                         </Grid>
-                                    </suki:GlassCard>
-</Border>
+                                    </Border>
                                 </Grid>
-                            </suki:GlassCard>
-</Border>
+                            </Border>
                         </TabItem>
                     </TabControl>
-
-                    <!-- "Add Tool" button -->
-                    <Button Grid.Column="1" Width="28" Height="28" Margin="4,0,0,4"
-                            VerticalAlignment="Bottom"
-                            ToolTip.Tip="添加工具"
-                            Classes="Flat">
-                        <Button.Flyout>
-                            <Flyout Placement="BottomEdgeAlignedLeft">
-                                <StackPanel Margin="8">
-                                    <ItemsControl ItemsSource="{Binding UtilityPlugins}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Button Content="{Binding Name}"
-                                                        Command="{Binding DataContext.OpenUtilityPluginCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                        CommandParameter="{Binding}"
-                                                        Classes="Flat" HorizontalAlignment="Stretch" />
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
-                            </Flyout>
-                        </Button.Flyout>
-                        <materialIcons:MaterialIcon Kind="Plus" Width="16" Height="16" />
-                    </Button>
                 </Grid>
             </Grid>
 
