@@ -16,7 +16,7 @@ public partial class ThemeSettingsControl : UserControl
         this.Loaded += ThemeSettingsControl_Loaded;
     }
 
-    private void ThemeSettingsControl_Loaded(object sender, RoutedEventArgs e)
+    private void ThemeSettingsControl_Loaded(object? sender, RoutedEventArgs e)
     {
         LoadCurrentTheme();
         LoadColors();
@@ -56,7 +56,7 @@ public partial class ThemeSettingsControl : UserControl
         ColorsItemsControl.ItemsSource = items;
     }
 
-    private void RbLight_Checked(object sender, RoutedEventArgs e)
+    private void RbLight_Checked(object? sender, RoutedEventArgs e)
     {
         if (!IsLoaded) return;
         var app = Application.Current;
@@ -66,7 +66,7 @@ public partial class ThemeSettingsControl : UserControl
 
     }
 
-    private void RbDark_Checked(object sender, RoutedEventArgs e)
+    private void RbDark_Checked(object? sender, RoutedEventArgs e)
     {
         if (!IsLoaded) return;
         var app = Application.Current;
@@ -75,7 +75,7 @@ public partial class ThemeSettingsControl : UserControl
         SukiTheme.GetInstance().ChangeBaseTheme(ThemeVariant.Dark);
     }
 
-    private void ColorButton_Click(object sender, RoutedEventArgs e)
+    private void ColorButton_Click(object? sender, RoutedEventArgs e)
     {
         if (sender is Button btn && btn.DataContext != null)
         {

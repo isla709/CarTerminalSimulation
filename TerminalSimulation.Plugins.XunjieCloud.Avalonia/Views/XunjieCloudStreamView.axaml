@@ -9,9 +9,9 @@
              xmlns:helpers="using:TerminalSimulation.Plugins.XunjieCloud.Avalonia.Helpers"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:DataType="vm:XunjieCloudStreamViewModel">
-    <Grid ColumnDefinitions="2*,1*" Margin="8">
+    <Grid ColumnDefinitions="2*,1*" Margin="0">
         <!-- 左侧视频区域 -->
-        <suki:GlassCard Grid.Column="0" Margin="0,0,8,0">
+        <Border Grid.Column="0" Margin="0,0,16,0" CornerRadius="8" ClipToBounds="True">
             <Grid>
                 <!-- 防闪烁底衬 -->
                 <Grid Background="#151515" IsVisible="{Binding !IsVideoViewVisible}">
@@ -26,28 +26,29 @@
                     <TextBlock Text="尚未拉取视频流" Foreground="#888888" Margin="0,16,0,0" FontSize="16" HorizontalAlignment="Center" />
                 </StackPanel>
             </Grid>
-        </suki:GlassCard>
+        </Border>
 
         <!-- 右侧控制与日志区域 -->
-        <suki:GlassCard Grid.Column="1" Margin="0">
-            <Grid Margin="16" RowDefinitions="Auto,Auto,Auto,*">
+        <Border Grid.Column="1" Margin="0">
+            <Grid Margin="0" RowDefinitions="Auto,Auto,Auto,*">
                 <Grid Grid.Row="0" Margin="0,0,0,16" ColumnDefinitions="*,Auto">
                     <TextBlock Grid.Column="0" Text="流媒体拉取配置" FontWeight="Bold" FontSize="18" VerticalAlignment="Center" />
                     <Button Grid.Column="1" Content="退出登录" Command="{Binding LogoutCommand}" Foreground="Red"
-                            IsVisible="{Binding IsLoggedIn}" />
+                            IsVisible="{Binding IsLoggedIn}" Classes="Basic" />
                 </Grid>
 
                 <!-- 登录板块 -->
                 <StackPanel Grid.Row="1" IsVisible="{Binding !IsLoggedIn}">
-                    <ComboBox PlaceholderText="账号 (Username)" 
-                              SelectedItem="{Binding SelectedUsername}" 
-                              ItemsSource="{Binding SavedUsernames}"
-                              Margin="0,0,0,16" HorizontalAlignment="Stretch" />
+                    <AutoCompleteBox Watermark="账号 (Username)" 
+                                     Text="{Binding SelectedUsername}" 
+                                     ItemsSource="{Binding SavedUsernames}"
+                                     FilterMode="Contains"
+                                     Margin="0,0,0,16" HorizontalAlignment="Stretch" />
                     <TextBox Watermark="密码 (Password)" 
                              PasswordChar="●"
                              Text="{Binding Password}" 
                              Margin="0,0,0,24" HorizontalAlignment="Stretch" />
-                    <Button Content="登录平台" Command="{Binding LoginCommand}" Margin="0,0,0,16" HorizontalAlignment="Stretch" Classes="Primary" />
+                    <Button Content="登录平台" Command="{Binding LoginCommand}" Margin="0,0,0,16" HorizontalAlignment="Stretch" />
                 </StackPanel>
 
                 <!-- 配置项 (已登录状态) -->
@@ -55,7 +56,7 @@
                     <Grid Margin="0,0,0,16" ColumnDefinitions="*,8,Auto">
                         <TextBox Grid.Column="0" Watermark="设备号 (Device No)" 
                                  Text="{Binding DeviceNo}" />
-                        <Button Grid.Column="2" Content="获取通道" Command="{Binding FetchChannelsCommand}" Classes="Primary" />
+                        <Button Grid.Column="2" Content="获取通道" Command="{Binding FetchChannelsCommand}" />
                     </Grid>
 
                     <Grid Margin="0,0,0,24" ColumnDefinitions="*,8,*">
@@ -77,14 +78,14 @@
 
                     <!-- 操作按钮 -->
                     <Grid Margin="0,0,0,16" ColumnDefinitions="*,8,*" RowDefinitions="Auto,8,Auto">
-                        <Button Grid.Row="0" Grid.Column="0" Content="开启通道" Command="{Binding OpenChannelCommand}" HorizontalAlignment="Stretch" Classes="Primary" />
-                        <Button Grid.Row="0" Grid.Column="2" Content="关闭通道" Command="{Binding CloseChannelCommand}" HorizontalAlignment="Stretch" Classes="Basic" />
+                        <Button Grid.Row="0" Grid.Column="0" Content="开启通道" Command="{Binding OpenChannelCommand}" HorizontalAlignment="Stretch" />
+                        <Button Grid.Row="0" Grid.Column="2" Content="关闭通道" Command="{Binding CloseChannelCommand}" HorizontalAlignment="Stretch" />
                         
                         <Button Grid.Row="2" Grid.Column="0" Content="开始拉取" Command="{Binding StartPlayCommand}" 
-                                HorizontalAlignment="Stretch" Classes="Primary"
+                                HorizontalAlignment="Stretch"
                                 IsEnabled="{Binding !IsPlaying}" />
                         <Button Grid.Row="2" Grid.Column="2" Content="结束拉取" Command="{Binding StopPlayCommand}" 
-                                HorizontalAlignment="Stretch" Classes="Basic"
+                                HorizontalAlignment="Stretch"
                                 IsEnabled="{Binding IsPlaying}" />
                     </Grid>
                 </StackPanel>
@@ -121,6 +122,6 @@
                     </DataGrid>
                 </Grid>
             </Grid>
-        </suki:GlassCard>
+        </Border>
     </Grid>
 </UserControl>

@@ -6,14 +6,14 @@ namespace TerminalSimulation.Avalonia.Converters
 {
     public class InvertBooleanConverter : IValueConverter
     {
-        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
         {
             if (value is bool b)
                 return !b;
             return value;
         }
 
-        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         {
             if (value is bool b)
                 return !b;
@@ -22,14 +22,14 @@ namespace TerminalSimulation.Avalonia.Converters
     }
     public class BooleanToVisibilityConverter : IValueConverter
     {
-        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
         {
             if (value is bool b)
                 return b ? true : false;
             return false;
         }
 
-        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         {
             throw new NotImplementedException();
         }
@@ -37,14 +37,14 @@ namespace TerminalSimulation.Avalonia.Converters
 
     public class InverseBooleanToVisibilityConverter : IValueConverter
     {
-        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
         {
             if (value is bool b)
                 return !b ? true : false;
             return false;
         }
 
-        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         {
             throw new NotImplementedException();
         }
@@ -52,7 +52,7 @@ namespace TerminalSimulation.Avalonia.Converters
 
     public class WidthToColumnsConverter : IValueConverter
     {
-        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
         {
             if (value is double width && width > 0)
             {
@@ -71,7 +71,7 @@ namespace TerminalSimulation.Avalonia.Converters
             return 1;
         }
 
-        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         {
             throw new NotImplementedException();
         }
@@ -79,7 +79,7 @@ namespace TerminalSimulation.Avalonia.Converters
 
     public class AspectRatioConverter : IValueConverter
     {
-        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
         {
             if (value is double width && width > 0)
             {
@@ -93,7 +93,7 @@ namespace TerminalSimulation.Avalonia.Converters
             return double.NaN;
         }
 
-        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         {
             throw new NotImplementedException();
         }
@@ -101,7 +101,7 @@ namespace TerminalSimulation.Avalonia.Converters
 
     public class IntEqualsVisibilityConverter : IValueConverter
     {
-        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
         {
             if (value is int intValue && parameter != null && int.TryParse(parameter.ToString(), out int targetValue))
             {
@@ -110,7 +110,7 @@ namespace TerminalSimulation.Avalonia.Converters
             return false;
         }
 
-        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         {
             throw new NotImplementedException();
         }

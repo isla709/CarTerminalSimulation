@@ -30,7 +30,7 @@ public partial class MainWindow : SukiWindow
         this.Loaded += MainWindow_Loaded;
     }
 
-    private global::AvaloniaWebView.WebView _mapWebView;
+    private global::AvaloniaWebView.WebView _mapWebView = null!;
 
     private void InitializeMap()
     {
@@ -434,7 +434,7 @@ public partial class MainWindow : SukiWindow
     // TitleBar_PointerPressed, BtnMinimize_Click, BtnMaximize_Click, BtnClose_Click removed —
     // SukiWindow provides native title bar with built-in drag, min/max/close handling.
 
-    private void BtnSettings_Click(object sender, RoutedEventArgs e)
+    private void BtnSettings_Click(object? sender, RoutedEventArgs e)
     {
         if (DataContext is MainViewModel vm)
         {
@@ -442,9 +442,7 @@ public partial class MainWindow : SukiWindow
         }
     }
 
-    private ThemeSettingsWindow? _settingsWindow;
-
-    private void MainWindow_Loaded(object sender, RoutedEventArgs e)
+    private void MainWindow_Loaded(object? sender, RoutedEventArgs e)
     {
         if (DataContext is MainViewModel vm)
         {
@@ -514,7 +512,6 @@ public partial class MainWindow : SukiWindow
                 if (tabData.Content is Control control)
                 {
                     var innerBorder = new Border { Child = control };
-                    innerBorder.Classes.Add("TabContentInner");
                     
                     var outerGrid = new Grid { Margin = new global::Avalonia.Thickness(16) };
                     outerGrid.Children.Add(innerBorder);
@@ -552,38 +549,7 @@ public partial class MainWindow : SukiWindow
 
     private void Vm_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(MainViewModel.IsSettingsOpen))
-        {
-            if (DataContext is MainViewModel vm)
-            {
-                if (vm.IsSettingsOpen)
-                {
-                    if (_settingsWindow == null)
-                    {
-                        _settingsWindow = new ThemeSettingsWindow
-                        {
-                            DataContext = vm,
-                            Width = this.Width,
-                            Height = this.Height,
-                        };
-                        _settingsWindow.Closed += (s, args) =>
-                        {
-                            _settingsWindow = null;
-                            vm.IsSettingsOpen = false;
-                        };
-                        _settingsWindow.ShowDialog(this);
-                    }
-                }
-                else
-                {
-                    if (_settingsWindow != null)
-                    {
-                        _settingsWindow.Close();
-                        _settingsWindow = null;
-                    }
-                }
-            }
-        }
+        // Settings dialog is now handled natively via XAML bindings and overlay transitions.
     }
 
     protected override void OnClosed(System.EventArgs e)
@@ -773,6 +739,39 @@ public partial class MainWindow : SukiWindow
                         channel.ResumePlayback();
                     }
                 }
+            }
+        }
+    }
+
+    private void UtilityToggle_DoubleTapped(object? sender, global::Avalonia.Input.TappedEventArgs e)
+    {
+        // Prevent the double click from bubbling up to the title bar which causes maximize/restore
+        e.Handled = true;
+    }
+
+    private void UtilityPluginButton_Click(object? sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is Control control)
+        {
+            var plugin = control.DataContext as TerminalSimulation.PluginBase.Avalonia.IPlugin;
+            var vm = DataContext as TerminalSimulation.Avalonia.ViewModels.MainViewModel;
+
+            // Find the popup host or flyout using LogicalTree and close it synchronously FIRST
+            // (VisualTree doesn't cross popup boundaries, LogicalTree does)
+            var popup = global::Avalonia.LogicalTree.LogicalExtensions.GetLogicalAncestors(control)
+                .OfType<global::Avalonia.Controls.Primitives.Popup>()
+                .FirstOrDefault();
+                
+            if (popup != null)
+            {
+                popup.IsOpen = false;
+            }
+
+            // Execute the plugin command manually AFTER closing the flyout
+            if (plugin != null && vm != null)
+            {
+                vm.OpenUtilityPluginCommand.Execute(plugin);
             }
         }
     }

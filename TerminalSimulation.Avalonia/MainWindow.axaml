@@ -45,7 +45,8 @@
             <materialIcons:MaterialIcon Kind="TshirtCrew" Width="18" Height="18"/>
         </Button>
         <!-- Utilities Toggle -->
-        <ToggleButton IsChecked="{Binding IsUtilitiesVisible}" Classes="Basic" ToolTip.Tip="实用工具" VerticalAlignment="Center" Padding="8,4">
+        <ToggleButton IsChecked="{Binding IsUtilitiesVisible}" Classes="Basic" ToolTip.Tip="实用工具" VerticalAlignment="Center" Padding="8,4"
+                      DoubleTapped="UtilityToggle_DoubleTapped">
             <materialIcons:MaterialIcon Kind="Toolbox" Width="18" Height="18"/>
         </ToggleButton>
     </suki:SukiWindow.RightWindowTitleBarControls>
@@ -76,6 +77,58 @@
             <Setter Property="MinHeight" Value="42" />
             <Setter Property="Padding" Value="12,0,12,4" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <!-- Animations for Overlays -->
+        <Style Selector="Grid.SettingsOverlay">
+            <Setter Property="IsHitTestVisible" Value="False" />
+        </Style>
+        <Style Selector="Grid.SettingsOverlay.IsOpen">
+            <Setter Property="IsHitTestVisible" Value="True" />
+        </Style>
+        
+        <Style Selector="Border.OverlayBackdrop">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.25" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Grid.SettingsOverlay.IsOpen Border.OverlayBackdrop">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        
+        <Style Selector="Border.SettingsDialog">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="RenderTransform" Value="scale(0.9) translateY(30px)" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.3" Easing="CubicEaseOut" />
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.35" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Grid.SettingsOverlay.IsOpen Border.SettingsDialog">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="RenderTransform" Value="none" />
+        </Style>
+
+        <Style Selector="Grid.UtilitiesOverlay">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+            <Setter Property="RenderTransform" Value="translateY(30px) scale(0.95)" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.25" Easing="CubicEaseOut" />
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.3" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Grid.UtilitiesOverlay.IsOpen">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="IsHitTestVisible" Value="True" />
+            <Setter Property="RenderTransform" Value="none" />
         </Style>
     </Window.Styles>
 
@@ -418,7 +471,7 @@
                                                 </ToggleButton>
                                                 <Popup IsOpen="{Binding IsChecked, ElementName=VehSigDetailsButton}"
                                                        PlacementTarget="{Binding #VehSigDetailsButton}"
-                                                       PlacementMode="Bottom">
+                                                       Placement="Bottom">
                                                     <Border Background="{DynamicResource SukiControlBackground}"
                                                             BorderBrush="{DynamicResource SukiBorderBrush}"
                                                             BorderThickness="1" CornerRadius="4"
@@ -474,7 +527,7 @@
                                                 </ToggleButton>
                                                 <Popup IsOpen="{Binding IsChecked, ElementName=IOStatusDetailsButton}"
                                                        PlacementTarget="{Binding #IOStatusDetailsButton}"
-                                                       PlacementMode="Bottom">
+                                                       Placement="Bottom">
                                                     <Border Background="{DynamicResource SukiControlBackground}"
                                                             BorderBrush="{DynamicResource SukiBorderBrush}"
                                                             BorderThickness="1" CornerRadius="4"
@@ -1352,7 +1405,8 @@
             (CompositeCollection + CollectionContainer not supported in Avalonia).
         -->
         <Grid Grid.Row="0" Grid.RowSpan="2" Margin="8"
-              IsVisible="{Binding IsUtilitiesVisible}">
+              Classes="UtilitiesOverlay"
+              Classes.IsOpen="{Binding IsUtilitiesVisible}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
@@ -1410,8 +1464,7 @@
                                                                         <ItemsControl.ItemTemplate>
                                                                             <DataTemplate>
                                                                                 <Button Content="{Binding Name}"
-                                                                                        Command="{Binding DataContext.OpenUtilityPluginCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                                                        CommandParameter="{Binding}"
+                                                                                        Click="UtilityPluginButton_Click"
                                                                                         Classes="Flat" HorizontalAlignment="Stretch" Margin="0,0,0,4"/>
                                                                             </DataTemplate>
                                                                         </ItemsControl.ItemTemplate>
@@ -1425,13 +1478,17 @@
                                             </StackPanel>
                                             
                                             <!-- Tab Content Area -->
-                                            <ContentPresenter Name="PART_SelectedContentHost"
-                                                              Grid.Row="1"
+                                            <ContentPresenter Name="PART_SelectedContentHost" IsVisible="False" />
+                                            <TransitioningContentControl Grid.Row="1"
                                                               Margin="{TemplateBinding Padding}"
                                                               HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
                                                               VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
                                                               Content="{TemplateBinding SelectedContent}"
-                                                              ContentTemplate="{TemplateBinding SelectedContentTemplate}" />
+                                                              ContentTemplate="{TemplateBinding SelectedContentTemplate}">
+                                                <TransitioningContentControl.PageTransition>
+                                                    <CrossFade Duration="0:0:0.25" />
+                                                </TransitioningContentControl.PageTransition>
+                                            </TransitioningContentControl>
                                         </Grid>
                                     </ControlTemplate>
                                 </Setter>
@@ -1632,6 +1689,16 @@
             -->
         </Grid>
         <!-- End Utilities Overlay -->
+
+        <!-- Settings Overlay -->
+        <Grid Grid.Row="0" Grid.RowSpan="2" Margin="0" ZIndex="1000"
+              Classes="SettingsOverlay"
+              Classes.IsOpen="{Binding IsSettingsOpen}">
+            <Border Background="#40000000" Classes="OverlayBackdrop" />
+            <Border HorizontalAlignment="Center" VerticalAlignment="Center" Classes="SettingsDialog">
+                <local:ThemeSettingsControl DataContext="{Binding}" />
+            </Border>
+        </Grid>
 
         <!-- Hidden reference element for dynamic tab DataContext -->
         <ContentControl x:Name="DummyDynamicTabs" IsVisible="False" />

@@ -424,12 +424,28 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Avalonia.ViewModels
 
         public void Dispose()
         {
-            StopPlay();
             _statsTimer?.Stop();
+            IsPlaying = false;
             
-            MediaPlayer?.Stop();
-            MediaPlayer?.Dispose();
-            _libVLC?.Dispose();
+            var mp = MediaPlayer;
+            var vlc = _libVLC;
+            
+            MediaPlayer = null;
+            _libVLC = null;
+
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    mp?.Stop();
+                    mp?.Dispose();
+                    vlc?.Dispose();
+                }
+                catch
+                {
+                    // Ignore background disposal errors
+                }
+            });
         }
     }
 }
