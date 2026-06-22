@@ -53,15 +53,11 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Avalonia.Helpers
             }
         }
 
-        private static bool _isUpdating;
-
         private static void PasswordChanged(object? sender, TextChangedEventArgs e)
         {
             if (sender is TextBox passwordBox)
             {
-                _isUpdating = true;
                 SetPassword(passwordBox, passwordBox.Text ?? "");
-                _isUpdating = false;
             }
         }
     }

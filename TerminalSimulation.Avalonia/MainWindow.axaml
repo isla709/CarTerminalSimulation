@@ -2,6 +2,7 @@
         xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:suki="https://github.com/kikipoulet/SukiUI"
+        BackgroundAnimationEnabled="True"
         xmlns:materialIcons="using:Material.Icons.Avalonia"
         xmlns:viewmodels="using:TerminalSimulation.Avalonia.ViewModels"
         xmlns:converters="using:TerminalSimulation.Avalonia.Converters"
@@ -39,14 +40,14 @@
                 <TextBlock Text="{Binding TerminalStatusText}" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="12" FontWeight="Bold"/>
             </StackPanel>
         </Border>
-        <!-- Utilities Toggle -->
-        <ToggleButton IsChecked="{Binding IsUtilitiesVisible}" Classes="Basic" ToolTip.Tip="实用工具" VerticalAlignment="Center" Padding="8,4">
-            <materialIcons:MaterialIcon Kind="Tools" Width="18" Height="18"/>
-        </ToggleButton>
         <!-- Settings Button -->
-        <Button Click="BtnSettings_Click" ToolTip.Tip="个性化设置" Classes="Basic" VerticalAlignment="Center" Padding="8,4">
+        <Button Click="BtnSettings_Click" ToolTip.Tip="个性化设置" Classes="Basic" Foreground="{DynamicResource SukiText}" VerticalAlignment="Center" Padding="8,4">
             <materialIcons:MaterialIcon Kind="TshirtCrew" Width="18" Height="18"/>
         </Button>
+        <!-- Utilities Toggle -->
+        <ToggleButton IsChecked="{Binding IsUtilitiesVisible}" Classes="Basic" ToolTip.Tip="实用工具" VerticalAlignment="Center" Padding="8,4">
+            <materialIcons:MaterialIcon Kind="Toolbox" Width="18" Height="18"/>
+        </ToggleButton>
     </suki:SukiWindow.RightWindowTitleBarControls>
 
     <suki:SukiWindow.LogoContent>
@@ -65,39 +66,26 @@
         <converters:WidthToColumnsConverter x:Key="WidthToColumnsConverter" />
         <converters:AspectRatioConverter x:Key="AspectRatioConverter" />
         <converters:PluginToContentConverter x:Key="PluginToContentConverter" />
+        <converters:IntEqualsVisibilityConverter x:Key="IntEqualsVisibilityConverter" />
+        <converters:BrushOpacityConverter x:Key="BrushOpacityConverter" />
     </Window.Resources>
 
     <Window.Styles>
-        <!-- Compact TabItem style -->
+        <!-- Fix SukiUI TabItem hover underline clipping Chinese characters -->
         <Style Selector="TabItem">
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Padding" Value="12,4"/>
-            <Setter Property="Margin" Value="0"/>
-            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="MinHeight" Value="42" />
+            <Setter Property="Padding" Value="12,0,12,4" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
-
     </Window.Styles>
 
-    <Grid x:Name="LayoutRoot">
+    <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- Background Sharp Image -->
-        <Image Source="{Binding BackgroundImageSource}" Stretch="UniformToFill" Grid.RowSpan="2" ZIndex="-2">
-            <Image.Styles>
-                <Style Selector="Image">
-                    <Setter Property="IsVisible" Value="True" />
-                </Style>
-            </Image.Styles>
-        </Image>
 
-        <!-- Blurred Background Layer for Glass Effect -->
-        <Grid x:Name="RootBlurredImage" Grid.RowSpan="2" ZIndex="-3">
-            <Image Source="{Binding BackgroundImageSource}" Stretch="UniformToFill" />
-            <Border Background="{DynamicResource SystemRegionBrush}" Opacity="{Binding BackgroundOpacity}" />
-        </Grid>
 
         <!-- ==================== Normal Main Content Wrapper ==================== -->
         <Grid Grid.Row="0" Grid.RowSpan="2"
@@ -204,7 +192,7 @@
 
                         <!-- Device Registration Card -->
                         <Border BoxShadow="0 2 12 0 #15000000" CornerRadius="12" Margin="0,0,0,8">
-<suki:GlassCard  Margin="0" BorderThickness="1" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" CornerRadius="12">
+                            <suki:GlassCard  Margin="0" BorderThickness="1" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" CornerRadius="12">
                             <StackPanel Margin="16">
                                 <TextBlock Text="设备注册与鉴权"
                                            FontWeight="Bold" FontSize="16"
@@ -669,7 +657,7 @@
                 <Border BoxShadow="0 2 12 0 #15000000" CornerRadius="12" Margin="0" Grid.Column="1">
 <suki:GlassCard  Margin="0" BorderThickness="1" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" CornerRadius="12">
                 <Grid>
-                    <TabControl x:Name="MainTabControl">
+                    <TabControl x:Name="MainTabControl" SelectionChanged="MainTabControl_SelectionChanged">
                         <TabControl.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <UniformGrid Rows="1" />
@@ -1040,68 +1028,140 @@
                         <TabItem Header="设备属性">
                             <ScrollViewer VerticalScrollBarVisibility="Auto">
                                 <StackPanel Margin="16" MinWidth="250">
-                                    <TextBlock Text="终端标识属性" FontWeight="Bold" FontSize="16"
-                                               Margin="0,0,0,16" />
+                                    <!-- 终端标识属性 -->
+                                    <TextBlock Text="终端标识属性" FontWeight="Bold" FontSize="16" Margin="0,0,0,16" />
 
-                                    <ComboBox IsEditable="True"
-                                              Text="{Binding ProvinceIdInput}"
-                                              ItemsSource="{Binding ProvinceList}"
-                                              Margin="0,8,0,16" />
-                                    <ComboBox IsEditable="True"
-                                              Text="{Binding CityIdInput}"
-                                              ItemsSource="{Binding CityList}"
-                                              Margin="0,8,0,16" />
-                                    <TextBox Text="{Binding ManufacturerId}"
-                                             Watermark="制造商ID (5字节)"
-                                             MaxLength="5" Margin="0,8,0,16" />
-                                    <TextBox Text="{Binding TerminalModel}"
-                                             Watermark="终端型号"
-                                             MaxLength="20" Margin="0,8,0,16" />
-                                    <TextBox Text="{Binding TerminalId}"
-                                             Watermark="终端ID"
-                                             MaxLength="7" Margin="0,8,0,16" />
+                                    <StackPanel Margin="0,0,0,16">
+                                        <TextBlock Text="省域ID:" Foreground="{DynamicResource SukiText}" Margin="0,0,0,4" FontSize="12" />
+                                        <ComboBox IsEditable="True" SelectedItem="{Binding ProvinceIdInput}" ItemsSource="{Binding ProvinceList}" HorizontalAlignment="Stretch" />
+                                    </StackPanel>
+                                    
+                                    <StackPanel Margin="0,0,0,16">
+                                        <TextBlock Text="市县域ID:" Foreground="{DynamicResource SukiText}" Margin="0,0,0,4" FontSize="12" />
+                                        <ComboBox IsEditable="True" SelectedItem="{Binding CityIdInput}" ItemsSource="{Binding CityList}" HorizontalAlignment="Stretch" />
+                                    </StackPanel>
+                                    
+                                    <StackPanel Margin="0,0,0,16">
+                                        <TextBlock Text="制造商ID (5字节):" Foreground="{DynamicResource SukiText}" Margin="0,0,0,4" FontSize="12" />
+                                        <TextBox Text="{Binding ManufacturerId}" Watermark="制造商ID (5字节)" MaxLength="5" />
+                                        <TextBlock Text="{Binding ManufacturerId.Length, StringFormat='{}{0} / 5', FallbackValue='0 / 5', TargetNullValue='0 / 5'}" HorizontalAlignment="Right" FontSize="11" Foreground="Gray" Margin="0,4,4,0" />
+                                    </StackPanel>
+                                    
+                                    <StackPanel Margin="0,0,0,16">
+                                        <TextBlock Text="终端型号:" Foreground="{DynamicResource SukiText}" Margin="0,0,0,4" FontSize="12" />
+                                        <TextBox Text="{Binding TerminalModel}" Watermark="终端型号" MaxLength="20" />
+                                        <TextBlock Text="{Binding TerminalModel.Length, StringFormat='{}{0} / 20', FallbackValue='0 / 20', TargetNullValue='0 / 20'}" HorizontalAlignment="Right" FontSize="11" Foreground="Gray" Margin="0,4,4,0" />
+                                    </StackPanel>
+                                    
+                                    <StackPanel Margin="0,0,0,16">
+                                        <TextBlock Text="终端ID:" Foreground="{DynamicResource SukiText}" Margin="0,0,0,4" FontSize="12" />
+                                        <TextBox Text="{Binding TerminalId}" Watermark="终端ID" MaxLength="7" />
+                                        <TextBlock Text="{Binding TerminalId.Length, StringFormat='{}{0} / 7', FallbackValue='0 / 7', TargetNullValue='0 / 7'}" HorizontalAlignment="Right" FontSize="11" Foreground="Gray" Margin="0,4,4,0" />
+                                    </StackPanel>
 
-                                    <TextBlock Text="车辆与SIM卡属性" FontWeight="Bold" FontSize="16"
-                                               Margin="0,16,0,16" />
+                                    <!-- 车辆与SIM卡属性 -->
+                                    <TextBlock Text="车辆与SIM卡属性" FontWeight="Bold" FontSize="16" Margin="0,16,0,16" />
 
-                                    <ComboBox SelectedValue="{Binding PlateColor}"
-                                              SelectedValueBinding="{Binding Value}"
-                                              DisplayMemberBinding="{Binding Name}"
-                                              ItemsSource="{Binding PlateColorList}"
-                                              Margin="0,8,0,16" />
-                                    <TextBox Text="{Binding PlateNo}"
-                                             Watermark="车牌号"
-                                             Margin="0,8,0,16" />
-                                    <TextBox Text="{Binding SimNumber}"
-                                             Watermark="SIM卡号 (ICCID)"
-                                             Margin="0,8,0,16" />
-                                    <TextBox Text="{Binding TerminalIMEI}"
-                                             Watermark="终端IMEI"
-                                             Margin="0,8,0,16" />
+                                    <StackPanel Margin="0,0,0,16">
+                                        <TextBlock Text="车牌颜色:" Foreground="{DynamicResource SukiText}" Margin="0,0,0,4" FontSize="12" />
+                                        <ComboBox SelectedValue="{Binding PlateColor}" SelectedValueBinding="{Binding Value}" DisplayMemberBinding="{Binding Name}" ItemsSource="{Binding PlateColorList}" HorizontalAlignment="Stretch" />
+                                    </StackPanel>
+                                    
+                                    <StackPanel Margin="0,0,0,16">
+                                        <TextBlock Text="车牌号:" Foreground="{DynamicResource SukiText}" Margin="0,0,0,4" FontSize="12" />
+                                        <TextBox Text="{Binding PlateNo}" Watermark="车牌号" />
+                                    </StackPanel>
+                                    
+                                    <StackPanel Margin="0,0,0,16">
+                                        <TextBlock Text="SIM卡号 (ICCID):" Foreground="{DynamicResource SukiText}" Margin="0,0,0,4" FontSize="12" />
+                                        <TextBox Text="{Binding SimNumber}" Watermark="SIM卡号 (ICCID)" />
+                                    </StackPanel>
+                                    
+                                    <StackPanel Margin="0,0,0,16">
+                                        <TextBlock Text="终端IMEI:" Foreground="{DynamicResource SukiText}" Margin="0,0,0,4" FontSize="12" />
+                                        <TextBox Text="{Binding TerminalIMEI}" Watermark="终端IMEI" />
+                                    </StackPanel>
 
-                                    <TextBlock Text="版本属性 (用于 0x8107 回复)" FontWeight="Bold" FontSize="16"
-                                               Margin="0,16,0,16" />
+                                    <!-- 版本属性 -->
+                                    <TextBlock Text="版本属性 (用于 0x8107 回复)" FontWeight="Bold" FontSize="16" Margin="0,16,0,16" />
 
-                                    <TextBox Text="{Binding HardwareVersion}"
-                                             Watermark="硬件版本号"
-                                             Margin="0,8,0,16" />
+                                    <StackPanel Margin="0,0,0,16">
+                                        <TextBlock Text="硬件版本号:" Foreground="{DynamicResource SukiText}" Margin="0,0,0,4" FontSize="12" />
+                                        <TextBox Text="{Binding HardwareVersion}" Watermark="硬件版本号" />
+                                    </StackPanel>
                                     <StackPanel Orientation="Horizontal" Margin="0,8,0,16">
                                         <ToggleButton IsChecked="{Binding UseAppVersionAsFirmwareVersion}" />
                                         <TextBlock Text="使用程序版本作为固件版本" VerticalAlignment="Center"
                                                    Margin="8,0,0,0" />
                                     </StackPanel>
-                                    <TextBox Text="{Binding FirmwareVersion}"
-                                             Watermark="固件版本号"
-                                             IsEnabled="{Binding UseAppVersionAsFirmwareVersion, Converter={StaticResource InvertBooleanConverter}}"
-                                             Margin="0,8,0,16" />
+                                    <StackPanel Margin="0,0,0,16">
+                                        <TextBlock Text="固件版本号:" Foreground="{DynamicResource SukiText}" Margin="0,0,0,4" FontSize="12" />
+                                        <TextBox Text="{Binding FirmwareVersion}"
+                                                 Watermark="固件版本号"
+                                                 IsEnabled="{Binding UseAppVersionAsFirmwareVersion, Converter={StaticResource InvertBooleanConverter}}" />
+                                    </StackPanel>
 
                                 </StackPanel>
                             </ScrollViewer>
                         </TabItem>
 
                         <!-- ===== Tab 6: 视频控制 ===== -->
-                        <TabItem Header="视频控制">
-                            <Grid Margin="16">
+                        <TabItem x:Name="VideoTabItem" Header="视频控制">
+                            <Grid />
+                        
+                        </TabItem>
+
+                        <!-- ===== Tab 7: 插件功能 ===== -->
+                        <TabItem>
+                            <TabItem.Header>
+                                <StackPanel Orientation="Horizontal">
+                                    <materialIcons:MaterialIcon Kind="Puzzle" Width="16" Height="16"
+                                                                 Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="插件功能" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </TabItem.Header>
+                            <Grid Margin="8">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl ItemsSource="{Binding MainPlugins}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border BoxShadow="0 2 12 0 #15000000" CornerRadius="12" Margin="0,0,0,16">
+<suki:GlassCard  Padding="16" Margin="0" BorderThickness="1" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" CornerRadius="12">
+                                                    <StackPanel>
+                                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                            <TextBlock Text="{Binding Name}" FontWeight="Bold"
+                                                                       FontSize="18"
+                                                                       Foreground="{DynamicResource SukiPrimaryColor}" />
+                                                            <TextBlock Text="{Binding Version}" Margin="8,0,0,0"
+                                                                       VerticalAlignment="Bottom"
+                                                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="12" />
+                                                        </StackPanel>
+                                                        <TextBlock Text="{Binding Description}" TextWrapping="Wrap"
+                                                                   Margin="0,0,0,16" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="14" />
+                                                        <ContentControl Content="{Binding Converter={StaticResource PluginToContentConverter}}" />
+                                                    </StackPanel>
+                                                </suki:GlassCard>
+</Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </Grid>
+                        </TabItem>
+                    </TabControl>
+                    
+                    <!-- Floating Map Container over TabControl content to prevent WebView detachment -->
+                    <Border x:Name="MapWebViewContainer" Background="Transparent"
+                            IsVisible="{Binding #MapTabItem.IsSelected}"
+                            Margin="0,48,0,0"
+                            HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+
+                    <!-- Floating Video Container to prevent VideoView detachment -->
+                    <Border x:Name="VideoTabContainer" Background="Transparent"
+                            IsVisible="{Binding #VideoTabItem.IsSelected}"
+                            Margin="0,48,0,0"
+                            HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                        <Grid Margin="16">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>
@@ -1154,7 +1214,9 @@
                                     </Button>
                                 </StackPanel>
 
-                                <ScrollViewer x:Name="VideoScrollViewerContainer" Grid.Row="1">
+                                <ScrollViewer x:Name="VideoScrollViewerContainer" Grid.Row="1"
+                                              ScrollChanged="VideoScrollViewerContainer_ScrollChanged"
+                                              SizeChanged="VideoScrollViewerContainer_SizeChanged">
                                     <ItemsControl x:Name="VideoItemsControl"
                                                   ItemsSource="{Binding VideoChannels}">
                                         <ItemsControl.ItemsPanel>
@@ -1182,6 +1244,10 @@
                                                                 ClipToBounds="True"
                                                                 Height="{Binding Bounds.Width, RelativeSource={RelativeSource Self}, Converter={StaticResource AspectRatioConverter}, ConverterParameter=0.5625}">
                                                             <Grid>
+                                                                <!-- Actual Video Player (hidden when not playing to avoid native HWND airspace issues) -->
+                                                                <vlc:VideoView MediaPlayer="{Binding MediaPlayer}"
+                                                                               IsVisible="{Binding IsVideoViewVisible}" />
+
                                                                 <!-- Placeholder (when not streaming/previewing) -->
                                                                 <Grid Background="#151515"
                                                                       IsVisible="{Binding IsVideoViewVisible, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
@@ -1194,7 +1260,7 @@
                                                                         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                                                                             <materialIcons:MaterialIcon Kind="VideoOff" Width="28" Height="28"
                                                                                                          Foreground="#88FFFFFF" HorizontalAlignment="Center"/>
-                                                                            <TextBlock Text="{Binding Watermark}"
+                                                                            <TextBlock Text="{Binding PlaceholderText}"
                                                                                        Foreground="#D0FFFFFF" FontSize="11"
                                                                                        Margin="0,6,0,0" HorizontalAlignment="Center"/>
                                                                         </StackPanel>
@@ -1204,16 +1270,12 @@
                                                                         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                                                                             <materialIcons:MaterialIcon Kind="VideoOff" Width="28" Height="28"
                                                                                                          Foreground="#444444" HorizontalAlignment="Center"/>
-                                                                            <TextBlock Text="{Binding Watermark}"
+                                                                            <TextBlock Text="{Binding PlaceholderText}"
                                                                                        Foreground="#666666" FontSize="11"
                                                                                        Margin="0,6,0,0" HorizontalAlignment="Center"/>
                                                                         </StackPanel>
                                                                     </Grid>
                                                                 </Grid>
-
-                                                                <!-- Actual Video Player -->
-                                                                <vlc:VideoView MediaPlayer="{Binding MediaPlayer}"
-                                                                               IsVisible="{Binding IsVideoViewVisible, Converter={StaticResource BooleanToHiddenVisibilityConverter}}" />
                                                             </Grid>
                                                         </Border>
 
@@ -1277,52 +1339,7 @@
                                     </ItemsControl>
                                 </ScrollViewer>
                             </Grid>
-                        </TabItem>
-
-                        <!-- ===== Tab 7: 插件功能 ===== -->
-                        <TabItem>
-                            <TabItem.Header>
-                                <StackPanel Orientation="Horizontal">
-                                    <materialIcons:MaterialIcon Kind="Puzzle" Width="16" Height="16"
-                                                                 Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="插件功能" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </TabItem.Header>
-                            <Grid Margin="8">
-                                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                    <ItemsControl ItemsSource="{Binding MainPlugins}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Border BoxShadow="0 2 12 0 #15000000" CornerRadius="12" Margin="0,0,0,16">
-<suki:GlassCard  Padding="16" Margin="0" BorderThickness="1" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" CornerRadius="12">
-                                                    <StackPanel>
-                                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                                            <TextBlock Text="{Binding Name}" FontWeight="Bold"
-                                                                       FontSize="18"
-                                                                       Foreground="{DynamicResource SukiPrimaryColor}" />
-                                                            <TextBlock Text="{Binding Version}" Margin="8,0,0,0"
-                                                                       VerticalAlignment="Bottom"
-                                                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="12" />
-                                                        </StackPanel>
-                                                        <TextBlock Text="{Binding Description}" TextWrapping="Wrap"
-                                                                   Margin="0,0,0,16" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="14" />
-                                                        <ContentControl Content="{Binding Converter={StaticResource PluginToContentConverter}}" />
-                                                    </StackPanel>
-                                                </suki:GlassCard>
-</Border>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </ScrollViewer>
-                            </Grid>
-                        </TabItem>
-                    </TabControl>
-                    
-                    <!-- Floating Map Container over TabControl content to prevent WebView detachment -->
-                    <Border x:Name="MapWebViewContainer" Background="Transparent"
-                            IsVisible="{Binding #MapTabItem.IsSelected}"
-                            Margin="0,48,0,0"
-                            HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+                    </Border>
                 </Grid>
             </suki:GlassCard>
 </Border>
@@ -1348,9 +1365,9 @@
                 </Grid.RowDefinitions>
 
                 <!-- Tab strip header row with TabControl tabs and add button -->
-                <Grid Grid.Row="0" ZIndex="1">
+                <Grid Grid.Row="0" Grid.RowSpan="2" ZIndex="1">
                     <TabControl x:Name="UtilitiesTabControl" Classes="BrowserTabs"
-                                Background="Transparent" BorderThickness="0" Padding="0" Margin="0">
+                                Background="Transparent" BorderThickness="0" Padding="0,8,0,0" Margin="0">
 
                         <TabControl.Styles>
                             <Style Selector="TabControl.BrowserTabs">
@@ -1363,34 +1380,44 @@
                                             </Grid.RowDefinitions>
                                             
                                             <!-- Tab Headers and Add Button -->
-                                            <StackPanel Orientation="Horizontal" Grid.Row="0" VerticalAlignment="Bottom">
+                                            <StackPanel Orientation="Horizontal" Grid.Row="0" VerticalAlignment="Bottom" Margin="14,0,0,0">
                                                 <ItemsPresenter Name="PART_ItemsPresenter"
                                                                 ItemsPanel="{TemplateBinding ItemsPanel}" />
                                                 
                                                 <!-- "Add Tool" button injected right after tabs -->
-                                                <Button Width="28" Height="28" Margin="8,0,0,0"
+                                                <Button Width="32" Height="32" Margin="4,0,0,0"
                                                         VerticalAlignment="Center"
-                                                        CornerRadius="14"
+                                                        CornerRadius="16"
                                                         Padding="0"
                                                         HorizontalContentAlignment="Center"
                                                         VerticalContentAlignment="Center"
-                                                        Background="#22888888"
+                                                        Background="Transparent"
                                                         ToolTip.Tip="添加工具"
-                                                        Classes="Flat">
+                                                        Classes="AddToolBtn">
                                                     <Button.Flyout>
                                                         <Flyout Placement="BottomEdgeAlignedLeft">
-                                                            <StackPanel Margin="8">
-                                                                <ItemsControl ItemsSource="{Binding UtilityPlugins}">
-                                                                    <ItemsControl.ItemTemplate>
-                                                                        <DataTemplate>
-                                                                            <Button Content="{Binding Name}"
-                                                                                    Command="{Binding DataContext.OpenUtilityPluginCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                                                    CommandParameter="{Binding}"
-                                                                                    Classes="Flat" HorizontalAlignment="Stretch" />
-                                                                        </DataTemplate>
-                                                                    </ItemsControl.ItemTemplate>
-                                                                </ItemsControl>
-                                                            </StackPanel>
+                                                            <Border Background="{DynamicResource SukiCardBackground}"
+                                                                    BorderBrush="{DynamicResource SukiBorderBrush}"
+                                                                    BorderThickness="1"
+                                                                    CornerRadius="8"
+                                                                    Padding="4"
+                                                                    BoxShadow="0 4 12 0 #15000000">
+                                                                <StackPanel MinWidth="120">
+                                                                    <TextBlock Text="暂无可用工具" Foreground="Gray" FontStyle="Italic"
+                                                                               HorizontalAlignment="Center" Margin="8"
+                                                                               IsVisible="{Binding UtilityPlugins.Count, Converter={StaticResource IntEqualsVisibilityConverter}, ConverterParameter=0}"/>
+                                                                    <ItemsControl ItemsSource="{Binding UtilityPlugins}">
+                                                                        <ItemsControl.ItemTemplate>
+                                                                            <DataTemplate>
+                                                                                <Button Content="{Binding Name}"
+                                                                                        Command="{Binding DataContext.OpenUtilityPluginCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                                        CommandParameter="{Binding}"
+                                                                                        Classes="Flat" HorizontalAlignment="Stretch" Margin="0,0,0,4"/>
+                                                                            </DataTemplate>
+                                                                        </ItemsControl.ItemTemplate>
+                                                                    </ItemsControl>
+                                                                </StackPanel>
+                                                            </Border>
                                                         </Flyout>
                                                     </Button.Flyout>
                                                     <materialIcons:MaterialIcon Kind="Plus" Width="16" Height="16" />
@@ -1410,17 +1437,18 @@
                                 </Setter>
                             </Style>
                             <Style Selector="TabItem.BrowserTab">
-                                <Setter Property="Height" Value="36" />
+                                <Setter Property="MinHeight" Value="32" />
+                                <Setter Property="Height" Value="32" />
                                 <Setter Property="MinWidth" Value="120" />
                                 <Setter Property="MaxWidth" Value="240" />
-                                <Setter Property="Margin" Value="2,0,2,0" />
+                                <Setter Property="Margin" Value="0,0,4,0" />
                                 <Setter Property="Padding" Value="16,0" />
                                 <Setter Property="Background" Value="Transparent" />
                                 <Setter Property="BorderBrush" Value="Transparent" />
-                                <Setter Property="BorderThickness" Value="1,1,1,0" />
-                                <Setter Property="CornerRadius" Value="8,8,0,0" />
+                                <Setter Property="BorderThickness" Value="1" />
+                                <Setter Property="CornerRadius" Value="8" />
                                 <Setter Property="VerticalContentAlignment" Value="Center" />
-                                <Setter Property="Foreground" Value="{DynamicResource SukiTextBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource SukiText}" />
                                 <Setter Property="Template">
                                     <ControlTemplate>
                                         <Border Background="{TemplateBinding Background}"
@@ -1438,22 +1466,35 @@
                                 </Setter>
                             </Style>
                             <Style Selector="TabItem.BrowserTab:pointerover">
-                                <Setter Property="Background" Value="#15888888" />
+                                <Setter Property="Background" Value="{DynamicResource SukiPrimaryColor10}" />
+                            </Style>
+                            <Style Selector="Button.AddToolBtn">
+                                <Setter Property="Background" Value="Transparent" />
+                                <Setter Property="BorderThickness" Value="0" />
+                            </Style>
+                            <Style Selector="Button.AddToolBtn:pointerover">
+                                <Setter Property="Background" Value="{DynamicResource SukiPrimaryColor10}" />
                             </Style>
                             <Style Selector="TabItem.BrowserTab:selected">
                                 <Setter Property="Background" Value="{DynamicResource SukiCardBackground}" />
                                 <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}" />
-                                <Setter Property="BorderThickness" Value="1,1,1,0" />
+                                <Setter Property="BorderThickness" Value="1" />
                                 <Setter Property="Foreground" Value="{DynamicResource SukiPrimaryBrush}" />
                             </Style>
+                            
                             <Style Selector="Border.TabContentOuter">
-                                <Setter Property="Background" Value="{DynamicResource SukiCardBackground}" />
-                                <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}" />
-                                <Setter Property="BorderThickness" Value="1,0,1,1" />
-                                <Setter Property="CornerRadius" Value="0,8,8,8" />
-                                <Setter Property="Margin" Value="0" />
                                 <Setter Property="BoxShadow" Value="0 2 12 0 #15000000" />
+                                <Setter Property="CornerRadius" Value="8" />
+                                <Setter Property="Margin" Value="0,0,0,16" />
                             </Style>
+
+                            <Style Selector="suki|GlassCard.TabContentInner">
+                                <Setter Property="BorderThickness" Value="1" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}" />
+                                <Setter Property="CornerRadius" Value="8" />
+                                <Setter Property="Padding" Value="0" />
+                            </Style>
+
                             <Style Selector="Border.TabContentInner">
                                 <Setter Property="BorderBrush" Value="{DynamicResource SukiBorderBrush}" />
                                 <Setter Property="BorderThickness" Value="1" />
@@ -1466,13 +1507,13 @@
                             <TabItem.Header>
                                 <StackPanel Orientation="Horizontal">
                                     <materialIcons:MaterialIcon Kind="CodeJson" Width="16" Height="16"
-                                                                 Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="报文解析器" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                                                                 Margin="0,0,8,0" VerticalAlignment="Center" Foreground="{DynamicResource SukiText}"/>
+                                    <TextBlock Text="报文解析器" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource SukiText}"/>
                                 </StackPanel>
                             </TabItem.Header>
 
                             <Border Classes="TabContentOuter">
-                                <suki:GlassCard CornerRadius="0,8,8,8" Margin="0" BorderThickness="0" Padding="0">
+                                <suki:GlassCard Classes="TabContentInner">
                                     <Grid Margin="16">
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
@@ -1480,72 +1521,103 @@
                                         </Grid.RowDefinitions>
 
                                     <!-- Input Area -->
-                                    <Border BorderBrush="{DynamicResource SukiBorderBrush}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,16" Grid.Row="0">
-                                        <Grid Margin="16">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBox Grid.Column="0" Classes="Outlined"
-                                                     Watermark="输入 JT808 16进制原始报文"
-                                                     Text="{Binding AnalyzerInputHex}" AcceptsReturn="True"
-                                                     TextWrapping="Wrap"
-                                                     Height="80" Margin="0,0,16,0" FontFamily="Consolas" />
-                                            <StackPanel Grid.Column="1" Orientation="Vertical"
-                                                        VerticalAlignment="Center" Width="120">
-                                                <Button Command="{Binding AnalyzeMessageCommand}" Content="解析报文"
-                                                        Classes="Primary" CornerRadius="4"
-                                                        Height="40" Margin="0,0,0,8" />
-                                                <ComboBox SelectedIndex="{Binding AnalyzerMode}">
-                                                    <ComboBoxItem Content="表格解析模式" />
-                                                    <ComboBoxItem Content="树状解析模式" />
-                                                </ComboBox>
-                                            </StackPanel>
-                                        </Grid>
-                                    </Border>
+                                    <Grid Margin="0,0,0,16" Grid.Row="0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Grid.Column="0"
+                                                 CornerRadius="8"
+                                                 Watermark="输入 JT808 16进制原始报文"
+                                                 Text="{Binding AnalyzerInputHex}" AcceptsReturn="True"
+                                                 TextWrapping="Wrap"
+                                                 Height="80" Margin="0,0,16,0" FontFamily="Consolas" />
+                                        <StackPanel Grid.Column="1" Orientation="Vertical"
+                                                    VerticalAlignment="Center">
+                                            <Button Command="{Binding AnalyzeMessageCommand}" Content="解析报文"
+                                                    Classes="Primary" CornerRadius="4"
+                                                    HorizontalAlignment="Stretch"
+                                                    Height="40" Margin="0,0,0,8" />
+                                            <ComboBox SelectedIndex="{Binding AnalyzerMode}" HorizontalAlignment="Stretch" CornerRadius="8">
+                                                <ComboBoxItem Content="表格解析模式" />
+                                                <ComboBoxItem Content="树状解析模式" />
+                                            </ComboBox>
+                                        </StackPanel>
+                                    </Grid>
 
                                     <!-- Result Area -->
-                                    <Border BorderBrush="{DynamicResource SukiBorderBrush}" BorderThickness="1" CornerRadius="8" Margin="0" Grid.Row="1">
-                                        <Grid>
-                                            <!-- Tree View (AnalyzerMode = 1) -->
-                                            <TreeView x:Name="AnalyzerTreeView" KeyDown="AnalyzerTreeView_KeyDown"
-                                                      ItemsSource="{Binding AnalyzerResultTree}" Margin="8"
-                                                      FontFamily="Consolas" FontSize="14">
-                                                <TreeView.Styles>
-                                                    <Style Selector="TreeViewItem">
-                                                        <Setter Property="IsExpanded" Value="True" />
-                                                    </Style>
-                                                </TreeView.Styles>
-                                                <TreeView.ItemTemplate>
-                                                    <TreeDataTemplate ItemsSource="{Binding Children}">
-                                                        <StackPanel Orientation="Horizontal" Margin="0,2">
-                                                            <TextBlock Text="{Binding Name}" FontWeight="Bold"
-                                                                       Foreground="{DynamicResource SukiPrimaryColor}"
-                                                                       Margin="0,0,8,0" />
-                                                            <TextBlock Text="{Binding Value}" />
-                                                        </StackPanel>
-                                                    </TreeDataTemplate>
-                                                </TreeView.ItemTemplate>
-                                            </TreeView>
+                                    <Grid Grid.Row="1">
+                                        <!-- Tree View (AnalyzerMode = 1) -->
+                                        <TreeView x:Name="AnalyzerTreeView" KeyDown="AnalyzerTreeView_KeyDown"
+                                                  ItemsSource="{Binding AnalyzerResultTree}" Margin="8"
+                                                  IsVisible="{Binding AnalyzerMode, Converter={StaticResource IntEqualsVisibilityConverter}, ConverterParameter=1}"
+                                                  FontFamily="Consolas" FontSize="14">
+                                            <TreeView.ContextMenu>
+                                                <ContextMenu>
+                                                    <MenuItem Header="复制选中内容 (Copy)" Click="CopyAnalyzerTreeItem_Click" />
+                                                </ContextMenu>
+                                            </TreeView.ContextMenu>
+                                            <TreeView.Styles>
+                                                <Style Selector="TreeViewItem">
+                                                    <Setter Property="IsExpanded" Value="True" />
+                                                </Style>
+                                                <Style Selector="TextBlock.selected">
+                                                    <Setter Property="Foreground" Value="White" />
+                                                </Style>
+                                            </TreeView.Styles>
+                                            <TreeView.ItemTemplate>
+                                                <TreeDataTemplate ItemsSource="{Binding Children}">
+                                                    <StackPanel Orientation="Horizontal" Margin="0,2">
+                                                        <TextBlock Classes.selected="{Binding $parent[TreeViewItem].IsSelected}" Text="{Binding Name}" FontWeight="Bold" Margin="0,0,8,0" />
+                                                        <TextBlock Classes.selected="{Binding $parent[TreeViewItem].IsSelected}" Text="{Binding Value}" />
+                                                    </StackPanel>
+                                                </TreeDataTemplate>
+                                            </TreeView.ItemTemplate>
+                                        </TreeView>
 
-                                            <!-- DataGrid Table (AnalyzerMode = 0) -->
-                                            <DataGrid ItemsSource="{Binding AnalyzerResultTable}" AutoGenerateColumns="False"
-                                                      IsReadOnly="True"
-                                                      Margin="8" FontFamily="Consolas" FontSize="14">
-                                                <DataGrid.Columns>
-                                                    <DataGridTextColumn Header="字段" Binding="{Binding Field}"
-                                                                        CanUserSort="False" />
-                                                    <DataGridTextColumn Header="报文原数据" Binding="{Binding HexData}"
-                                                                        Foreground="{DynamicResource SukiPrimaryColor}"
-                                                                        FontWeight="Bold" />
-                                                    <DataGridTextColumn Header="数据类型" Binding="{Binding DataType}" />
-                                                    <DataGridTextColumn Header="起始位" Binding="{Binding OffsetStr}" />
-                                                    <DataGridTextColumn Header="数据长度" Binding="{Binding LengthStr}" />
-                                                    <DataGridTextColumn Header="分析结果" Binding="{Binding Result}" Width="*" />
-                                                </DataGrid.Columns>
-                                            </DataGrid>
+                                        <!-- DataGrid Table (AnalyzerMode = 0) -->
+                                        <DataGrid x:Name="AnalyzerDataGrid" ItemsSource="{Binding AnalyzerResultTable}" AutoGenerateColumns="False"
+                                                  IsReadOnly="True" CanUserResizeColumns="True"
+                                                  IsVisible="{Binding AnalyzerMode, Converter={StaticResource IntEqualsVisibilityConverter}, ConverterParameter=0}"
+                                                  Margin="8" FontFamily="Consolas" FontSize="14">
+                                            <DataGrid.ContextMenu>
+                                                <ContextMenu>
+                                                    <MenuItem Header="复制选中内容 (Copy)" Click="CopyAnalyzerTableItem_Click" />
+                                                </ContextMenu>
+                                            </DataGrid.ContextMenu>
+                                            <DataGrid.Styles>
+                                                <Style Selector="DataGridRow:selected">
+                                                    <Setter Property="Background" Value="Transparent" />
+                                                </Style>
+                                                <Style Selector="DataGridRow:selected /template/ Rectangle#BackgroundRectangle">
+                                                    <Setter Property="IsVisible" Value="False" />
+                                                </Style>
+                                                <Style Selector="DataGridCell:current">
+                                                    <Setter Property="Background" Value="{DynamicResource SukiPrimaryColor}" />
+                                                </Style>
+                                                <Style Selector="DataGridCell:current TextBlock">
+                                                    <Setter Property="Foreground" Value="White" />
+                                                </Style>
+                                                <Style Selector="DataGridCell">
+                                                    <Setter Property="Padding" Value="16,8" />
+                                                </Style>
+                                                <Style Selector="DataGridColumnHeader">
+                                                    <Setter Property="Padding" Value="16,8" />
+                                                </Style>
+                                            </DataGrid.Styles>
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Header="字段" Binding="{Binding Field}" Width="Auto"
+                                                                    CanUserSort="False" />
+                                                <DataGridTextColumn Header="报文原数据" Binding="{Binding HexData}" Width="Auto"
+                                                                    Foreground="{DynamicResource SukiPrimaryColor}"
+                                                                    FontWeight="Bold" />
+                                                <DataGridTextColumn Header="数据类型" Binding="{Binding DataType}" Width="Auto" />
+                                                <DataGridTextColumn Header="起始位" Binding="{Binding OffsetStr}" Width="Auto" />
+                                                <DataGridTextColumn Header="数据长度" Binding="{Binding LengthStr}" Width="Auto" />
+                                                <DataGridTextColumn Header="分析结果" Binding="{Binding Result}" Width="*" />
+                                            </DataGrid.Columns>
+                                        </DataGrid>
                                         </Grid>
-                                    </Border>
                                     </Grid>
                                 </suki:GlassCard>
                             </Border>

@@ -98,4 +98,40 @@ namespace TerminalSimulation.Avalonia.Converters
             throw new NotImplementedException();
         }
     }
+
+    public class IntEqualsVisibilityConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value is int intValue && parameter != null && int.TryParse(parameter.ToString(), out int targetValue))
+            {
+                return intValue == targetValue;
+            }
+            return false;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    public class BrushOpacityConverter : IValueConverter
+    {
+        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        {
+            if (value is double opacity)
+            {
+                var isDark = global::Avalonia.Application.Current?.ActualThemeVariant == global::Avalonia.Styling.ThemeVariant.Dark;
+                var baseColor = isDark ? global::Avalonia.Media.Color.FromArgb(255, 30, 30, 30) : global::Avalonia.Media.Color.FromArgb(255, 250, 250, 250);
+                return new global::Avalonia.Media.SolidColorBrush(baseColor) { Opacity = opacity };
+            }
+            return global::Avalonia.AvaloniaProperty.UnsetValue;
+        }
+
+        public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
 }

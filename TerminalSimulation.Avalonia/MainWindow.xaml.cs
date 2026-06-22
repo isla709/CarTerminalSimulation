@@ -522,11 +522,10 @@ public partial class MainWindow : SukiWindow
                     var glassCard = new SukiUI.Controls.GlassCard
                     {
                         CornerRadius = new global::Avalonia.CornerRadius(0, 8, 8, 8),
-                        Margin = new global::Avalonia.Thickness(0),
-                        BorderThickness = new global::Avalonia.Thickness(0),
                         Padding = new global::Avalonia.Thickness(0),
                         Content = outerGrid
                     };
+                    glassCard.Classes.Add("TabContentInner");
 
                     var outerBorder = new Border { Child = glassCard };
                     outerBorder.Classes.Add("TabContentOuter");
@@ -608,6 +607,172 @@ public partial class MainWindow : SukiWindow
                     await topLevel.Clipboard.SetTextAsync($"{node.Name} {node.Value}".Trim());
                 }
                 e.Handled = true;
+            }
+        }
+    }
+
+    private async void CopyAnalyzerTreeItem_Click(object? sender, global::Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        var tree = this.FindControl<TreeView>("AnalyzerTreeView");
+        if (tree?.SelectedItem is ViewModels.AnalyzerNode node)
+        {
+            var text = string.IsNullOrWhiteSpace(node.Value) ? node.Name : $"{node.Name} {node.Value}";
+            if (TopLevel.GetTopLevel(this)?.Clipboard != null)
+            {
+                await TopLevel.GetTopLevel(this)!.Clipboard!.SetTextAsync(text);
+            }
+        }
+    }
+
+    private async void CopyAnalyzerTableItem_Click(object? sender, global::Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        var grid = this.FindControl<DataGrid>("AnalyzerDataGrid");
+        if (grid == null) return;
+
+        string? text = null;
+        if (grid.SelectedItem is ViewModels.AnalyzerTableRow row)
+        {
+            if (grid.CurrentColumn is global::Avalonia.Controls.DataGridTextColumn textCol)
+            {
+                var binding = textCol.Binding as global::Avalonia.Data.Binding;
+                var path = binding?.Path;
+                if (path == "Field") text = row.Field;
+                else if (path == "HexData") text = row.HexData;
+                else if (path == "DataType") text = row.DataType;
+                else if (path == "OffsetStr") text = row.OffsetStr;
+                else if (path == "LengthStr") text = row.LengthStr;
+                else if (path == "Result") text = row.Result;
+            }
+
+            if (string.IsNullOrEmpty(text))
+            {
+                text = $"{row.Field}\t{row.HexData}\t{row.DataType}\t{row.OffsetStr}\t{row.LengthStr}\t{row.Result}";
+            }
+        }
+
+        if (!string.IsNullOrEmpty(text) && TopLevel.GetTopLevel(this)?.Clipboard != null)
+        {
+            await TopLevel.GetTopLevel(this)!.Clipboard!.SetTextAsync(text);
+        }
+    }
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool bRedraw);
+
+    [System.Runtime.InteropServices.DllImport("gdi32.dll")]
+    private static extern IntPtr CreateRectRgn(int nLeftRect, int nTopRect, int nRightRect, int nBottomRect);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", ExactSpelling = true, CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+    private static extern IntPtr GetParent(IntPtr hWnd);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+    private const int GWL_STYLE = -16;
+    private const int WS_CHILD = 0x40000000;
+
+    private void ClipHwndAndParents(IntPtr hwnd, int left, int top, int right, int bottom)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        
+        while (hwnd != IntPtr.Zero)
+        {
+            int style = GetWindowLong(hwnd, GWL_STYLE);
+            if ((style & WS_CHILD) == 0) break;
+
+            IntPtr hRgn = CreateRectRgn(left, top, right, bottom);
+            if (hRgn != IntPtr.Zero) SetWindowRgn(hwnd, hRgn, true);
+            
+            hwnd = GetParent(hwnd);
+        }
+    }
+
+    private void VideoScrollViewerContainer_ScrollChanged(object? sender, ScrollChangedEventArgs e)
+    {
+        UpdateVideoViewsClipping();
+    }
+
+    private void VideoScrollViewerContainer_SizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        UpdateVideoViewsClipping();
+    }
+
+    private void UpdateVideoViewsClipping()
+    {
+        if (VideoScrollViewerContainer == null) return;
+
+        double viewportWidth = VideoScrollViewerContainer.Viewport.Width;
+        double viewportHeight = VideoScrollViewerContainer.Viewport.Height;
+        var viewportRect = new Rect(0, 0, viewportWidth, viewportHeight);
+
+        var videoViews = this.GetVisualDescendants().OfType<LibVLCSharp.Avalonia.VideoView>().ToList();
+        double dpiScale = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0;
+
+        foreach (var videoView in videoViews)
+        {
+            try
+            {
+                if (!videoView.IsVisible) continue;
+                if (videoView.DataContext is not ViewModels.VideoChannelItem vm) continue;
+                if (vm.MediaPlayer == null) continue;
+                
+                IntPtr hwnd = vm.MediaPlayer.Hwnd;
+                if (hwnd == IntPtr.Zero) continue;
+
+                var transform = videoView.TransformToVisual(VideoScrollViewerContainer);
+                if (transform == null) continue;
+
+                var bounds = new Rect(0, 0, videoView.Bounds.Width, videoView.Bounds.Height);
+                var relativeRect = bounds.TransformToAABB(transform.Value);
+
+                var intersection = viewportRect.Intersect(relativeRect);
+
+                if (intersection.Width <= 0 || intersection.Height <= 0)
+                {
+                    ClipHwndAndParents(hwnd, 0, 0, 0, 0);
+                }
+                else
+                {
+                    double left = Math.Max(0, -relativeRect.TopLeft.X);
+                    double top = Math.Max(0, -relativeRect.TopLeft.Y);
+                    double right = left + intersection.Width;
+                    double bottom = top + intersection.Height;
+
+                    int physLeft = (int)Math.Round(left * dpiScale);
+                    int physTop = (int)Math.Round(top * dpiScale);
+                    int physRight = (int)Math.Round(right * dpiScale);
+                    int physBottom = (int)Math.Round(bottom * dpiScale);
+
+                    ClipHwndAndParents(hwnd, physLeft, physTop, physRight, physBottom);
+                }
+            }
+            catch { }
+        }
+    }
+
+    private void MainTabControl_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (e.Source is TabControl tc && tc.Name == "MainTabControl")
+        {
+            // If we switch away from the Video tab (Index 4), stop all local video previews
+            // to destroy the native HWNDs and prevent airspace popup bugs when switching back.
+            if (tc.SelectedIndex != 4)
+            {
+                if (DataContext is MainViewModel vm)
+                {
+                    foreach (var channel in vm.VideoChannels)
+                    {
+                        channel.SuspendPlayback();
+                    }
+                }
+            }
+            else
+            {
+                if (DataContext is MainViewModel vm)
+                {
+                    foreach (var channel in vm.VideoChannels)
+                    {
+                        channel.ResumePlayback();
+                    }
+                }
             }
         }
     }

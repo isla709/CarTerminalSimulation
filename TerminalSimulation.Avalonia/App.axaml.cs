@@ -24,6 +24,8 @@ public partial class App : Application
 
             await System.Threading.Tasks.Task.Run(() =>
             {
+              if (System.OperatingSystem.IsWindows())
+            {
                 try
                 {
                     string tempDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "CarTerminalSim_LibVLC_x64");
@@ -41,8 +43,14 @@ public partial class App : Application
                 }
                 catch (System.Exception ex)
                 {
-                    System.Console.WriteLine($"VLC init failed: {ex}");
+                    System.Diagnostics.Debug.WriteLine($"Failed to load embedded LibVLC: {ex.Message}");
+                    LibVLCSharp.Shared.Core.Initialize();
                 }
+            }
+            else
+            {
+                LibVLCSharp.Shared.Core.Initialize();
+            }
             });
 
             var mainWindow = new MainWindow();

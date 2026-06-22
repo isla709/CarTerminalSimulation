@@ -87,14 +87,6 @@ namespace TerminalSimulation.Avalonia.ViewModels
         }
     }
 
-    public partial class ThemeImageItem : ObservableObject
-    {
-        [ObservableProperty] private string _fileName = "";
-        [ObservableProperty] private string _imagePath = "";
-        [ObservableProperty] private bool _isSelected = false;
-        [ObservableProperty] private global::Avalonia.Media.IImage? _thumbnail;
-        [ObservableProperty] private bool _isUserAdded = false;
-    }
     public partial class BitFlagItem : ObservableObject
     {
         [ObservableProperty] private int _bitIndex;
@@ -192,9 +184,6 @@ namespace TerminalSimulation.Avalonia.ViewModels
         public uint StatusFlagValue { get; set; } = 0;
         public int AutoReportInterval { get; set; } = 5;
         public System.Collections.Generic.List<CustomAttachItem> CustomAttachItems { get; set; } = new();
-        public string BackgroundImagePath { get; set; } = "";
-        public BackgroundEffectMode BackgroundEffectMode { get; set; } = BackgroundEffectMode.Translucent;
-        public double BackgroundOpacity { get; set; } = 0.8;
         public ushort ProvinceId { get; set; } = 11;
         public ushort CityId { get; set; } = 1101;
         public string ManufacturerId { get; set; } = "TEST ";
@@ -276,37 +265,6 @@ namespace TerminalSimulation.Avalonia.ViewModels
     {
         private readonly TerminalNetworkClient _networkClient;
         private readonly JT808Manager _protocolManager;
-
-        partial void OnBackgroundImagePathChanged(string value)
-        {
-            if (string.IsNullOrEmpty(value))
-            {
-                BackgroundImageSource = null;
-            }
-            else if (value.StartsWith("pack://embedded/"))
-            {
-                var resName = value.Substring("pack://embedded/".Length);
-                var assembly = System.Reflection.Assembly.GetExecutingAssembly();
-                using var stream = assembly.GetManifestResourceStream(resName);
-                if (stream != null)
-                {
-                    BackgroundImageSource = new Bitmap(stream);
-                }
-            }
-            else
-            {
-                try
-                {
-                    var fullPath = value;
-                    if (!System.IO.Path.IsPathRooted(value))
-                    {
-                        fullPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, value);
-                    }
-                    BackgroundImageSource = new Bitmap(fullPath);
-                }
-                catch { BackgroundImageSource = null; }
-            }
-        }
 
         partial void OnChatEncodingIndexChanged(int value)
         {
@@ -459,7 +417,6 @@ namespace TerminalSimulation.Avalonia.ViewModels
             LoadConfig();
             InitializeTTSVoices();
             LoadRegions();
-            InitThemeImages();
             RefreshSerialPorts();
 
             // Load Plugins
@@ -478,9 +435,6 @@ namespace TerminalSimulation.Avalonia.ViewModels
                     e.PropertyName == nameof(Speed) ||
                     e.PropertyName == nameof(Direction) ||
                     e.PropertyName == nameof(CustomAttachItems) ||
-                    e.PropertyName == nameof(BackgroundImagePath) ||
-                    e.PropertyName == nameof(BackgroundEffectMode) ||
-                    e.PropertyName == nameof(BackgroundOpacity) ||
                     e.PropertyName == nameof(ProvinceIdInput) ||
                     e.PropertyName == nameof(CityIdInput) ||
                     e.PropertyName == nameof(ManufacturerId) ||
@@ -825,52 +779,6 @@ namespace TerminalSimulation.Avalonia.ViewModels
                             SelectedTTSVoice = config.SelectedTTSVoice ?? "";
                             TextDownlinkEncodingIndex = config.TextDownlinkEncodingIndex;
 
-                            var bgPath = config.BackgroundImagePath;
-                            var bgEffect = config.BackgroundEffectMode;
-
-                            if (!string.IsNullOrEmpty(bgPath))
-                            {
-                                if (bgPath.StartsWith("pack://embedded/"))
-                                {
-                                    // Embedded resource
-                                }
-                                else
-                                {
-                                    var fileName = System.IO.Path.GetFileName(bgPath);
-                                    var relativePath = System.IO.Path.Combine("Themes", fileName);
-                                    var fullPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, relativePath);
-
-                                    if (System.IO.File.Exists(fullPath))
-                                    {
-                                        bgPath = relativePath;
-                                    }
-                                    else if (System.IO.Path.IsPathRooted(bgPath) && System.IO.File.Exists(bgPath))
-                                    {
-                                        try
-                                        {
-                                            var themeDir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Themes");
-                                            if (!System.IO.Directory.Exists(themeDir)) System.IO.Directory.CreateDirectory(themeDir);
-                                            var destFile = System.IO.Path.Combine(themeDir, fileName);
-                                            System.IO.File.Copy(bgPath, destFile, true);
-                                            bgPath = relativePath;
-                                        }
-                                        catch
-                                        {
-                                            // Keep as is if copy fails
-                                        }
-                                    }
-                                    else
-                                    {
-                                        bgPath = "";
-                                        bgEffect = BackgroundEffectMode.None;
-                                    }
-                                }
-                            }
-
-                            BackgroundImagePath = bgPath;
-                            BackgroundEffectMode = bgEffect;
-                            BackgroundOpacity = config.BackgroundOpacity;
-                            
                             SetFlagsFromValue(AlarmFlags, config.AlarmFlagValue);
                             SetFlagsFromValue(StatusFlags, config.StatusFlagValue);
 
@@ -1014,9 +922,6 @@ namespace TerminalSimulation.Avalonia.ViewModels
                     AttachLength = x.AttachLength,
                     AttachData = x.AttachData
                 }).ToList(),
-                BackgroundImagePath = BackgroundImagePath,
-                BackgroundEffectMode = BackgroundEffectMode,
-                BackgroundOpacity = BackgroundOpacity,
                 ProvinceId = ParseProvinceId(ProvinceIdInput, 11),
                 CityId = ParseCityId(CityIdInput, 1101),
                 ManufacturerId = ManufacturerId,
@@ -1163,8 +1068,7 @@ namespace TerminalSimulation.Avalonia.ViewModels
                 }
                 else
                 {
-                    var assembly = System.Reflection.Assembly.GetExecutingAssembly();
-                    using var stream = assembly.GetManifestResourceStream("TerminalSimulation.Avalonia.Regions.json");
+                    using var stream = global::Avalonia.Platform.AssetLoader.Open(new Uri("avares://TerminalSimulation.Avalonia/Regions.json"));
                     if (stream != null)
                     {
                         using var reader = new System.IO.StreamReader(stream, System.Text.Encoding.UTF8);
@@ -1181,10 +1085,18 @@ namespace TerminalSimulation.Avalonia.ViewModels
                         ProvinceList.Add($"{prov.code} {prov.name}");
                     }
                     
-                    // Trigger city load for initial province
+                    // Match province short code to full string for echo
                     if (!string.IsNullOrEmpty(ProvinceIdInput))
                     {
-                        OnProvinceIdInputChanged(ProvinceIdInput);
+                        var match = ProvinceList.FirstOrDefault(p => p.StartsWith(ProvinceIdInput + " ") || p == ProvinceIdInput);
+                        if (match != null && match != ProvinceIdInput)
+                        {
+                            ProvinceIdInput = match;
+                        }
+                        else
+                        {
+                            OnProvinceIdInputChanged(ProvinceIdInput);
+                        }
                     }
                 }
             }
@@ -1208,7 +1120,20 @@ namespace TerminalSimulation.Avalonia.ViewModels
                     {
                         CityList.Add($"{city.code} {city.name}");
                     }
-                    if (CityList.Count > 0 && string.IsNullOrEmpty(CityIdInput) || !CityList.Contains(CityIdInput))
+                    
+                    if (!string.IsNullOrEmpty(CityIdInput))
+                    {
+                        var match = CityList.FirstOrDefault(c => c.StartsWith(CityIdInput + " ") || c == CityIdInput);
+                        if (match != null && match != CityIdInput)
+                        {
+                            CityIdInput = match;
+                        }
+                        else if (!CityList.Contains(CityIdInput))
+                        {
+                            CityIdInput = CityList.FirstOrDefault() ?? string.Empty;
+                        }
+                    }
+                    else if (CityList.Count > 0)
                     {
                         CityIdInput = CityList[0];
                     }
@@ -1240,25 +1165,6 @@ namespace TerminalSimulation.Avalonia.ViewModels
         [ObservableProperty] private double _altitude = 100;
         
         [ObservableProperty] private bool _useJT808_2019 = true;
-
-        [ObservableProperty] private string _backgroundImagePath = "";
-        [ObservableProperty] private global::Avalonia.Media.IImage? _backgroundImageSource;
-        [ObservableProperty] private BackgroundEffectMode _backgroundEffectMode = BackgroundEffectMode.Translucent;
-        [ObservableProperty] private double _backgroundOpacity = 0.8;
-
-
-        public int BackgroundEffectModeIndex
-        {
-            get => (int)BackgroundEffectMode;
-            set
-            {
-                if (value >= 0 && value <= 3)
-                {
-                    BackgroundEffectMode = (BackgroundEffectMode)value;
-                    OnPropertyChanged(nameof(BackgroundEffectModeIndex));
-                }
-            }
-        }
 
         public int ProtocolVersionIndex
         {
@@ -1761,153 +1667,38 @@ namespace TerminalSimulation.Avalonia.ViewModels
         [ObservableProperty] private bool _isHeartbeatDisabled = false;
         private System.Threading.CancellationTokenSource? _heartbeatCts;
 
-
-        public ObservableCollection<ThemeImageItem> ThemeImages { get; } = new ObservableCollection<ThemeImageItem>();
-
         private void InitializeTTSVoices()
         {
-            // TODO: Implement cross-platform TTS via ITtsService
-            Log("系统", "TTS语音朗读功能暂未实现 (跨平台适配中)");
+            try
+            {
+                foreach (var voice in TerminalSimulation.Avalonia.Helpers.CrossPlatformTts.GetInstalledVoices())
+                {
+                    InstalledTTSVoices.Add(voice);
+                }
+                
+                if (InstalledTTSVoices.Count > 0)
+                {
+                    if (string.IsNullOrEmpty(SelectedTTSVoice) || !InstalledTTSVoices.Contains(SelectedTTSVoice))
+                    {
+                        SelectedTTSVoice = InstalledTTSVoices[0];
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log("系统", $"初始化TTS语音失败: {ex.Message}");
+            }
         }
 
         [RelayCommand]
         private void ReplayTTS(TextDownlinkMessage? msg)
         {
-            // TODO: Implement cross-platform TTS via ITtsService
             if (msg == null || !EnableTTSPlayback) return;
-            Log("系统", $"[TTS重播请求] {msg.Content} (跨平台TTS适配中)");
+            string voiceName = SelectedTTSVoice;
+            TerminalSimulation.Avalonia.Helpers.CrossPlatformTts.Speak(msg.Content, voiceName);
         }
 
-        private void InitThemeImages()
-        {
-            try
-            {
-                var themeDir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Themes");
-                if (!System.IO.Directory.Exists(themeDir))
-                {
-                    System.IO.Directory.CreateDirectory(themeDir);
-                }
-                
-                LoadThemeImages();
-            }
-            catch (Exception ex)
-            {
-                Log("系统", $"初始化主题目录失败: {ex.Message}");
-            }
-        }
 
-        public void LoadThemeImages()
-        {
-            try
-            {
-                var themeDir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Themes");
-                ThemeImages.Clear();
-                ThemeImages.Add(new ThemeImageItem { FileName = "无背景", ImagePath = "", IsSelected = string.IsNullOrEmpty(BackgroundImagePath), IsUserAdded = false });
-
-                // Load embedded resources
-                var assembly = System.Reflection.Assembly.GetExecutingAssembly();
-                var resourceNames = assembly.GetManifestResourceNames().Where(x => x.StartsWith("TerminalSimulation.Avalonia.Themes.", StringComparison.OrdinalIgnoreCase));
-                foreach (var resName in resourceNames)
-                {
-                    var ext = System.IO.Path.GetExtension(resName).ToLower();
-                    if (ext == ".jpg" || ext == ".jpeg" || ext == ".png")
-                    {
-                        var fileName = resName.Substring("TerminalSimulation.Avalonia.Themes.".Length);
-                        var item = new ThemeImageItem
-                        {
-                            FileName = fileName,
-                            ImagePath = "pack://embedded/" + resName,
-                            IsUserAdded = false,
-                            IsSelected = BackgroundImagePath == "pack://embedded/" + resName
-                        };
-                        try
-                        {
-                            using var stream = assembly.GetManifestResourceStream(resName);
-                            if (stream != null)
-                            {
-                                item.Thumbnail = Bitmap.DecodeToWidth(stream, 200);
-                            }
-                        }
-                        catch { }
-                        ThemeImages.Add(item);
-                    }
-                }
-
-                // Load user external resources
-                if (System.IO.Directory.Exists(themeDir))
-                {
-                    var files = System.IO.Directory.GetFiles(themeDir).Where(f => f.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".png", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase));
-                    foreach (var file in files)
-                    {
-                        var relativePath = System.IO.Path.Combine("Themes", System.IO.Path.GetFileName(file));
-                        var item = new ThemeImageItem
-                        {
-                            FileName = System.IO.Path.GetFileName(file),
-                            ImagePath = relativePath,
-                            IsSelected = BackgroundImagePath == relativePath,
-                            IsUserAdded = true
-                        };
-                        
-                        try
-                        {
-                            using var fileStream = System.IO.File.OpenRead(file);
-                            item.Thumbnail = Bitmap.DecodeToWidth(fileStream, 200);
-                        }
-                        catch { }
-
-                        ThemeImages.Add(item);
-                    }
-                }
-            }
-            catch { }
-        }
-
-        [RelayCommand]
-        private void AddThemeImage()
-        {
-            // TODO: Implement cross-platform file dialog via IStorageProvider (requires TopLevel reference)
-            Log("系统", "添加主题图片功能暂未实现 (跨平台适配中)");
-        }
-
-        [RelayCommand]
-        private void SelectThemeImage(ThemeImageItem? item)
-        {
-            if (item != null)
-            {
-                foreach (var i in ThemeImages) i.IsSelected = false;
-                item.IsSelected = true;
-                BackgroundImagePath = item.ImagePath;
-            }
-        }
-
-        [RelayCommand]
-        private void DeleteThemeImage(ThemeImageItem? item)
-        {
-            if (item != null && item.IsUserAdded)
-            {
-                try
-                {
-                    var fullPath = item.ImagePath;
-                    if (!System.IO.Path.IsPathRooted(fullPath))
-                    {
-                        fullPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, fullPath);
-                    }
-                    if (System.IO.File.Exists(fullPath))
-                    {
-                        System.IO.File.Delete(fullPath);
-                    }
-                    if (item.IsSelected)
-                    {
-                        BackgroundImagePath = "";
-                    }
-                    LoadThemeImages();
-                }
-                catch (Exception ex)
-                {
-                    Log("系统", $"删除失败: {ex.Message}");
-                }
-            }
-        }
 
         [RelayCommand]
         private void AddCustomAttach()
@@ -2467,10 +2258,10 @@ namespace TerminalSimulation.Avalonia.ViewModels
                     });
 
                     // TTS语音播报
-                    // TODO: Implement cross-platform TTS via ITtsService
                     if (msg.IsTTS && EnableTTSPlayback)
                     {
-                        Log("系统", $"[TTS播报请求] {textDown.TextInfo ?? string.Empty} (跨平台TTS适配中)");
+                        string voiceName = SelectedTTSVoice;
+                        TerminalSimulation.Avalonia.Helpers.CrossPlatformTts.Speak(textDown.TextInfo ?? string.Empty, voiceName);
                     }
 
                     // 回复通用应答
@@ -3576,17 +3367,51 @@ namespace TerminalSimulation.Avalonia.ViewModels
         }
 
         [RelayCommand]
-        private void ExportConfig()
+        private async System.Threading.Tasks.Task ExportConfig()
         {
-            // TODO: Implement cross-platform file dialog via IStorageProvider (requires TopLevel reference)
-            Log("系统", "导出配置功能暂未实现 (跨平台适配中)");
+            try
+            {
+                var file = await TerminalSimulation.Avalonia.Helpers.DialogHelper.ShowSaveFileDialogAsync(
+                    "导出配置", 
+                    "json", 
+                    new[] { new global::Avalonia.Platform.Storage.FilePickerFileType("JSON 配置文件") { Patterns = new[] { "*.json" } } });
+                
+                if (file != null)
+                {
+                    SaveConfig(); // Ensure current config is up to date in memory
+                    if (System.IO.File.Exists(ConfigFile))
+                    {
+                        System.IO.File.Copy(ConfigFile, file.Path.LocalPath, true);
+                        Log("系统", $"配置已成功导出至: {file.Path.LocalPath}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log("系统", $"导出配置失败: {ex.Message}");
+            }
         }
 
         [RelayCommand]
-        private void ImportConfig()
+        private async System.Threading.Tasks.Task ImportConfig()
         {
-            // TODO: Implement cross-platform file dialog via IStorageProvider (requires TopLevel reference)
-            Log("系统", "导入配置功能暂未实现 (跨平台适配中)");
+            try
+            {
+                var file = await TerminalSimulation.Avalonia.Helpers.DialogHelper.ShowOpenFileDialogAsync(
+                    "导入配置",
+                    new[] { new global::Avalonia.Platform.Storage.FilePickerFileType("JSON 配置文件") { Patterns = new[] { "*.json" } } });
+                
+                if (file != null)
+                {
+                    System.IO.File.Copy(file.Path.LocalPath, ConfigFile, true);
+                    LoadConfig();
+                    Log("系统", $"配置已成功从 {file.Name} 导入！");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log("系统", $"导入配置失败: {ex.Message}");
+            }
         }
 
         public void Dispose()

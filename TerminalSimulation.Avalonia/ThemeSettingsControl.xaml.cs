@@ -63,6 +63,7 @@ public partial class ThemeSettingsControl : UserControl
         if (app == null) return;
         app.RequestedThemeVariant = ThemeVariant.Light;
         SukiTheme.GetInstance().ChangeBaseTheme(ThemeVariant.Light);
+
     }
 
     private void RbDark_Checked(object sender, RoutedEventArgs e)
@@ -81,17 +82,6 @@ public partial class ThemeSettingsControl : UserControl
             dynamic context = btn.DataContext;
             SukiColor sukiColor = context.SukiColor;
             SukiTheme.GetInstance().ChangeColorTheme(sukiColor);
-        }
-    }
-
-    private void ThemeImageBorder_Tapped(object? sender, global::Avalonia.Input.TappedEventArgs e)
-    {
-        if (sender is Border border && border.DataContext != null)
-        {
-            if (DataContext is ViewModels.MainViewModel vm)
-            {
-                vm.SelectThemeImageCommand.Execute(border.DataContext);
-            }
         }
     }
 }

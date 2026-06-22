@@ -80,7 +80,7 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Avalonia.ViewModels
             {
                 if (SetProperty(ref _volume, value))
                 {
-                    if (Mpv != null) Mpv.SetPropertyString("volume", value.ToString());
+                    if (MediaPlayer != null) MediaPlayer.Volume = value;
                 }
             }
         }
@@ -90,17 +90,11 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Avalonia.ViewModels
 
         public ObservableCollection<NetworkLogItem> NetworkLogs { get; } = new();
 
-        private LibVLC _libVLC;
-        [ObservableProperty] private MediaPlayer _mediaPlayer;
+        private LibVLC? _libVLC;
+        [ObservableProperty] private MediaPlayer? _mediaPlayer;
         public string PlayUrl { get; set; } = "";
 
-        private int _retryCount = 0;
-        private const int MaxRetries = 3;
         private DispatcherTimer? _statsTimer;
-        
-        private long _lastReadBytes = 0;
-        private DateTime _lastReadTime = DateTime.MinValue;
-        private int _audioDetectTicks = 0;
 
         public XunjieCloudStreamViewModel()
         {
@@ -175,7 +169,6 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Avalonia.ViewModels
             else
             {
                 CurrentBitrate = "0.0 KB/s";
-                _lastReadTime = DateTime.MinValue;
             }
         }
 
@@ -218,7 +211,7 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Avalonia.ViewModels
                         UtilitySettingsManager.SaveAccount(Username.Trim(), Password);
                         if (!SavedUsernames.Contains(Username.Trim()))
                         {
-                            Dispatcher.UIThread.InvokeAsync(() => SavedUsernames.Add(Username.Trim()));
+                            _ = Dispatcher.UIThread.InvokeAsync(() => SavedUsernames.Add(Username.Trim()));
                         }
                     }
                 }
@@ -297,7 +290,7 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Avalonia.ViewModels
                 if (docChannels.RootElement.TryGetProperty("code", out var statusCode) && statusCode.GetInt32() == 200)
                 {
                     int channelsNum = docChannels.RootElement.GetProperty("data").GetInt32();
-                    Dispatcher.UIThread.InvokeAsync(() =>
+                    _ = Dispatcher.UIThread.InvokeAsync(() =>
                     {
                         AvailableChannels.Clear();
                         for (int i = 1; i <= channelsNum; i++)
@@ -385,8 +378,6 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Avalonia.ViewModels
             }
             if (MediaPlayer == null) return;
 
-            // 如果是人为主动点击拉流，则重置重试次数
-            _retryCount = 0;
             ExecuteStartPlay();
         }
 
@@ -400,12 +391,9 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Avalonia.ViewModels
             LogNetwork("Player", $"尝试拉取视频流: {PlayUrl}");
             StatusText = "正在连接...";
             HasAudioTrack = "检测中...";
-            _audioDetectTicks = 0;
             CurrentBitrate = "0 KB/s";
-            _lastReadTime = DateTime.MinValue;
-            _lastReadBytes = 0;
 
-            var media = new Media(_libVLC, PlayUrl, FromType.FromLocation);
+            var media = new Media(_libVLC!, PlayUrl, FromType.FromLocation);
             media.AddOption(":network-caching=300"); // 降低缓存减少延迟
             MediaPlayer.Play(media);
             MediaPlayer.Volume = Volume;
@@ -424,15 +412,12 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Avalonia.ViewModels
         [RelayCommand]
         private void StopPlay()
         {
-            _retryCount = MaxRetries; // 主动停止，阻止重连机制
             MediaPlayer?.Stop();
             LogNetwork("Player", "主动停止拉流");
             IsPlaying = false;
             IsVideoViewVisible = false;
             StatusText = "已停止";
             CurrentBitrate = "0.0 KB/s";
-            _lastReadTime = DateTime.MinValue;
-            _lastReadBytes = 0;
             HasAudioTrack = "无";
             _statsTimer?.Stop();
         }

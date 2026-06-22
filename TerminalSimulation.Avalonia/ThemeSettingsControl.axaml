@@ -23,8 +23,8 @@
 
             <!-- Header -->
             <Grid Margin="0,0,0,24">
-                <TextBlock Text="个性化设置" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
-                <Button Command="{Binding CloseSettingsCommand}" Classes="Basic"
+                <TextBlock Text="个性化设置" FontSize="20" FontWeight="Bold" VerticalAlignment="Center" Foreground="{DynamicResource SukiText}"/>
+                <Button Command="{Binding CloseSettingsCommand}" Classes="Basic" Foreground="{DynamicResource SukiText}"
                         HorizontalAlignment="Right" Width="32" Height="32" Padding="0" CornerRadius="16" ToolTip.Tip="关闭" Cursor="Hand">
                     <materialIcons:MaterialIcon Kind="Close" Width="20" Height="20"/>
                 </Button>
@@ -65,74 +65,7 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
 
-            <!-- Effects -->
-            <Grid Grid.Row="4" Margin="0,0,0,20">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0" Margin="0,0,16,0">
-                    <TextBlock Text="背景效果模式" FontSize="14" Foreground="{DynamicResource SukiText}" FontWeight="SemiBold" Margin="0,0,0,8"/>
-                    <ComboBox SelectedIndex="{Binding BackgroundEffectModeIndex}" HorizontalAlignment="Stretch">
-                        <ComboBoxItem Content="无效果 (None)" />
-                        <ComboBoxItem Content="普通半透明 (Translucent)" />
-                        <ComboBoxItem Content="毛玻璃 (Blur)" />
-                        <ComboBoxItem Content="亚克力 (Acrylic)" />
-                    </ComboBox>
-                </StackPanel>
-                <StackPanel Grid.Column="1" Margin="16,0,0,0">
-                    <TextBlock Text="板块透明度 (Opacity)" FontSize="14" Foreground="{DynamicResource SukiText}" FontWeight="SemiBold" Margin="0,0,0,8"/>
-                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                        <Slider Minimum="0" Maximum="1" Value="{Binding BackgroundOpacity}" Width="150" Margin="0,0,16,0" VerticalAlignment="Center"/>
-                        <TextBlock Text="{Binding BackgroundOpacity, StringFormat={}{0:P0}}" VerticalAlignment="Center" FontWeight="SemiBold"/>
-                    </StackPanel>
-                </StackPanel>
-            </Grid>
-
-            <!-- Custom Images -->
-            <Grid Grid.Row="5">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-                <Grid Margin="0,0,0,12">
-                    <TextBlock Text="自定义背景图片" FontSize="14" Foreground="Gray" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                    <Button Content="添加图片" Command="{Binding AddThemeImageCommand}" Classes="Primary" HorizontalAlignment="Right" Height="32" Padding="16,0" CornerRadius="16" Cursor="Hand"/>
-                </Grid>
-
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                    <ItemsControl ItemsSource="{Binding ThemeImages}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <WrapPanel />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Border Margin="4" BorderThickness="2" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" CornerRadius="8" Cursor="Hand" Tapped="ThemeImageBorder_Tapped" ClipToBounds="True">
-                                    <Grid Width="140" Height="100" Background="Transparent">
-                                        <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" />
-                                        
-                                        <Border Background="#A0000000" VerticalAlignment="Bottom" HorizontalAlignment="Stretch">
-                                            <TextBlock Text="{Binding FileName}" Foreground="White"
-                                                       TextAlignment="Center" Padding="4" FontSize="11" TextTrimming="CharacterEllipsis"/>
-                                        </Border>
-
-                                        <Button Classes="Basic" IsVisible="{Binding IsUserAdded}"
-                                                Command="{Binding DataContext.DeleteThemeImageCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                CommandParameter="{Binding}"
-                                                Padding="4" CornerRadius="12"
-                                                Width="24" Height="24" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="4"
-                                                Cursor="Hand">
-                                            <materialIcons:MaterialIcon Kind="Close" Width="14" Height="14" Foreground="IndianRed"/>
-                                        </Button>
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
-            </Grid>
+            
         </Grid>
     </Border>
 </UserControl>

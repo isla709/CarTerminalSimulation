@@ -7,7 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Platform.Storage;
+using global::Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -85,22 +85,17 @@ namespace TerminalSimulation.Avalonia.ViewModels
         [RelayCommand]
         private async Task SelectVideoFile()
         {
-            if (MainTopLevel == null) return;
-
-            var files = await MainTopLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-            {
-                Title = "选择视频文件",
-                AllowMultiple = false,
-                FileTypeFilter = new[]
+            var file = await TerminalSimulation.Avalonia.Helpers.DialogHelper.ShowOpenFileDialogAsync(
+                "选择视频文件",
+                new[]
                 {
-                    new FilePickerFileType("视频文件") { Patterns = new[] { "*.mp4", "*.h264", "*.avi", "*.mkv" } },
-                    new FilePickerFileType("所有文件") { Patterns = new[] { "*" } }
-                }
-            });
+                    new global::Avalonia.Platform.Storage.FilePickerFileType("视频文件") { Patterns = new[] { "*.mp4", "*.h264", "*.avi", "*.mkv" } },
+                    new global::Avalonia.Platform.Storage.FilePickerFileType("所有文件") { Patterns = new[] { "*.*" } }
+                });
 
-            if (files.Count > 0)
+            if (file != null)
             {
-                VideoFilePath = files[0].Path.LocalPath;
+                VideoFilePath = file.Path.LocalPath;
                 StatusText = "文件已选择，准备处理";
 
                 await ProcessVideoFileAsync();
@@ -316,6 +311,7 @@ namespace TerminalSimulation.Avalonia.ViewModels
             Dispatcher.UIThread.InvokeAsync(async () =>
             {
                 var media = CreateMedia(VideoFilePath);
+                await Task.Delay(500); // Give Avalonia time to measure the VideoView before LibVLC attaches
                 MediaPlayer.Play(media);
                 await Task.Delay(200); // 延迟设置静音，等待VLC初始化音频输出
                 MediaPlayer.Mute = IsMuted;
@@ -415,6 +411,7 @@ namespace TerminalSimulation.Avalonia.ViewModels
                 if (!string.IsNullOrEmpty(VideoFilePath) && File.Exists(VideoFilePath))
                 {
                     var media = CreateMedia(VideoFilePath);
+                    await Task.Delay(500); // Give Avalonia time to measure the VideoView before LibVLC attaches
                     MediaPlayer.Play(media);
                     await Task.Delay(200); // 延迟设置静音，等待VLC初始化音频输出
                     MediaPlayer.Mute = IsMuted;
@@ -437,6 +434,30 @@ namespace TerminalSimulation.Avalonia.ViewModels
             {
                 MediaPlayer?.Stop();
             });
+        }
+        public void SuspendPlayback()
+        {
+            Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                MediaPlayer?.Stop();
+            });
+        }
+
+        public void ResumePlayback()
+        {
+            if (!IsPreviewing && !IsStreaming) return;
+
+            Dispatcher.UIThread.InvokeAsync(async () =>
+            {
+                if (!string.IsNullOrEmpty(VideoFilePath) && File.Exists(VideoFilePath))
+                {
+                    var media = CreateMedia(VideoFilePath);
+                    await Task.Delay(500); // Give Avalonia plenty of time to construct and arrange the HWND after tab switch
+                    MediaPlayer?.Play(media);
+                    await Task.Delay(200);
+                    if (MediaPlayer != null) MediaPlayer.Mute = IsMuted;
+                }
+            }, DispatcherPriority.Loaded);
         }
 
         [RelayCommand]

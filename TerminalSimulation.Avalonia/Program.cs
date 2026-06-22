@@ -8,7 +8,15 @@ class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        try
+        {
+            BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        }
+        catch (Exception ex)
+        {
+            System.IO.File.WriteAllText("crash.log", ex.ToString());
+            throw;
+        }
     }
 
     public static AppBuilder BuildAvaloniaApp()
