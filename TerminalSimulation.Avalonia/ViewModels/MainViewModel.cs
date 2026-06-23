@@ -266,6 +266,8 @@ namespace TerminalSimulation.Avalonia.ViewModels
         private readonly TerminalNetworkClient _networkClient;
         private readonly JT808Manager _protocolManager;
 
+        public Utilities.HttpWorkspaceViewModel HttpWorkspaceVM { get; } = new();
+
         partial void OnChatEncodingIndexChanged(int value)
         {
             foreach (var msg in PassthroughMessages)

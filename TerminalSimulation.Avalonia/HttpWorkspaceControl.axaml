@@ -1,0 +1,129 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             xmlns:suki="clr-namespace:SukiUI.Controls;assembly=SukiUI"
+             xmlns:vm="clr-namespace:TerminalSimulation.Avalonia.ViewModels.Utilities"
+             xmlns:local="clr-namespace:TerminalSimulation.Avalonia"
+             mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
+             x:Class="TerminalSimulation.Avalonia.HttpWorkspaceControl"
+             x:DataType="vm:HttpWorkspaceViewModel">
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="280" MinWidth="240" MaxWidth="500" />
+            <ColumnDefinition Width="4" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Sidebar -->
+        <Border Grid.Column="0" Background="{DynamicResource SukiBackground}" BorderBrush="{DynamicResource SukiBorderBrush}" BorderThickness="0,0,1,0" ClipToBounds="True">
+            <Grid RowDefinitions="Auto,*">
+                <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="16,12,8,12">
+                    <TextBlock Grid.Column="0" Text="HTTP Requests" FontWeight="Bold" FontSize="16" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,8,0" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
+                        <Button Classes="Basic" Command="{Binding AddFolderCommand}" Padding="4" ToolTip.Tip="新建分组">
+                            <materialIcons:MaterialIcon Kind="FolderPlus" Width="16" Height="16" />
+                        </Button>
+                        <Button Classes="Basic" Command="{Binding SaveToDiskCommand}" Padding="4" ToolTip.Tip="保存所有更改">
+                            <materialIcons:MaterialIcon Kind="ContentSave" Width="16" Height="16" />
+                        </Button>
+                        <Button Classes="Basic" Command="{Binding ImportWorkspaceCommand}" Padding="4" ToolTip.Tip="导入数据">
+                            <materialIcons:MaterialIcon Kind="Import" Width="16" Height="16" />
+                        </Button>
+                        <Button Classes="Basic" Command="{Binding ExportWorkspaceCommand}" Padding="4" ToolTip.Tip="导出数据">
+                            <materialIcons:MaterialIcon Kind="Export" Width="16" Height="16" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
+
+                <ScrollViewer Grid.Row="1">
+                    <ItemsControl ItemsSource="{Binding Folders}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="vm:HttpFolderViewModel">
+                                <Grid Margin="8,0,8,8">
+                                    <Border ClipToBounds="True">
+                                        <Expander IsExpanded="{Binding IsExpanded, Mode=TwoWay}" Margin="0,0,-40,0">
+                                            <Expander.Header>
+                                                <Grid ColumnDefinitions="Auto,*" Margin="0,4">
+                                                <materialIcons:MaterialIcon Grid.Column="0" Kind="Folder" Width="18" Height="18" Margin="0,0,8,0" Foreground="{DynamicResource SukiText}" Opacity="0.7" />
+                                                <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" FontWeight="SemiBold" />
+                                            </Grid>
+                                        </Expander.Header>
+                                        
+                                        <ItemsControl ItemsSource="{Binding Requests}" Margin="0,0,40,0">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="vm:HttpRequesterViewModel">
+                                                <Border CornerRadius="6" Margin="0" Background="{Binding BackgroundBrush}" Tapped="SelectRequest_Tapped" Tag="{Binding}" Cursor="Hand">
+                                                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="12,2,8,2">
+                                                        <TextBlock Grid.Column="0" Text="{Binding Method}" Foreground="#E67E22" FontWeight="Bold" FontSize="11" Width="45" VerticalAlignment="Center"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" FontSize="13" />
+                                                        <Button Grid.Column="2" Classes="Basic" Padding="4" Opacity="0.5" MinHeight="0" MinWidth="0" Cursor="Hand">
+                                                            <Button.Flyout>
+                                                                <Flyout Placement="Bottom">
+                                                                    <Border Background="{DynamicResource SystemRegionBrush}" BorderBrush="{DynamicResource SukiBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12" BoxShadow="0 4 12 0 #20000000">
+                                                                        <StackPanel Spacing="8" Width="200">
+                                                                            <TextBlock Text="重命名" FontWeight="Bold" FontSize="12" Foreground="{DynamicResource SukiPrimaryColor}" />
+                                                                            <TextBox Text="{Binding Name, Mode=TwoWay}" Watermark="输入请求名称" />
+                                                                        </StackPanel>
+                                                                    </Border>
+                                                                </Flyout>
+                                                            </Button.Flyout>
+                                                            <materialIcons:MaterialIcon Kind="Pencil" Width="14" Height="14" />
+                                                        </Button>
+                                                        <Button Grid.Column="3" Classes="Basic" Click="RemoveRequest_Click" Tag="{Binding}" Padding="4" Opacity="0.5" MinHeight="0" MinWidth="0" Cursor="Hand">
+                                                            <materialIcons:MaterialIcon Kind="Close" Width="14" Height="14" />
+                                                        </Button>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                        </Expander>
+                                    </Border>
+
+                                    <!-- Floating buttons to avoid Expander swallowing clicks -->
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,12,8,0" ZIndex="2">
+                                        <Button Classes="Basic" Padding="4" Margin="4,0,0,0" MinHeight="0" MinWidth="0" Cursor="Hand" Opacity="0.5">
+                                            <Button.Flyout>
+                                                <Flyout Placement="Bottom">
+                                                    <Border Background="{DynamicResource SystemRegionBrush}" BorderBrush="{DynamicResource SukiBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12" BoxShadow="0 4 12 0 #20000000">
+                                                        <StackPanel Spacing="8" Width="200">
+                                                            <TextBlock Text="重命名分组" FontWeight="Bold" FontSize="12" Foreground="{DynamicResource SukiPrimaryColor}" />
+                                                            <TextBox Text="{Binding Name, Mode=TwoWay}" Watermark="输入分组名称" />
+                                                        </StackPanel>
+                                                    </Border>
+                                                </Flyout>
+                                            </Button.Flyout>
+                                            <materialIcons:MaterialIcon Kind="Pencil" Width="14" Height="14" />
+                                        </Button>
+                                        <Button Classes="Basic" Click="AddRequest_Click" Tag="{Binding}" Padding="4" Margin="4,0,0,0" MinHeight="0" MinWidth="0" Cursor="Hand">
+                                            <materialIcons:MaterialIcon Kind="Plus" Width="16" Height="16" />
+                                        </Button>
+                                        <Button Classes="Basic" Click="RemoveFolder_Click" Tag="{Binding}" Padding="4" Foreground="IndianRed" MinHeight="0" MinWidth="0" Cursor="Hand">
+                                            <materialIcons:MaterialIcon Kind="Delete" Width="16" Height="16" />
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+
+        <GridSplitter Grid.Column="1" Background="Transparent" ResizeDirection="Columns" />
+
+        <!-- Right side main editor -->
+        <Border Grid.Column="2" x:Name="WorkspaceRoot" Background="{DynamicResource SukiBackground}">
+            <ContentControl Content="{Binding ActiveRequest}">
+                <ContentControl.DataTemplates>
+                    <DataTemplate DataType="vm:HttpRequesterViewModel">
+                        <local:HttpRequesterControl DataContext="{Binding}" />
+                    </DataTemplate>
+                </ContentControl.DataTemplates>
+            </ContentControl>
+        </Border>
+    </Grid>
+</UserControl>

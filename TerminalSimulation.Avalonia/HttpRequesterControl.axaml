@@ -1,0 +1,296 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:materialIcons="using:Material.Icons.Avalonia"
+             xmlns:suki="https://github.com/kikipoulet/SukiUI"
+             xmlns:vm="using:TerminalSimulation.Avalonia.ViewModels.Utilities"
+             xmlns:converters="using:TerminalSimulation.Avalonia.Converters"
+             xmlns:AvaloniaEdit="clr-namespace:AvaloniaEdit;assembly=AvaloniaEdit"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="TerminalSimulation.Avalonia.HttpRequesterControl"
+             x:Name="HttpRequesterRoot"
+             x:DataType="vm:HttpRequesterViewModel">
+
+    <Grid RowDefinitions="Auto,*,4,*" Margin="8">
+        <!-- Top Request Bar: Method + URL + Send -->
+        <Grid ColumnDefinitions="*,Auto" Grid.Row="0" Margin="0,0,0,16">
+            <!-- Unified Bar for Method and URL -->
+            <Border Grid.Column="0" BorderBrush="{DynamicResource SukiBorderBrush}" BorderThickness="1" CornerRadius="8" Background="{DynamicResource SukiBackground}">
+                <Grid ColumnDefinitions="Auto,Auto,*">
+                    <ComboBox Grid.Column="0" ItemsSource="{Binding Methods}" SelectedItem="{Binding Method}" MinWidth="110" BorderThickness="0" Background="Transparent" CornerRadius="8,0,0,8" VerticalAlignment="Center" Margin="4,0" />
+                    <!-- Divider -->
+                    <Rectangle Grid.Column="1" Width="1" Fill="{DynamicResource SukiBorderBrush}" Margin="0,8" />
+                    <!-- URL Input -->
+                    <TextBox Grid.Column="2" Text="{Binding Url}" Watermark="Enter request URL" BorderThickness="0" Background="Transparent" CornerRadius="0,8,8,0" VerticalAlignment="Center" Margin="4,0" />
+                </Grid>
+            </Border>
+            <!-- Send Button -->
+            <Button Grid.Column="1" Command="{Binding SendRequestCommand}" Classes="Primary" CornerRadius="8" Width="90" Margin="12,0,0,0">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <materialIcons:MaterialIcon Kind="Send" Width="16" Height="16"/>
+                    <TextBlock Text="发送" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
+        </Grid>
+        
+        <!-- Request Section -->
+        <TabControl Grid.Row="1" Margin="0" Padding="0">
+            <TabItem Header="Params">
+                <Grid RowDefinitions="Auto,*">
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,4">
+                        <Button Command="{Binding AddParamCommand}" Classes="Basic" Padding="4" ToolTip.Tip="添加参数">
+                            <materialIcons:MaterialIcon Kind="Plus" />
+                        </Button>
+                    </StackPanel>
+                    <ScrollViewer Grid.Row="1">
+                        <ItemsControl ItemsSource="{Binding Params}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid ColumnDefinitions="Auto,*,*,Auto" Margin="0,2">
+                                        <CheckBox IsChecked="{Binding IsEnabled}" Margin="0,0,8,0" />
+                                        <TextBox Grid.Column="1" Text="{Binding Key}" Watermark="Key" Margin="0,0,8,0" />
+                                        <TextBox Grid.Column="2" Text="{Binding Value}" Watermark="Value" Margin="0,0,8,0" />
+                                        <Button Grid.Column="3" x:CompileBindings="False" Command="{Binding $parent[UserControl].DataContext.RemoveParamCommand}" CommandParameter="{Binding}" Classes="Basic" Foreground="Red" Padding="4">
+                                            <materialIcons:MaterialIcon Kind="Delete" />
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </TabItem>
+            
+            <TabItem Header="Headers">
+                <Grid RowDefinitions="Auto,*">
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,4">
+                        <Button Command="{Binding AddHeaderCommand}" Classes="Basic" Padding="4" ToolTip.Tip="添加Header">
+                            <materialIcons:MaterialIcon Kind="Plus" />
+                        </Button>
+                    </StackPanel>
+                    <ScrollViewer Grid.Row="1">
+                        <ItemsControl ItemsSource="{Binding Headers}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid ColumnDefinitions="Auto,*,*,Auto" Margin="0,2">
+                                        <CheckBox IsChecked="{Binding IsEnabled}" Margin="0,0,8,0" />
+                                        <TextBox Grid.Column="1" Text="{Binding Key}" Watermark="Key" Margin="0,0,8,0" />
+                                        <TextBox Grid.Column="2" Text="{Binding Value}" Watermark="Value" Margin="0,0,8,0" />
+                                        <Button Grid.Column="3" x:CompileBindings="False" Command="{Binding $parent[UserControl].DataContext.RemoveHeaderCommand}" CommandParameter="{Binding}" Classes="Basic" Foreground="Red" Padding="4">
+                                            <materialIcons:MaterialIcon Kind="Delete" />
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </TabItem>
+            
+            <TabItem Header="Body">
+                <Grid RowDefinitions="Auto,*">
+                    <!-- Flat Body Types Row -->
+                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,4,0,8">
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                            <!-- Basic Types -->
+                            <RadioButton Content="none" GroupName="BodyType" Command="{Binding SetBodyAndRawTypeCommand}" CommandParameter="none" IsChecked="True"/>
+                            <RadioButton Content="form-data" GroupName="BodyType" Command="{Binding SetBodyAndRawTypeCommand}" CommandParameter="form-data"/>
+                            <RadioButton Content="x-www-form-urlencoded" GroupName="BodyType" Command="{Binding SetBodyAndRawTypeCommand}" CommandParameter="x-www-form-urlencoded"/>
+                            <!-- Raw Types -->
+                            <RadioButton Content="JSON" GroupName="BodyType" Command="{Binding SetBodyAndRawTypeCommand}" CommandParameter="json"/>
+                            <RadioButton Content="XML" GroupName="BodyType" Command="{Binding SetBodyAndRawTypeCommand}" CommandParameter="xml"/>
+                            <RadioButton Content="Text" GroupName="BodyType" Command="{Binding SetBodyAndRawTypeCommand}" CommandParameter="text"/>
+                            <RadioButton Content="HTML" GroupName="BodyType" Command="{Binding SetBodyAndRawTypeCommand}" CommandParameter="html"/>
+                        </StackPanel>
+                        <!-- Format JSON button -->
+                        <Button Grid.Column="1" Command="{Binding FormatJsonCommand}" Classes="Basic" ToolTip.Tip="格式化" IsVisible="{Binding RawBodyTypeIndex, Converter={x:Static converters:SharedConverters.IntEqualsVisibilityConverter}, ConverterParameter=0}">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <materialIcons:MaterialIcon Kind="FormatAlignLeft" Width="14" Height="14" Foreground="Gray" />
+                                <TextBlock Text="格式化" Foreground="Gray" FontSize="12" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+                    
+                    <Grid Grid.Row="1">
+                        <!-- none -->
+                        <TextBlock Text="This request does not have a body" Foreground="Gray" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding BodyTypeIndex, Converter={x:Static converters:SharedConverters.IntEqualsVisibilityConverter}, ConverterParameter=0}" />
+                        
+                        <!-- raw -->
+                        <Grid IsVisible="{Binding BodyTypeIndex, Converter={x:Static converters:SharedConverters.IntEqualsVisibilityConverter}, ConverterParameter=1}">
+                            <AvaloniaEdit:TextEditor x:Name="RawBodyEditor" ShowLineNumbers="True" FontFamily="Consolas" WordWrap="True" BorderThickness="1" BorderBrush="{DynamicResource SukiBorderBrush}" CornerRadius="4" />
+                        </Grid>
+                        
+                        <!-- form-data -->
+                        <Grid RowDefinitions="Auto,*" IsVisible="{Binding BodyTypeIndex, Converter={x:Static converters:SharedConverters.IntEqualsVisibilityConverter}, ConverterParameter=2}">
+                            <Button Command="{Binding AddFormDataCommand}" Classes="Basic" Padding="4" Margin="0,0,0,8">
+                                <materialIcons:MaterialIcon Kind="Plus" />
+                            </Button>
+                            <ScrollViewer Grid.Row="1">
+                                <ItemsControl ItemsSource="{Binding FormData}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid ColumnDefinitions="Auto,*,*,Auto" Margin="0,2">
+                                                <CheckBox IsChecked="{Binding IsEnabled}" Margin="0,0,8,0" />
+                                                <TextBox Grid.Column="1" Text="{Binding Key}" Watermark="Key" Margin="0,0,8,0" />
+                                                <TextBox Grid.Column="2" Text="{Binding Value}" Watermark="Value" Margin="0,0,8,0" />
+                                                <Button Grid.Column="3" x:CompileBindings="False" Command="{Binding $parent[UserControl].DataContext.RemoveFormDataCommand}" CommandParameter="{Binding}" Classes="Basic" Foreground="Red" Padding="4">
+                                                    <materialIcons:MaterialIcon Kind="Delete" />
+                                                </Button>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Grid>
+
+                        <!-- x-www-form-urlencoded -->
+                        <Grid RowDefinitions="Auto,*" IsVisible="{Binding BodyTypeIndex, Converter={x:Static converters:SharedConverters.IntEqualsVisibilityConverter}, ConverterParameter=3}">
+                            <Button Command="{Binding AddFormUrlEncodedCommand}" Classes="Basic" Padding="4" Margin="0,0,0,8">
+                                <materialIcons:MaterialIcon Kind="Plus" />
+                            </Button>
+                            <ScrollViewer Grid.Row="1">
+                                <ItemsControl ItemsSource="{Binding FormUrlEncodedData}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid ColumnDefinitions="Auto,*,*,Auto" Margin="0,2">
+                                                <CheckBox IsChecked="{Binding IsEnabled}" Margin="0,0,8,0" />
+                                                <TextBox Grid.Column="1" Text="{Binding Key}" Watermark="Key" Margin="0,0,8,0" />
+                                                <TextBox Grid.Column="2" Text="{Binding Value}" Watermark="Value" Margin="0,0,8,0" />
+                                                <Button Grid.Column="3" x:CompileBindings="False" Command="{Binding $parent[UserControl].DataContext.RemoveFormUrlEncodedCommand}" CommandParameter="{Binding}" Classes="Basic" Foreground="Red" Padding="4">
+                                                    <materialIcons:MaterialIcon Kind="Delete" />
+                                                </Button>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Grid>
+                    </Grid>
+                </Grid>
+            </TabItem>
+        </TabControl>
+        
+        <!-- Grid Splitter for resizing -->
+        <GridSplitter Grid.Row="2" Background="Transparent" ResizeDirection="Rows" Height="4" HorizontalAlignment="Stretch" Cursor="SizeNorthSouth" />
+        
+        <!-- Response Area -->
+        <Border Grid.Row="3" BorderBrush="{DynamicResource SukiBorderBrush}" BorderThickness="0,1,0,0" Padding="0,8,0,0">
+            <Grid>
+                <TabControl Padding="0">
+                    <TabItem Header="Body">
+                        <Grid RowDefinitions="Auto,*">
+                            <!-- Body Formatting Toolbar -->
+                            <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                                <Border Background="#F0F0F0" CornerRadius="6" Padding="4,2" Margin="0,0,8,0">
+                                    <StackPanel Orientation="Horizontal" Spacing="16" Margin="4,0">
+                                        <RadioButton Content="Pretty" GroupName="ResponseFormatMode" Command="{Binding SetResponseFormatModeCommand}" CommandParameter="0" IsChecked="{Binding ResponseFormatModeIndex, Converter={x:Static converters:SharedConverters.IntEqualsVisibilityConverter}, ConverterParameter=0, Mode=OneWay}" VerticalAlignment="Center" Margin="0" Padding="8,0,0,0" />
+                                        <RadioButton Content="Raw" GroupName="ResponseFormatMode" Command="{Binding SetResponseFormatModeCommand}" CommandParameter="1" IsChecked="{Binding ResponseFormatModeIndex, Converter={x:Static converters:SharedConverters.IntEqualsVisibilityConverter}, ConverterParameter=1, Mode=OneWay}" VerticalAlignment="Center" Margin="0" Padding="8,0,0,0" />
+                                        <RadioButton Content="Preview" GroupName="ResponseFormatMode" Command="{Binding SetResponseFormatModeCommand}" CommandParameter="2" IsChecked="{Binding ResponseFormatModeIndex, Converter={x:Static converters:SharedConverters.IntEqualsVisibilityConverter}, ConverterParameter=2, Mode=OneWay}" VerticalAlignment="Center" Margin="0" Padding="8,0,0,0" />
+                                    </StackPanel>
+                                </Border>
+                                <ComboBox SelectedIndex="{Binding ResponseLanguageIndex}" MinWidth="80" CornerRadius="4" BorderThickness="0" Background="Transparent" VerticalAlignment="Center" IsVisible="{Binding ResponseFormatModeIndex, Converter={x:Static converters:SharedConverters.IntEqualsVisibilityConverter}, ConverterParameter=0}">
+                                    <ComboBoxItem Content="JSON"/>
+                                    <ComboBoxItem Content="XML"/>
+                                    <ComboBoxItem Content="HTML"/>
+                                    <ComboBoxItem Content="Text"/>
+                                </ComboBox>
+                                <ComboBox ItemsSource="{Binding AvailableEncodings}" SelectedItem="{Binding ResponseEncodingStr}" MinWidth="80" CornerRadius="4" BorderThickness="0" Background="Transparent" VerticalAlignment="Center" />
+                                <Button Classes="Basic" Padding="4" VerticalAlignment="Center" Command="{Binding FormatJsonCommand}" IsVisible="{Binding ResponseLanguageIndex, Converter={x:Static converters:SharedConverters.IntEqualsVisibilityConverter}, ConverterParameter=0}">
+                                    <materialIcons:MaterialIcon Kind="FormatAlignLeft" Foreground="Gray" />
+                                </Button>
+                            </StackPanel>
+                            
+                            <AvaloniaEdit:TextEditor Grid.Row="1" x:Name="ResponseBodyEditor" IsVisible="{Binding IsNotPreviewMode}" IsReadOnly="True" ShowLineNumbers="True" FontFamily="Consolas" WordWrap="True" BorderThickness="0" Background="Transparent" />
+                            <Border Grid.Row="1" x:Name="ResponseWebViewContainer" IsVisible="{Binding IsPreviewMode}" Background="{DynamicResource SukiBackground}" BorderThickness="1" BorderBrush="{DynamicResource SukiBorderBrush}" CornerRadius="4" />
+                        </Grid>
+                    </TabItem>
+                    <TabItem Header="Headers">
+                        <ScrollViewer>
+                            <ItemsControl ItemsSource="{Binding ResponseHeaders}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+                                            <TextBlock Text="{Binding Key}" FontWeight="Bold" Width="200" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </TabItem>
+                    
+                    <TabItem Header="实际请求">
+                        <ScrollViewer>
+                            <StackPanel Margin="8" Spacing="16">
+                                <!-- URL Section -->
+                                <StackPanel Spacing="8">
+                                    <TextBlock Text="请求 URL:" FontWeight="Bold" />
+                                    <Border Background="{DynamicResource SukiLightBorderBrush}" CornerRadius="4" Padding="8">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Text="{Binding ActualRequest.Method}" Foreground="Orange" FontWeight="Bold" />
+                                            <TextBlock Text="{Binding ActualRequest.Url}" TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                                
+                                <!-- Headers Section -->
+                                <StackPanel Spacing="8">
+                                    <TextBlock Text="Header:" FontWeight="Bold" />
+                                    <Grid ColumnDefinitions="200,*" Margin="4,0">
+                                        <TextBlock Text="名称" Foreground="Gray" />
+                                        <TextBlock Grid.Column="1" Text="值" Foreground="Gray" />
+                                    </Grid>
+                                    <ItemsControl ItemsSource="{Binding ActualRequest.Headers}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border BorderBrush="{DynamicResource SukiBorderBrush}" BorderThickness="0,0,0,1" Padding="4,8">
+                                                    <Grid ColumnDefinitions="200,*">
+                                                        <TextBlock Text="{Binding Key}" />
+                                                        <TextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                                
+                                <!-- Body Section -->
+                                <StackPanel Spacing="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <TextBlock Text="Body" FontWeight="Bold" />
+                                        <Border Background="{DynamicResource SukiLightBorderBrush}" CornerRadius="4" Padding="4,2">
+                                            <TextBlock Text="{Binding ActualRequest.BodyType}" FontSize="12" Foreground="Gray" />
+                                        </Border>
+                                    </StackPanel>
+                                    <TextBox Text="{Binding ActualRequest.BodyContent}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="100" BorderThickness="0" Background="Transparent" FontFamily="Consolas" />
+                                </StackPanel>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </TabItem>
+                </TabControl>
+                
+                <!-- Response Status Overlay (Top Right) -->
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,8,16,0" Spacing="8">
+                    <!-- Status Code Pill -->
+                    <Border Background="#E8F5E9" CornerRadius="4" Padding="6,2" IsVisible="{Binding HasResponse}">
+                        <TextBlock Text="{Binding StatusCodeStr}" Foreground="#2E7D32" FontWeight="Bold" FontSize="12" />
+                    </Border>
+                    <!-- Time -->
+                    <TextBlock Text="{Binding TimeStr}" Foreground="Gray" FontSize="12" VerticalAlignment="Center" IsVisible="{Binding HasResponse}" />
+                    <!-- Size -->
+                    <TextBlock Text="{Binding SizeStr}" Foreground="Gray" FontSize="12" VerticalAlignment="Center" IsVisible="{Binding HasResponse}" />
+                </StackPanel>
+                
+                <!-- Loading Overlay -->
+                <Border Background="#80000000" IsVisible="{Binding IsSending}" CornerRadius="8">
+                    <Border Background="{DynamicResource SukiCardBackground}" Width="150" Height="80" HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="8" BorderBrush="{DynamicResource SukiBorderBrush}" BorderThickness="1">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock Text="Sending..." Margin="8,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+                </Border>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

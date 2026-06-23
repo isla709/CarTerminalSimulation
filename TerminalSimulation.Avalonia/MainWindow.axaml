@@ -1459,7 +1459,7 @@
                                                                 <StackPanel MinWidth="120">
                                                                     <TextBlock Text="暂无可用工具" Foreground="Gray" FontStyle="Italic"
                                                                                HorizontalAlignment="Center" Margin="8"
-                                                                               IsVisible="{Binding UtilityPlugins.Count, Converter={StaticResource IntEqualsVisibilityConverter}, ConverterParameter=0}"/>
+                                                                               IsVisible="{Binding UtilityPlugins.Count, Converter={x:Static converters:SharedConverters.IntEqualsVisibilityConverter}, ConverterParameter=0}"/>
                                                                     <ItemsControl ItemsSource="{Binding UtilityPlugins}">
                                                                         <ItemsControl.ItemTemplate>
                                                                             <DataTemplate>
@@ -1607,7 +1607,7 @@
                                         <!-- Tree View (AnalyzerMode = 1) -->
                                         <TreeView x:Name="AnalyzerTreeView" KeyDown="AnalyzerTreeView_KeyDown"
                                                   ItemsSource="{Binding AnalyzerResultTree}" Margin="8"
-                                                  IsVisible="{Binding AnalyzerMode, Converter={StaticResource IntEqualsVisibilityConverter}, ConverterParameter=1}"
+                                                  IsVisible="{Binding AnalyzerMode, Converter={x:Static converters:SharedConverters.IntEqualsVisibilityConverter}, ConverterParameter=1}"
                                                   FontFamily="Consolas" FontSize="14">
                                             <TreeView.ContextMenu>
                                                 <ContextMenu>
@@ -1635,7 +1635,7 @@
                                         <!-- DataGrid Table (AnalyzerMode = 0) -->
                                         <DataGrid x:Name="AnalyzerDataGrid" ItemsSource="{Binding AnalyzerResultTable}" AutoGenerateColumns="False"
                                                   IsReadOnly="True" CanUserResizeColumns="True"
-                                                  IsVisible="{Binding AnalyzerMode, Converter={StaticResource IntEqualsVisibilityConverter}, ConverterParameter=0}"
+                                                  IsVisible="{Binding AnalyzerMode, Converter={x:Static converters:SharedConverters.IntEqualsVisibilityConverter}, ConverterParameter=0}"
                                                   Margin="8" FontFamily="Consolas" FontSize="14">
                                             <DataGrid.ContextMenu>
                                                 <ContextMenu>
@@ -1676,6 +1676,22 @@
                                         </DataGrid>
                                         </Grid>
                                     </Grid>
+                                </suki:GlassCard>
+                            </Border>
+                        </TabItem>
+
+                        <!-- Static tab: HTTP 调试 -->
+                        <TabItem Classes="BrowserTab">
+                            <TabItem.Header>
+                                <StackPanel Orientation="Horizontal">
+                                    <materialIcons:MaterialIcon Kind="Web" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center" Foreground="{DynamicResource SukiText}"/>
+                                    <TextBlock Text="HTTP 调试" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource SukiText}"/>
+                                </StackPanel>
+                            </TabItem.Header>
+
+                            <Border Classes="TabContentOuter">
+                                <suki:GlassCard Classes="TabContentInner" Padding="0">
+                                    <local:HttpWorkspaceControl DataContext="{Binding HttpWorkspaceVM}" />
                                 </suki:GlassCard>
                             </Border>
                         </TabItem>
