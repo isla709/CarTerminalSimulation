@@ -9,9 +9,9 @@
         Background="Transparent"
         Topmost="True"
         ShowInTaskbar="False">
-    <Grid>
+    <Grid x:Name="SplashRoot">
         <Grid.Background>
-            <ImageBrush Source="avares://TerminalSimulation.Avalonia/Assets/splash_bg.png" Stretch="UniformToFill" />
+            <ImageBrush Stretch="UniformToFill" />
         </Grid.Background>
 
         <TextBlock x:Name="LoadingText"

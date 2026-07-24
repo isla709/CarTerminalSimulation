@@ -718,10 +718,11 @@ public partial class MainWindow : SukiWindow
     {
         if (e.Source is TabControl tc && tc.Name == "MainTabControl")
         {
-            // If we switch away from the Video tab (Index 4), stop all local video previews
+            // If we switch away from the Video tab, stop all local video previews
             // to destroy the native HWNDs and prevent airspace popup bugs when switching back.
-            if (tc.SelectedIndex != 4)
+            if (!ReferenceEquals(tc.SelectedItem, VideoTabItem))
             {
+                HideAllNativeVideoWindows();
                 if (DataContext is MainViewModel vm)
                 {
                     foreach (var channel in vm.VideoChannels)
@@ -739,6 +740,27 @@ public partial class MainWindow : SukiWindow
                         channel.ResumePlayback();
                     }
                 }
+                Dispatcher.UIThread.Post(UpdateVideoViewsClipping, DispatcherPriority.Loaded);
+            }
+        }
+    }
+
+    private void HideAllNativeVideoWindows()
+    {
+        foreach (var videoView in this.GetVisualDescendants().OfType<LibVLCSharp.Avalonia.VideoView>())
+        {
+            try
+            {
+                if (videoView.DataContext is not ViewModels.VideoChannelItem vm) continue;
+                var hwnd = vm.MediaPlayer?.Hwnd ?? IntPtr.Zero;
+                if (hwnd != IntPtr.Zero)
+                {
+                    ClipHwndAndParents(hwnd, 0, 0, 0, 0);
+                }
+            }
+            catch
+            {
+                // The native window may disappear concurrently while VLC stops.
             }
         }
     }

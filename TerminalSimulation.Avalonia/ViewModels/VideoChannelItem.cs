@@ -71,6 +71,7 @@ namespace TerminalSimulation.Avalonia.ViewModels
 
         private LibVLC _libVLC;
         [ObservableProperty] private MediaPlayer _mediaPlayer;
+        private Media? _currentMedia;
 
         private readonly Action<string, string>? _logger;
 
@@ -80,6 +81,14 @@ namespace TerminalSimulation.Avalonia.ViewModels
             _logger = logger;
             _libVLC = new LibVLC(enableDebugLogs: false);
             _mediaPlayer = new MediaPlayer(_libVLC);
+            _mediaPlayer.EncounteredError += (_, _) =>
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    StatusText = "VLC 播放失败";
+                    _logger?.Invoke("播放器", $"通道 {LogicalChannelNo}: VLC 无法解码当前媒体");
+                });
+            };
         }
 
         [RelayCommand]
@@ -282,7 +291,9 @@ namespace TerminalSimulation.Avalonia.ViewModels
 
         private Media CreateMedia(string filePath)
         {
+            _currentMedia?.Dispose();
             var media = new Media(_libVLC, filePath, FromType.FromPath);
+            _currentMedia = media;
             media.AddOption(":input-repeat=65535"); // 无限循环
             if (Path.GetExtension(filePath).Equals(".h264", StringComparison.OrdinalIgnoreCase))
             {
@@ -312,7 +323,14 @@ namespace TerminalSimulation.Avalonia.ViewModels
             {
                 var media = CreateMedia(VideoFilePath);
                 await Task.Delay(500); // Give Avalonia time to measure the VideoView before LibVLC attaches
-                MediaPlayer.Play(media);
+                if (!MediaPlayer.Play(media))
+                {
+                    media.Dispose();
+                    _currentMedia = null;
+                    IsPreviewing = false;
+                    StatusText = "VLC 播放失败";
+                    return;
+                }
                 await Task.Delay(200); // 延迟设置静音，等待VLC初始化音频输出
                 MediaPlayer.Mute = IsMuted;
             }, DispatcherPriority.Loaded);
@@ -412,7 +430,13 @@ namespace TerminalSimulation.Avalonia.ViewModels
                 {
                     var media = CreateMedia(VideoFilePath);
                     await Task.Delay(500); // Give Avalonia time to measure the VideoView before LibVLC attaches
-                    MediaPlayer.Play(media);
+                    if (!MediaPlayer.Play(media))
+                    {
+                        media.Dispose();
+                        _currentMedia = null;
+                        StatusText = "VLC 播放失败";
+                        return;
+                    }
                     await Task.Delay(200); // 延迟设置静音，等待VLC初始化音频输出
                     MediaPlayer.Mute = IsMuted;
                 }
@@ -433,6 +457,8 @@ namespace TerminalSimulation.Avalonia.ViewModels
             Dispatcher.UIThread.InvokeAsync(() =>
             {
                 MediaPlayer?.Stop();
+                _currentMedia?.Dispose();
+                _currentMedia = null;
             });
         }
         public void SuspendPlayback()
@@ -440,6 +466,8 @@ namespace TerminalSimulation.Avalonia.ViewModels
             Dispatcher.UIThread.InvokeAsync(() =>
             {
                 MediaPlayer?.Stop();
+                _currentMedia?.Dispose();
+                _currentMedia = null;
             });
         }
 
@@ -453,7 +481,13 @@ namespace TerminalSimulation.Avalonia.ViewModels
                 {
                     var media = CreateMedia(VideoFilePath);
                     await Task.Delay(500); // Give Avalonia plenty of time to construct and arrange the HWND after tab switch
-                    MediaPlayer?.Play(media);
+                    if (MediaPlayer != null && !MediaPlayer.Play(media))
+                    {
+                        media.Dispose();
+                        _currentMedia = null;
+                        StatusText = "VLC 播放失败";
+                        return;
+                    }
                     await Task.Delay(200);
                     if (MediaPlayer != null) MediaPlayer.Mute = IsMuted;
                 }
@@ -526,6 +560,8 @@ namespace TerminalSimulation.Avalonia.ViewModels
         {
             StopPushing();
             StopPreviewing();
+            _currentMedia?.Dispose();
+            _currentMedia = null;
             MediaPlayer?.Dispose();
             _libVLC?.Dispose();
 

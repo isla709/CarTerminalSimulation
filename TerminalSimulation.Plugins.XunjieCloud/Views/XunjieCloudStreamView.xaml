@@ -33,7 +33,9 @@
                                              Visibility="{Binding IsPlaying, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 </Grid>
 
-                <vlc:VideoView MediaPlayer="{Binding MediaPlayer}" Visibility="{Binding IsVideoViewVisible, Converter={StaticResource BooleanToHiddenVisibilityConverter}}" />
+                <!-- Keep the native VLC host alive; hiding it recreates the
+                     native handle and can leave a blank surface after retries. -->
+                <vlc:VideoView MediaPlayer="{Binding MediaPlayer}" />
                 
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding IsPlaying, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
                     <materialDesign:PackIcon Kind="VideoOffOutline" Width="64" Height="64" Foreground="#888888" HorizontalAlignment="Center" />

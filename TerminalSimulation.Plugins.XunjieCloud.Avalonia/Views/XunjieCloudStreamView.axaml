@@ -19,7 +19,8 @@
                                IsVisible="{Binding IsPlaying}" />
                 </Grid>
 
-                <vlc:VideoView MediaPlayer="{Binding MediaPlayer}" IsVisible="{Binding IsVideoViewVisible}" />
+                <vlc:VideoView MediaPlayer="{Binding MediaPlayer}"
+                               IsVisible="{Binding IsVideoViewVisible}" />
                 
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !IsPlaying}">
                     <TextBlock Text="🚫" FontSize="64" Foreground="#888888" HorizontalAlignment="Center" />

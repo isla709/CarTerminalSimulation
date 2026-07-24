@@ -19,12 +19,13 @@
     <PackageReference Include="Xabe.FFmpeg.Downloader" Version="6.0.2" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Resource Include="splash_bg.png" />
+  <ItemGroup>    <Resource Include="splash_1.jpg" />
+    <Resource Include="splash_2.jpg" />
+    <Resource Include="splash_3.jpg" />
   </ItemGroup>
 
   <PropertyGroup>
-    <!-- 手动修改程序版本号 -->
+    <!-- 手动修改程序版本�?-->
     <AppVersion>preview3</AppVersion>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
@@ -93,7 +94,7 @@ public static class AppVersionInfo
       <LibVlcSourceDir>$(PkgVideoLAN_LibVLC_Windows)\build\x64</LibVlcSourceDir>
       <LibVlcZipPath>$(IntermediateOutputPath)libvlc.zip</LibVlcZipPath>
     </PropertyGroup>
-    <!-- 动态压缩 LibVLC 的原生库并作为内嵌资源嵌入 -->
+    <!-- 动态压�?LibVLC 的原生库并作为内嵌资源嵌�?-->
     <ZipDirectory SourceDirectory="$(LibVlcSourceDir)" DestinationFile="$(LibVlcZipPath)" Overwrite="true" Condition="Exists('$(LibVlcSourceDir)')" />
   </Target>
 

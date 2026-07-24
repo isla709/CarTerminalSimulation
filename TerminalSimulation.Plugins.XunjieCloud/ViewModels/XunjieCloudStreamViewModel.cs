@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
+using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -93,9 +94,11 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
 
         private LibVLC? _libVLC;
         [ObservableProperty] private MediaPlayer? _mediaPlayer;
+        private Media? _currentMedia;
 
         private int _retryCount = 0;
         private const int MaxRetries = 3;
+        private CancellationTokenSource? _retryCancellation;
         private DispatcherTimer? _statsTimer;
         
         private long _lastReadBytes = 0;
@@ -451,6 +454,9 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
             if (_libVLC == null || MediaPlayer == null) return;
 
             // 如果是人为主动点击拉流，则重置重试次数
+            _retryCancellation?.Cancel();
+            _retryCancellation?.Dispose();
+            _retryCancellation = new CancellationTokenSource();
             _retryCount = 0;
             ExecuteStartPlay();
         }
@@ -460,6 +466,8 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
             if (_libVLC == null || MediaPlayer == null) return;
 
             if (MediaPlayer.IsPlaying) MediaPlayer.Stop();
+            _currentMedia?.Dispose();
+            _currentMedia = null;
 
             string url = $"https://live.xajyun.com/hls/{DeviceNo.Trim()}_{SelectedChannel?.Trim()}/playlist.m3u8";
             LogNetwork("Player", $"尝试拉取视频流: {url}");
@@ -471,6 +479,7 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
             _lastReadBytes = 0;
 
             var media = new Media(_libVLC, url, FromType.FromLocation);
+            _currentMedia = media;
             
             // 底层缓存与防卡顿优化
             media.AddOption(":avcodec-hw=any"); // 开启硬解
@@ -479,7 +488,16 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
             media.AddOption(":network-caching=1500"); // 基础网络抗抖动
             media.AddOption(":live-caching=1500"); // 针对直播流的抗抖动缓存
 
-            MediaPlayer.Play(media);
+            if (!MediaPlayer.Play(media))
+            {
+                media.Dispose();
+                _currentMedia = null;
+                IsPlaying = false;
+                IsVideoViewVisible = false;
+                StatusText = "播放失败";
+                LogNetwork("Player", "VLC 未能开始播放该媒体");
+                return;
+            }
             MediaPlayer.Volume = Volume;
             IsPlaying = true;
             IsVideoViewVisible = false;
@@ -494,12 +512,16 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
         [RelayCommand]
         private void StopPlay()
         {
+            _retryCancellation?.Cancel();
             _retryCount = MaxRetries; // 主动停止，阻止重连机制
+            _retryCancellation?.Cancel();
             if (MediaPlayer != null && MediaPlayer.IsPlaying)
             {
                 MediaPlayer.Stop();
                 LogNetwork("Player", "主动停止拉流");
             }
+            _currentMedia?.Dispose();
+            _currentMedia = null;
             IsPlaying = false;
             IsVideoViewVisible = false;
             StatusText = "已停止";
@@ -544,6 +566,7 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
 
         private void MediaPlayer_EncounteredError(object? sender, EventArgs e)
         {
+            var cancellationToken = _retryCancellation?.Token ?? CancellationToken.None;
             LogNetwork("Error", "拉取流发生错误或流已断开");
             Application.Current?.Dispatcher?.InvokeAsync(async () => 
             { 
@@ -558,7 +581,15 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
                 {
                     _retryCount++;
                     LogNetwork("Retry", $"等待 2 秒后进行第 {_retryCount} 次重试...");
-                    await Task.Delay(2000);
+                    try
+                    {
+                        await Task.Delay(2000, cancellationToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return;
+                    }
+                    if (cancellationToken.IsCancellationRequested) return;
                     ExecuteStartPlay();
                 }
                 else
@@ -570,6 +601,9 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
 
         public void Dispose()
         {
+            _retryCancellation?.Cancel();
+            _retryCancellation?.Dispose();
+            _retryCancellation = null;
             StopPlay();
             _statsTimer?.Stop();
             
@@ -582,6 +616,8 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
                 MediaPlayer.Dispose();
                 MediaPlayer = null;
             }
+            _currentMedia?.Dispose();
+            _currentMedia = null;
             if (_libVLC != null)
             {
                 _libVLC.Log -= LibVLC_Log;

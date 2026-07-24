@@ -11,6 +11,7 @@ using System.Text;
 using TerminalSimulation.Plugins.XunjieCloud.Avalonia.Services;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
 
 namespace TerminalSimulation.Plugins.XunjieCloud.Avalonia.ViewModels
 {
@@ -92,9 +93,14 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Avalonia.ViewModels
 
         private LibVLC? _libVLC;
         [ObservableProperty] private MediaPlayer? _mediaPlayer;
+        private Media? _currentMedia;
         public string PlayUrl { get; set; } = "";
 
         private DispatcherTimer? _statsTimer;
+        private CancellationTokenSource? _retryCancellation;
+        private int _retryCount;
+        private bool _retryScheduled;
+        private const int MaxRetries = 5;
 
         public XunjieCloudStreamViewModel()
         {
@@ -116,6 +122,9 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Avalonia.ViewModels
                 {
                     MediaPlayer = new MediaPlayer(_libVLC);
                     MediaPlayer.Playing += MediaPlayer_Playing;
+                    MediaPlayer.EncounteredError += MediaPlayer_RetryOnError;
+                    MediaPlayer.EncounteredError += (_, _) =>
+                        LogNetwork("Player", "VLC 播放失败：未能解码或连接视频流");
                 }
                 
                 // 初始化网速监控定时器
@@ -132,7 +141,40 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Avalonia.ViewModels
         {
             Dispatcher.UIThread.InvokeAsync(() =>
             {
+                _retryCount = 0;
+                _retryScheduled = false;
                 IsVideoViewVisible = true;
+            });
+        }
+
+        private void MediaPlayer_RetryOnError(object? sender, EventArgs e)
+        {
+            Dispatcher.UIThread.Post(async () =>
+            {
+                if (_retryScheduled || _retryCount >= MaxRetries ||
+                    _retryCancellation?.IsCancellationRequested != false)
+                {
+                    return;
+                }
+
+                _retryScheduled = true;
+                _retryCount++;
+                StatusText = $"等待视频流就绪（重试 {_retryCount}/{MaxRetries}）";
+                LogNetwork("Retry", $"视频流尚未就绪，2 秒后进行第 {_retryCount} 次重试");
+
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(2), _retryCancellation.Token);
+                    if (!_retryCancellation.IsCancellationRequested)
+                    {
+                        _retryScheduled = false;
+                        ExecuteStartPlay();
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    _retryScheduled = false;
+                }
             });
         }
 
@@ -378,6 +420,11 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Avalonia.ViewModels
             }
             if (MediaPlayer == null) return;
 
+            _retryCancellation?.Cancel();
+            _retryCancellation?.Dispose();
+            _retryCancellation = new CancellationTokenSource();
+            _retryCount = 0;
+            _retryScheduled = false;
             ExecuteStartPlay();
         }
 
@@ -386,6 +433,8 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Avalonia.ViewModels
             if (MediaPlayer == null) return;
 
             MediaPlayer.Stop();
+            _currentMedia?.Dispose();
+            _currentMedia = null;
 
             PlayUrl = $"https://live.xajyun.com/hls/{DeviceNo.Trim()}_{SelectedChannel?.Trim()}/playlist.m3u8";
             LogNetwork("Player", $"尝试拉取视频流: {PlayUrl}");
@@ -394,8 +443,22 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Avalonia.ViewModels
             CurrentBitrate = "0 KB/s";
 
             var media = new Media(_libVLC!, PlayUrl, FromType.FromLocation);
+            _currentMedia = media;
             media.AddOption(":network-caching=300"); // 降低缓存减少延迟
-            MediaPlayer.Play(media);
+            // Avalonia 下 VLC 的硬件解码/视频输出兼容性较差，明确关闭硬件解码并指定 HLS demux。
+            media.AddOption(":avcodec-hw=none");
+            media.AddOption(":http-reconnect");
+            media.AddOption(":http-user-agent=Mozilla/5.0");
+            if (!MediaPlayer.Play(media))
+            {
+                media.Dispose();
+                _currentMedia = null;
+                IsPlaying = false;
+                IsVideoViewVisible = false;
+                StatusText = "播放失败";
+                LogNetwork("Player", "VLC 未能开始播放该媒体");
+                return;
+            }
             MediaPlayer.Volume = Volume;
             
             IsPlaying = true;
@@ -412,7 +475,11 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Avalonia.ViewModels
         [RelayCommand]
         private void StopPlay()
         {
+            _retryCancellation?.Cancel();
+            _retryScheduled = false;
             MediaPlayer?.Stop();
+            _currentMedia?.Dispose();
+            _currentMedia = null;
             LogNetwork("Player", "主动停止拉流");
             IsPlaying = false;
             IsVideoViewVisible = false;
@@ -424,20 +491,26 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Avalonia.ViewModels
 
         public void Dispose()
         {
+            _retryCancellation?.Cancel();
+            _retryCancellation?.Dispose();
+            _retryCancellation = null;
             _statsTimer?.Stop();
             IsPlaying = false;
             
             var mp = MediaPlayer;
             var vlc = _libVLC;
+            var media = _currentMedia;
             
             MediaPlayer = null;
             _libVLC = null;
+            _currentMedia = null;
 
             System.Threading.Tasks.Task.Run(() =>
             {
                 try
                 {
                     mp?.Stop();
+                    media?.Dispose();
                     mp?.Dispose();
                     vlc?.Dispose();
                 }

@@ -1009,7 +1009,8 @@
                                                             </Grid>
 
                                                             <!-- 实际视频播放控件 -->
-                                                            <vlc:VideoView MediaPlayer="{Binding MediaPlayer}" Visibility="{Binding IsVideoViewVisible, Converter={StaticResource BooleanToHiddenVisibilityConverter}}" Loaded="VideoView_Loaded" IsVisibleChanged="VideoView_IsVisibleChanged" />
+                                                            <!-- Keep the native VLC host alive across tab/scroll changes. -->
+                                                            <vlc:VideoView MediaPlayer="{Binding MediaPlayer}" Loaded="VideoView_Loaded" IsVisibleChanged="VideoView_IsVisibleChanged" />
                                                         </Grid>
                                                     </Border>
                                                     

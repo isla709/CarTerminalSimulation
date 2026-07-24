@@ -11,7 +11,7 @@
         ShowInTaskbar="False">
     <Grid>
         <Grid.Background>
-            <ImageBrush ImageSource="pack://application:,,,/splash_bg.png" Stretch="UniformToFill" />
+            <ImageBrush x:Name="SplashBackground" Stretch="UniformToFill" />
         </Grid.Background>
         
         <TextBlock x:Name="LoadingText"

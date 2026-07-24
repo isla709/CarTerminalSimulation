@@ -28,16 +28,28 @@ public partial class App : Application
             {
                 try
                 {
-                    string tempDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "CarTerminalSim_LibVLC_x64");
-                    if (!System.IO.File.Exists(System.IO.Path.Combine(tempDir, "libvlc.dll")))
+                    // Version the extraction folder so an application update cannot
+                    // reuse an older, partially compatible native VLC installation.
+                    string tempDir = System.IO.Path.Combine(
+                        System.IO.Path.GetTempPath(),
+                        "CarTerminalSim_LibVLC_x64_3.0.23.1");
+                    string libVlcPath = System.IO.Path.Combine(tempDir, "libvlc.dll");
+                    string pluginsPath = System.IO.Path.Combine(tempDir, "plugins");
+                    if (!System.IO.File.Exists(libVlcPath) ||
+                        !System.IO.Directory.Exists(pluginsPath))
                     {
-                        if (!System.IO.Directory.Exists(tempDir)) System.IO.Directory.CreateDirectory(tempDir);
-                        using var stream = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("libvlc.zip");
-                        if (stream != null)
+                        if (System.IO.Directory.Exists(tempDir))
                         {
-                            using var archive = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Read);
-                            System.IO.Compression.ZipFileExtensions.ExtractToDirectory(archive, tempDir, true);
+                            System.IO.Directory.Delete(tempDir, recursive: true);
                         }
+                        System.IO.Directory.CreateDirectory(tempDir);
+                        using var stream = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("libvlc.zip");
+                        if (stream == null)
+                        {
+                            throw new System.IO.FileNotFoundException("Embedded libvlc.zip was not found.");
+                        }
+                        using var archive = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Read);
+                        System.IO.Compression.ZipFileExtensions.ExtractToDirectory(archive, tempDir, true);
                     }
                     LibVLCSharp.Shared.Core.Initialize(tempDir);
                 }

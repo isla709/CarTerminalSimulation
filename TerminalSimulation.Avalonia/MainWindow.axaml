@@ -1297,9 +1297,9 @@
                                                                 ClipToBounds="True"
                                                                 Height="{Binding Bounds.Width, RelativeSource={RelativeSource Self}, Converter={StaticResource AspectRatioConverter}, ConverterParameter=0.5625}">
                                                             <Grid>
-                                                                <!-- Actual Video Player (hidden when not playing to avoid native HWND airspace issues) -->
-                                                                <vlc:VideoView MediaPlayer="{Binding MediaPlayer}"
-                                                                               IsVisible="{Binding IsVideoViewVisible}" />
+                                                                <!-- Keep the native VLC host alive. Hiding it recreates the
+                                                                     native handle and can leave a blank surface after tab/layout changes. -->
+                                                                <vlc:VideoView MediaPlayer="{Binding MediaPlayer}" />
 
                                                                 <!-- Placeholder (when not streaming/previewing) -->
                                                                 <Grid Background="#151515"

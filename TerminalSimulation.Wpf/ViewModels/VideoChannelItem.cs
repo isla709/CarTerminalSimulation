@@ -62,6 +62,7 @@ namespace TerminalSimulation.Wpf.ViewModels
 
         private LibVLC _libVLC;
         [ObservableProperty] private MediaPlayer _mediaPlayer;
+        private Media? _currentMedia;
 
         private readonly Action<string, string>? _logger;
 
@@ -270,7 +271,9 @@ namespace TerminalSimulation.Wpf.ViewModels
 
         private Media CreateMedia(string filePath)
         {
+            _currentMedia?.Dispose();
             var media = new Media(_libVLC, filePath, FromType.FromPath);
+            _currentMedia = media;
             media.AddOption(":input-repeat=65535"); // 无限循环
             if (Path.GetExtension(filePath).Equals(".h264", StringComparison.OrdinalIgnoreCase))
             {
@@ -299,7 +302,14 @@ namespace TerminalSimulation.Wpf.ViewModels
             Application.Current?.Dispatcher?.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(async () => 
             {
                 var media = CreateMedia(VideoFilePath);
-                MediaPlayer.Play(media);
+                if (!MediaPlayer.Play(media))
+                {
+                    media.Dispose();
+                    _currentMedia = null;
+                    IsPreviewing = false;
+                    StatusText = "VLC 播放失败";
+                    return;
+                }
                 await Task.Delay(200); // 延迟设置静音，等待VLC初始化音频输出
                 MediaPlayer.Mute = IsMuted;
             }));
@@ -314,6 +324,8 @@ namespace TerminalSimulation.Wpf.ViewModels
             Application.Current?.Dispatcher?.Invoke(() => 
             {
                 MediaPlayer?.Stop();
+                _currentMedia?.Dispose();
+                _currentMedia = null;
             });
         }
 
@@ -398,7 +410,13 @@ namespace TerminalSimulation.Wpf.ViewModels
                 if (!string.IsNullOrEmpty(VideoFilePath) && File.Exists(VideoFilePath))
                 {
                     var media = CreateMedia(VideoFilePath);
-                    MediaPlayer.Play(media);
+                    if (!MediaPlayer.Play(media))
+                    {
+                        media.Dispose();
+                        _currentMedia = null;
+                        StatusText = "VLC 播放失败";
+                        return;
+                    }
                     await Task.Delay(200); // 延迟设置静音，等待VLC初始化音频输出
                     MediaPlayer.Mute = IsMuted;
                 }
@@ -419,6 +437,8 @@ namespace TerminalSimulation.Wpf.ViewModels
             Application.Current?.Dispatcher?.Invoke(() => 
             {
                 MediaPlayer?.Stop();
+                _currentMedia?.Dispose();
+                _currentMedia = null;
             });
         }
 
@@ -488,6 +508,8 @@ namespace TerminalSimulation.Wpf.ViewModels
         {
             StopPushing();
             StopPreviewing();
+            _currentMedia?.Dispose();
+            _currentMedia = null;
             MediaPlayer?.Dispose();
             _libVLC?.Dispose();
 
