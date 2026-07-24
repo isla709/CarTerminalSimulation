@@ -1,4 +1,6 @@
+using System;
 using System.Windows;
+using System.Windows.Media.Imaging;
 
 namespace TerminalSimulation.Wpf
 {
@@ -7,6 +9,10 @@ namespace TerminalSimulation.Wpf
         public SplashWindow()
         {
             InitializeComponent();
+            var imageName = $"splash_{Random.Shared.Next(1, 4)}.jpg";
+            SplashBackground.ImageSource = new BitmapImage(
+                new Uri($"pack://application:,,,/{imageName}", UriKind.Absolute));
+            VersionText.Text = AppVersionInfo.FullVersion;
         }
         
         public void SetLoadingText(string text)

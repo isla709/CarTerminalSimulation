@@ -20,12 +20,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Resource Include="splash_bg.png" />
+    <Resource Include="splash_1.jpg" />
+    <Resource Include="splash_2.jpg" />
+    <Resource Include="splash_3.jpg" />
   </ItemGroup>
 
   <PropertyGroup>
     <!-- 手动修改程序版本号 -->
-    <AppVersion>preview3</AppVersion>
+    <AppVersion>preview4</AppVersion>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
