@@ -225,7 +225,9 @@ CarTerminalSimulation/
 ## 📘 常见问题 (FAQ)
 
 ### Q: 启动推流时为什么提示 FFmpeg 未找到？
-**A**: 出于供应链安全考虑，程序不会在运行时下载或执行网络来源的 FFmpeg。正式发布前必须把经过审核的固定版本 `ffmpeg.exe`、`ffprobe.exe` 放入仓库根目录的 `FFmpeg/`，构建会将它们复制到发布包的 `ffmpeg/`。缺失时请重新安装完整发布包。
+**A**: 程序不再启动 `ffmpeg.exe`/`ffprobe.exe`。转码通过 `TerminalFfmpeg.Native.dll` 在进程内调用精简的 FFmpeg `libavcodec/libavformat/libavutil/libswscale/libswresample` 与 `libx264`。正式发布前需按 `FFmpeg.Native/README.md` 构建 GPL 原生模块；缺失时请重新安装完整发布包。
+
+> 许可说明：当前 H.264 编码选择 `libx264`，因此 FFmpeg 原生模块及组合发布需按 GPL 要求提供许可证、构建配置和对应源码获取方式。应用发布前必须完成法务与源码分发检查。
 
 ### 安全边界
 

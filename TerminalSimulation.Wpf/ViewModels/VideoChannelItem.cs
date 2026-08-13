@@ -8,8 +8,7 @@ using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LibVLCSharp.Shared;
-using Xabe.FFmpeg;
-using Xabe.FFmpeg.Downloader;
+using TerminalSimulation.Wpf.Services.Media;
 
 namespace TerminalSimulation.Wpf.ViewModels
 {
@@ -64,6 +63,7 @@ namespace TerminalSimulation.Wpf.ViewModels
         [ObservableProperty] private MediaPlayer _mediaPlayer;
 
         private readonly Action<string, string>? _logger;
+        private readonly IInProcessMediaTranscoder _transcoder = new NativeFfmpegTranscoder();
 
         public VideoChannelItem(byte logicalChannelNo, Action<string, string>? logger = null)
         {
@@ -105,20 +105,6 @@ namespace TerminalSimulation.Wpf.ViewModels
                 }
                 else
                 {
-                    // FFmpeg is a fixed, audited component shipped with the application.
-                    string ffmpegPath = GetResolvedFFmpegPath();
-                    if (!Directory.Exists(ffmpegPath) || !File.Exists(Path.Combine(ffmpegPath, "ffmpeg.exe")))
-                    {
-                        var fileEx = new FileNotFoundException("发布包缺少固定版本 FFmpeg，请重新安装完整发布包。", Path.Combine(ffmpegPath, "ffmpeg.exe"));
-                        _logger?.Invoke("异常", $"通道 {LogicalChannelNo}: {fileEx.Message}");
-                        ConsoleLogger.LogError("FFmpeg", $"通道 {LogicalChannelNo}: 发布包缺少 FFmpeg。", fileEx);
-                        throw fileEx;
-                    }
-                    else
-                    {
-                        FFmpeg.SetExecutablesPath(ffmpegPath);
-                    }
-
                     string h264Dir = Path.Combine(TerminalSimulation.Wpf.Helpers.PathHelper.ExeDir, "h264");
                     Directory.CreateDirectory(h264Dir);
                     string outputH264 = Path.Combine(h264Dir, $"{Path.GetFileNameWithoutExtension(VideoFilePath)}_{LogicalChannelNo}.h264");
@@ -128,65 +114,34 @@ namespace TerminalSimulation.Wpf.ViewModels
                         File.Delete(outputH264);
                     }
 
-                    var mediaInfo = await FFmpeg.GetMediaInfo(VideoFilePath);
-                    bool hasAudio = mediaInfo.AudioStreams.Any();
-                    var videoStream = mediaInfo.VideoStreams.FirstOrDefault();
+                    var mediaInfo = _transcoder.Probe(VideoFilePath);
+                    bool hasAudio = mediaInfo.HasAudio;
 
                     // 提取原始视频帧率，如果提取失败则默认 25
-                    double originalFps = videoStream?.Framerate ?? 25.0;
+                    double originalFps = mediaInfo.FrameRate;
                     if (originalFps <= 0) originalFps = 25.0;
                     
                     TargetFps = originalFps;
                     int gop = (int)Math.Max(10, Math.Round(originalFps * 2)); // 2秒一个关键帧
 
-                    // 重新编码为标准流：保持原帧率，2秒一个关键帧，使用 CRF 26 并限制最高码率防止网络崩溃
-                    var conversion = FFmpeg.Conversions.New()
-                        .AddParameter($"-i \"{VideoFilePath}\"")
-                        .AddParameter($"-c:v libx264 -preset veryfast -r {originalFps} -g {gop} -crf 26 -maxrate 2M -bufsize 4M -bf 0 -an -f h264")
-                        .SetOutput(outputH264);
-                    
-                    conversion.OnProgress += (sender, args) =>
-                    {
-                        Application.Current?.Dispatcher?.Invoke(() =>
-                        {
-                            StatusText = $"正在转码视频... {args.Percent}%";
-                        });
-                    };
+                    string? outputG711a = hasAudio ? Path.Combine(h264Dir, $"{Path.GetFileNameWithoutExtension(VideoFilePath)}_{LogicalChannelNo}.g711a") : null;
+                    string? outputAac = hasAudio ? Path.Combine(h264Dir, $"{Path.GetFileNameWithoutExtension(VideoFilePath)}_{LogicalChannelNo}.aac") : null;
+                    if (outputG711a != null && File.Exists(outputG711a)) File.Delete(outputG711a);
+                    if (outputAac != null && File.Exists(outputAac)) File.Delete(outputAac);
 
-                    await conversion.Start();
+                    var progress = new Progress<double>(value =>
+                    {
+                        StatusText = $"正在进行进程内转码... {value:P0}";
+                    });
+                    await _transcoder.TranscodeAsync(new MediaTranscodeRequest(
+                        VideoFilePath, outputH264, outputG711a, outputAac,
+                        originalFps, gop, 2_000_000, 4_000_000), progress, CancellationToken.None);
                     H264FilePath = outputH264;
 
                     if (hasAudio)
                     {
-                        string outputG711a = Path.Combine(h264Dir, $"{Path.GetFileNameWithoutExtension(VideoFilePath)}_{LogicalChannelNo}.g711a");
-                        if (File.Exists(outputG711a)) File.Delete(outputG711a);
-
-                        string outputAac = Path.Combine(h264Dir, $"{Path.GetFileNameWithoutExtension(VideoFilePath)}_{LogicalChannelNo}.aac");
-                        if (File.Exists(outputAac)) File.Delete(outputAac);
-
-                        var audioConversion = FFmpeg.Conversions.New()
-                            .AddParameter($"-i \"{VideoFilePath}\"")
-                            .AddParameter("-vn -c:a pcm_alaw -ar 8000 -ac 1 -f alaw")
-                            .SetOutput(outputG711a);
-
-                        var aacConversion = FFmpeg.Conversions.New()
-                            .AddParameter($"-i \"{VideoFilePath}\"")
-                            .AddParameter("-vn -c:a aac -b:a 64k -ar 8000 -ac 1 -f adts")
-                            .SetOutput(outputAac);
-                        
-                        audioConversion.OnProgress += (sender, args) =>
-                        {
-                            Application.Current?.Dispatcher?.Invoke(() =>
-                            {
-                                StatusText = $"正在提取音频... {args.Percent}%";
-                            });
-                        };
-
-                        await audioConversion.Start();
-                        await aacConversion.Start();
-
-                        G711aFilePath = outputG711a;
-                        AacFilePath = outputAac;
+                        G711aFilePath = outputG711a!;
+                        AacFilePath = outputAac!;
                     }
 
                     StatusText = $"转码完成就绪 ({TargetFps:F1} FPS{(hasAudio ? ", 带音频" : "")})";
@@ -433,33 +388,10 @@ namespace TerminalSimulation.Wpf.ViewModels
             MediaPlayer.Mute = IsMuted;
         }
 
-        private void EnsureFFmpegPath()
-        {
-            string ffmpegPath = GetResolvedFFmpegPath();
-            if (Directory.Exists(ffmpegPath) && File.Exists(Path.Combine(ffmpegPath, "ffmpeg.exe")))
-            {
-                FFmpeg.SetExecutablesPath(ffmpegPath);
-            }
-        }
-
-        private string GetResolvedFFmpegPath()
-        {
-            // First check if it's bundled in AppDir (extracted temp folder)
-            string appFFmpeg = Path.Combine(TerminalSimulation.Wpf.Helpers.PathHelper.AppDir, "ffmpeg");
-            if (Directory.Exists(appFFmpeg) && File.Exists(Path.Combine(appFFmpeg, "ffmpeg.exe")))
-            {
-                return appFFmpeg;
-            }
-
-            // Otherwise, default to ExeDir so downloads persist
-            return Path.Combine(TerminalSimulation.Wpf.Helpers.PathHelper.ExeDir, "ffmpeg");
-        }
-
         private async Task ExtractThumbnailAsync(string videoPath)
         {
             try
             {
-                EnsureFFmpegPath();
                 string thumbDir = Path.Combine(TerminalSimulation.Wpf.Helpers.PathHelper.ExeDir, "thumbnails");
                 Directory.CreateDirectory(thumbDir);
 
@@ -471,11 +403,7 @@ namespace TerminalSimulation.Wpf.ViewModels
 
                 string thumbPath = Path.Combine(thumbDir, $"thumb_{LogicalChannelNo}_{Guid.NewGuid():N}.jpg");
 
-                // Extract the first frame as JPEG
-                var conversion = FFmpeg.Conversions.New()
-                    .AddParameter($"-ss 00:00:00 -i \"{videoPath}\" -vframes 1 -f image2 -q:v 2 \"{thumbPath}\"");
-                
-                await conversion.Start();
+                await _transcoder.WriteThumbnailAsync(videoPath, thumbPath, CancellationToken.None);
 
                 if (File.Exists(thumbPath))
                 {
@@ -502,7 +430,7 @@ namespace TerminalSimulation.Wpf.ViewModels
             }
         }
 
-        /* Runtime FFmpeg downloading was intentionally removed. Executables are supplied by the release package.
+#if false // Historical executable downloader retained only for source archaeology; never compiled.
         private async Task DownloadFFmpegWithFallbackAsync(string destinationFolder, IProgress<(double percent, double speed)> progress)
         {
             string[] sources = new string[]
@@ -714,7 +642,7 @@ namespace TerminalSimulation.Wpf.ViewModels
                 .ToArray();
         }
 
-        */
+#endif
         private static string FormatSpeed(double bytesPerSecond)
         {
             if (bytesPerSecond < 1024)

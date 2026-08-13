@@ -15,8 +15,6 @@
     <PackageReference Include="System.Speech" Version="8.0.0" />
     <PackageReference Include="System.Text.Json" Version="9.0.0" />
     <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.23.1" ExcludeAssets="build" GeneratePathProperty="true" />
-    <PackageReference Include="Xabe.FFmpeg" Version="6.0.2" />
-    <PackageReference Include="Xabe.FFmpeg.Downloader" Version="6.0.2" />
   </ItemGroup>
 
   <ItemGroup>
@@ -44,10 +42,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="..\FFmpeg\**\*">
+    <None Include="..\FFmpeg.Native\artifacts\win-x64\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-      <Link>ffmpeg\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <Link>ffmpeg-native\%(RecursiveDir)%(Filename)%(Extension)</Link>
     </None>
   </ItemGroup>
 
