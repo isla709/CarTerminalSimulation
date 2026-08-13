@@ -429,6 +429,7 @@ namespace TerminalSimulation.Wpf.ViewModels
             InitializeFlags();
             _networkClient = new TerminalNetworkClient();
             _networkClient.OnDataReceived += NetworkClient_OnDataReceived;
+            _networkClient.OnError += ex => Log("网络", ex.Message);
             _networkClient.OnDisconnected += () =>
             {
                 Application.Current.Dispatcher.Invoke(() =>
@@ -2707,7 +2708,7 @@ namespace TerminalSimulation.Wpf.ViewModels
                             var videoItem = VideoChannels.FirstOrDefault(c => c.LogicalChannelNo == channel);
                             if (videoItem != null)
                             {
-                                videoItem.StartPushing(ip, port, TerminalPhoneNo, body.DataType, AudioCodecIndex);
+                                _ = StartVideoPushingAsync(videoItem, ip, port, body.DataType);
                             }
                         }
 
@@ -2770,6 +2771,18 @@ namespace TerminalSimulation.Wpf.ViewModels
             catch (Exception ex)
             {
                 Log("解析异常", ex.Message);
+            }
+        }
+
+        private async Task StartVideoPushingAsync(VideoChannelItem videoItem, string ip, int port, int dataType)
+        {
+            try
+            {
+                await videoItem.StartPushingAsync(ip, port, TerminalPhoneNo, dataType, AudioCodecIndex);
+            }
+            catch (Exception ex)
+            {
+                Log("音视频", $"通道 {videoItem.LogicalChannelNo} 推流失败: {ex.Message}");
             }
         }
 
@@ -3768,6 +3781,14 @@ namespace TerminalSimulation.Wpf.ViewModels
         {
             _autoReportCts?.Cancel();
             _autoReportCts?.Dispose();
+            _heartbeatCts?.Cancel();
+            _heartbeatCts?.Dispose();
+            _pathSimulationCts?.Cancel();
+            _pathSimulationCts?.Dispose();
+            foreach (var channel in VideoChannels.ToList())
+            {
+                channel.Dispose();
+            }
             _networkClient?.Dispose();
             CloseSerialPort();
 

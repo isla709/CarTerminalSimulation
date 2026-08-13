@@ -10,11 +10,13 @@ using JT1078.Protocol.Enums;
 
 namespace TerminalSimulation.Protocol
 {
-    public class JT1078Pusher : IDisposable
+    public class JT1078Pusher : IDisposable, IAsyncDisposable
     {
         private TcpClient? _client;
         private NetworkStream? _stream;
         private CancellationTokenSource? _cts;
+        private Task? _pushTask;
+        private readonly SemaphoreSlim _lifecycleLock = new(1, 1);
         private readonly string _simCard;
         private readonly byte _channelNo;
         private readonly string _h264File;
@@ -47,6 +49,10 @@ namespace TerminalSimulation.Protocol
 
         public async Task StartAsync(string ip, int port)
         {
+            await StopAsync().ConfigureAwait(false);
+            await _lifecycleLock.WaitAsync().ConfigureAwait(false);
+            try
+            {
             _cts = new CancellationTokenSource();
 
             List<VideoFrame> frames = new List<VideoFrame>();
@@ -55,7 +61,7 @@ namespace TerminalSimulation.Protocol
                 if (!File.Exists(_h264File))
                 {
                     OnLog?.Invoke($"视频裸流文件不存在: {_h264File}");
-                    return;
+                    throw new FileNotFoundException("Video elementary stream does not exist.", _h264File);
                 }
 
                 OnLog?.Invoke("正在解析视频文件，这可能需要一点时间...");
@@ -77,7 +83,7 @@ namespace TerminalSimulation.Protocol
                 if (audioData == null || audioData.Length == 0)
                 {
                     OnLog?.Invoke("纯音频模式但未提供音频文件，中止推流。");
-                    return;
+                    throw new InvalidOperationException("Audio-only streaming requires a valid audio file.");
                 }
             }
 
@@ -89,20 +95,54 @@ namespace TerminalSimulation.Protocol
             
             if (_dataType == 2 || _dataType == 3)
             {
-                _ = Task.Run(() => PushAudioOnlyLoop(_cts.Token, audioData), _cts.Token);
+                _pushTask = PushAudioOnlyLoop(_cts.Token, audioData!);
             }
             else
             {
-                _ = Task.Run(() => PushLoop(_cts.Token, frames, audioData), _cts.Token);
+                _pushTask = PushLoop(_cts.Token, frames, audioData);
             }
+            }
+            catch
+            {
+                _stream?.Dispose();
+                _client?.Dispose();
+                _stream = null;
+                _client = null;
+                _cts?.Dispose();
+                _cts = null;
+                throw;
+            }
+            finally { _lifecycleLock.Release(); }
         }
 
-        public void Stop()
+        public async Task StopAsync()
         {
-            _cts?.Cancel();
-            _stream?.Close();
-            _client?.Close();
+            Task? pushTask;
+            CancellationTokenSource? cts;
+            await _lifecycleLock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                pushTask = _pushTask;
+                cts = _cts;
+                _pushTask = null;
+                _cts = null;
+                cts?.Cancel();
+                _stream?.Dispose();
+                _client?.Dispose();
+                _stream = null;
+                _client = null;
+            }
+            finally { _lifecycleLock.Release(); }
+
+            if (pushTask != null)
+            {
+                try { await pushTask.ConfigureAwait(false); }
+                catch (OperationCanceledException) { }
+            }
+            cts?.Dispose();
         }
+
+        public void Stop() => StopAsync().GetAwaiter().GetResult();
 
         private async Task PushLoop(CancellationToken token, List<VideoFrame> frames, byte[]? audioData)
         {
@@ -720,6 +760,14 @@ namespace TerminalSimulation.Protocol
         public void Dispose()
         {
             Stop();
+            _lifecycleLock.Dispose();
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await StopAsync().ConfigureAwait(false);
+            _lifecycleLock.Dispose();
+            GC.SuppressFinalize(this);
         }
     }
 }

@@ -317,7 +317,7 @@ namespace TerminalSimulation.Wpf.ViewModels
             });
         }
 
-        public void StartPushing(string ip, int port, string simCard, int dataType = 1, int audioCodec = 0)
+        public async Task StartPushingAsync(string ip, int port, string simCard, int dataType = 1, int audioCodec = 0)
         {
             if (dataType == 2 || dataType == 3)
             {
@@ -350,7 +350,7 @@ namespace TerminalSimulation.Wpf.ViewModels
                 StopPreviewing();
             }
 
-            StopPushing();
+            await StopPushingAsync();
 
             string? targetAudioFile = null;
             if (dataType == 0 || dataType == 2 || dataType == 3)
@@ -379,17 +379,32 @@ namespace TerminalSimulation.Wpf.ViewModels
 
             _pusher.OnDisconnected += () =>
             {
-                Application.Current?.Dispatcher?.Invoke(() =>
+                Application.Current?.Dispatcher?.BeginInvoke(new Action(() =>
                 {
                     if (IsStreaming)
                     {
-                        StopPushing();
+                        IsStreaming = false;
+                        StatusText = "推流连接已断开";
+                        TrafficText = "";
                     }
-                });
+                }));
             };
 
-            _ = _pusher.StartAsync(ip, port);
-            IsStreaming = true;
+            try
+            {
+                await _pusher.StartAsync(ip, port);
+                IsStreaming = true;
+            }
+            catch (Exception ex)
+            {
+                await _pusher.DisposeAsync();
+                _pusher = null;
+                IsStreaming = false;
+                StatusText = $"推流启动失败: {ex.Message}";
+                TrafficText = "";
+                _logger?.Invoke("异常", $"通道 {LogicalChannelNo} 推流启动失败: {ex.Message}");
+                return;
+            }
             IsMuted = true; // 默认静音
 
             // 播放视频并设置循环
@@ -405,12 +420,13 @@ namespace TerminalSimulation.Wpf.ViewModels
             }));
         }
 
-        public void StopPushing()
+        public async Task StopPushingAsync()
         {
-            if (_pusher != null)
+            var pusher = _pusher;
+            _pusher = null;
+            if (pusher != null)
             {
-                _pusher.Stop();
-                _pusher = null;
+                await pusher.DisposeAsync();
             }
             IsStreaming = false;
             StatusText = "已停止推流";
@@ -421,6 +437,8 @@ namespace TerminalSimulation.Wpf.ViewModels
                 MediaPlayer?.Stop();
             });
         }
+
+        public void StopPushing() => StopPushingAsync().GetAwaiter().GetResult();
 
         [RelayCommand]
         private void ToggleMute()
