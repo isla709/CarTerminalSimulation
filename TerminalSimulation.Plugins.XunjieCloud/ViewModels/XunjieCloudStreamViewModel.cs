@@ -12,6 +12,7 @@ using System.Text;
 using TerminalSimulation.Plugins.XunjieCloud.Services;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
 
 namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
 {
@@ -30,6 +31,7 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
 
     public partial class XunjieCloudStreamViewModel : ObservableObject, IDisposable
     {
+        private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromSeconds(15) };
         // Login properties
         [ObservableProperty] private bool _isLoggedIn = false;
         [ObservableProperty] private string _username = "";
@@ -105,6 +107,10 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
         private long _lastReadBytes = 0;
         private DateTime _lastReadTime = DateTime.MinValue;
         private int _audioDetectTicks = 0;
+        private CancellationTokenSource? _playbackCts;
+        private Media? _currentMedia;
+        private int _playbackGeneration;
+        private bool _disposed;
 
         public XunjieCloudStreamViewModel()
         {
@@ -265,7 +271,7 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
             LogNetwork("System", "正在登录...");
             try
             {
-                using var client = new HttpClient();
+                var client = HttpClient;
                 client.DefaultRequestHeaders.Add("platform-id", "0");
                 var payload = new { username = Username.Trim(), password = Password, loginType = "0" };
                 var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
@@ -323,7 +329,7 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
             LogNetwork("System", $"正在获取设备 {DeviceNo} 的通道列表...");
             try
             {
-                using var client = new HttpClient();
+                var client = HttpClient;
                 client.DefaultRequestHeaders.Add("platform-id", "0");
                 if (!string.IsNullOrWhiteSpace(Token))
                 {
@@ -399,7 +405,7 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
             LogNetwork("System", $"正在下发指令 {msgId} ...");
             try
             {
-                using var client = new HttpClient();
+                var client = HttpClient;
                 client.DefaultRequestHeaders.Add("platform-id", "0");
                 if (!string.IsNullOrWhiteSpace(Token))
                 {
@@ -456,12 +462,20 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
 
             // 如果是人为主动点击拉流，则重置重试次数
             _retryCount = 0;
-            ExecuteStartPlay();
+            BeginPlaybackSession();
         }
 
-        private void ExecuteStartPlay()
+        private void BeginPlaybackSession()
         {
-            if (_libVLC == null || MediaPlayer == null) return;
+            CancelPlaybackSession();
+            _playbackCts = new CancellationTokenSource();
+            var generation = Interlocked.Increment(ref _playbackGeneration);
+            ExecuteStartPlay(generation, _playbackCts.Token);
+        }
+
+        private void ExecuteStartPlay(int generation, CancellationToken token)
+        {
+            if (_disposed || token.IsCancellationRequested || generation != _playbackGeneration || _libVLC == null || MediaPlayer == null) return;
 
             if (MediaPlayer.IsPlaying) MediaPlayer.Stop();
 
@@ -474,7 +488,9 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
             _lastReadTime = DateTime.MinValue;
             _lastReadBytes = 0;
 
+            _currentMedia?.Dispose();
             var media = new Media(_libVLC, url, FromType.FromLocation);
+            _currentMedia = media;
             
             // 底层缓存与防卡顿优化
             media.AddOption(":avcodec-hw=any"); // 开启硬解
@@ -499,6 +515,7 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
         private void StopPlay()
         {
             _retryCount = MaxRetries; // 主动停止，阻止重连机制
+            CancelPlaybackSession();
             if (MediaPlayer != null && MediaPlayer.IsPlaying)
             {
                 MediaPlayer.Stop();
@@ -514,6 +531,16 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
             _statsTimer?.Stop();
         }
 
+        private void CancelPlaybackSession()
+        {
+            Interlocked.Increment(ref _playbackGeneration);
+            var cts = Interlocked.Exchange(ref _playbackCts, null);
+            cts?.Cancel();
+            cts?.Dispose();
+            _currentMedia?.Dispose();
+            _currentMedia = null;
+        }
+
         private void MediaPlayer_EndReached(object? sender, EventArgs e)
         {
             LogNetwork("Player", "播放结束");
@@ -527,6 +554,8 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
 
         private async void MediaPlayer_Playing(object? sender, EventArgs e)
         {
+            var generation = _playbackGeneration;
+            var token = _playbackCts?.Token ?? new CancellationToken(canceled: true);
             LogNetwork("Player", "开始播放");
             _retryCount = 0; // 播放成功，重置重连计数
             Application.Current?.Dispatcher?.Invoke(() => 
@@ -536,10 +565,11 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
             });
             
             // 延迟 300 毫秒，确保底层 D3D 画布已输出第一帧，防止白屏闪烁
-            await Task.Delay(300);
+            try { await Task.Delay(300, token); }
+            catch (OperationCanceledException) { return; }
             Application.Current?.Dispatcher?.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
             {
-                if (IsPlaying)
+                if (!_disposed && !token.IsCancellationRequested && generation == _playbackGeneration && IsPlaying)
                 {
                     IsVideoViewVisible = true;
                 }
@@ -562,8 +592,14 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
                 {
                     _retryCount++;
                     LogNetwork("Retry", $"等待 2 秒后进行第 {_retryCount} 次重试...");
-                    await Task.Delay(2000);
-                    ExecuteStartPlay();
+                    var generation = _playbackGeneration;
+                    var token = _playbackCts?.Token ?? new CancellationToken(canceled: true);
+                    try { await Task.Delay(2000, token); }
+                    catch (OperationCanceledException) { return; }
+                    if (!_disposed && !token.IsCancellationRequested && generation == _playbackGeneration)
+                    {
+                        ExecuteStartPlay(generation, token);
+                    }
                 }
                 else
                 {
@@ -574,6 +610,8 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
 
         public void Dispose()
         {
+            if (_disposed) return;
+            _disposed = true;
             StopPlay();
             _statsTimer?.Stop();
             

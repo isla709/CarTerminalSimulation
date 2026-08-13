@@ -23,7 +23,7 @@ namespace TerminalSimulation.Wpf.Helpers
             {
                 try
                 {
-                    string exePath = Process.GetCurrentProcess().MainModule?.FileName;
+                    string? exePath = Process.GetCurrentProcess().MainModule?.FileName;
                     if (!string.IsNullOrEmpty(exePath))
                     {
                         return Path.GetDirectoryName(exePath) ?? AppDir;

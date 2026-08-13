@@ -51,14 +51,13 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Helpers
         private static void OnPasswordPropertyChanged(DependencyObject sender,
             DependencyPropertyChangedEventArgs e)
         {
-            PasswordBox passwordBox = sender as PasswordBox;
-            if (passwordBox != null)
+            if (sender is PasswordBox passwordBox)
             {
                 passwordBox.PasswordChanged -= PasswordChanged;
 
                 if (!GetIsUpdating(passwordBox))
                 {
-                    passwordBox.Password = (string)e.NewValue;
+                    passwordBox.Password = e.NewValue as string ?? string.Empty;
                 }
                 passwordBox.PasswordChanged += PasswordChanged;
             }
@@ -67,9 +66,7 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Helpers
         private static void Attach(DependencyObject sender,
             DependencyPropertyChangedEventArgs e)
         {
-            PasswordBox passwordBox = sender as PasswordBox;
-
-            if (passwordBox == null)
+            if (sender is not PasswordBox passwordBox)
                 return;
 
             if ((bool)e.OldValue)
@@ -85,7 +82,7 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Helpers
 
         private static void PasswordChanged(object sender, RoutedEventArgs e)
         {
-            PasswordBox passwordBox = sender as PasswordBox;
+            if (sender is not PasswordBox passwordBox) return;
             SetIsUpdating(passwordBox, true);
             SetPassword(passwordBox, passwordBox.Password);
             SetIsUpdating(passwordBox, false);

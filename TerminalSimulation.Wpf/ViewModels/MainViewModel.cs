@@ -2873,9 +2873,13 @@ namespace TerminalSimulation.Wpf.ViewModels
             ushort msgProps = (ushort)((unescaped[2] << 8) | unescaped[3]);
             int oldBodyLength = msgProps & 0x03FF;
             int newBodyLength = oldBodyLength + rawAttach.Length;
+            if (newBodyLength > 0x03FF)
+            {
+                throw new InvalidOperationException($"JT808 消息体长度 {newBodyLength} 超过 1023 字节，必须使用分包发送。");
+            }
             
             // Update Body Length in properties
-            msgProps = (ushort)((msgProps & ~0x03FF) | (newBodyLength & 0x03FF));
+            msgProps = (ushort)((msgProps & ~0x03FF) | newBodyLength);
             unescaped[2] = (byte)(msgProps >> 8);
             unescaped[3] = (byte)(msgProps & 0xFF);
 
