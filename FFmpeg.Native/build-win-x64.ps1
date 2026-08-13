@@ -1,31 +1,27 @@
-param(
-    [Parameter(Mandatory = $true)] [string] $FfmpegSource,
-    [Parameter(Mandatory = $true)] [string] $X264Prefix
-)
+param([string] $FfmpegDevelopmentPackage = (Join-Path $PSScriptRoot '..\ThirdParty\ffmpeg'))
 
 $ErrorActionPreference = 'Stop'
-$source = (Resolve-Path -LiteralPath $FfmpegSource).Path
-$x264 = (Resolve-Path -LiteralPath $X264Prefix).Path
-$prefix = Join-Path $PSScriptRoot 'build\win-x64'
+$ffmpeg = (Resolve-Path -LiteralPath $FfmpegDevelopmentPackage).Path
+$gcc = 'D:\App\mingw64\bin\gcc.exe'
+$mingwBin = Split-Path -Parent $gcc
+$env:Path = "$mingwBin;$env:Path"
+$artifacts = Join-Path $PSScriptRoot 'artifacts\win-x64'
+New-Item -ItemType Directory -Force -Path $artifacts | Out-Null
+$command = '"{0}" -std=c17 -O2 -shared -I "{1}" -I "{2}" "{3}" -L "{4}" -lavformat -lavcodec -lavutil -lswscale -lswresample -static-libgcc -o "{5}"' -f `
+  $gcc, (Join-Path $ffmpeg 'include'), (Join-Path $PSScriptRoot 'native'),
+  (Join-Path $PSScriptRoot 'native\terminal_ffmpeg.c'), (Join-Path $ffmpeg 'lib'),
+  (Join-Path $artifacts 'TerminalFfmpeg.Native.dll')
+& $env:ComSpec /d /s /c $command
+$nativeExitCode = $LASTEXITCODE
+if ($nativeExitCode -ne 0) { throw "Native bridge compilation failed: $nativeExitCode" }
 
-$configure = @(
-    '--target-os=mingw32', '--arch=x86_64', '--enable-shared', '--disable-static',
-    '--disable-programs', '--disable-doc', '--disable-debug', '--disable-autodetect',
-    '--disable-everything', '--enable-gpl', '--enable-version3', '--enable-libx264',
-    '--enable-protocol=file',
-    '--enable-demuxer=mov,matroska,avi,h264,aac',
-    '--enable-muxer=h264,adts,alaw,image2',
-    '--enable-decoder=h264,hevc,mpeg4,mpeg2video,aac,mp3,pcm_s16le,pcm_s24le,pcm_f32le',
-    '--enable-encoder=libx264,aac,pcm_alaw,mjpeg',
-    '--enable-parser=h264,hevc,aac,mpegaudio,mpeg4video',
-    '--enable-bsf=h264_mp4toannexb',
-    "--prefix=$($prefix -replace '\\','/')",
-    "--extra-cflags=-I$($x264 -replace '\\','/')/include",
-    "--extra-ldflags=-L$($x264 -replace '\\','/')/lib"
-)
+'avformat-63.dll','avcodec-63.dll','avutil-61.dll','swscale-10.dll','swresample-7.dll' | ForEach-Object {
+  Copy-Item -LiteralPath (Join-Path $ffmpeg "bin\$_") -Destination $artifacts -Force
+}
+Copy-Item -LiteralPath (Join-Path $ffmpeg 'LICENSE.txt') -Destination (Join-Path $artifacts 'FFmpeg-GPL-LICENSE.txt') -Force
+Copy-Item -LiteralPath (Join-Path $mingwBin 'libwinpthread-1.dll') -Destination $artifacts -Force
 
-Write-Host 'Run the following inside an MSYS2 MinGW64 shell:'
-Write-Host "cd '$($source -replace '\\','/')'"
-Write-Host "./configure $($configure -join ' ')"
-Write-Host 'make -j && make install'
-Write-Host 'Then build native/terminal_ffmpeg.c as TerminalFfmpeg.Native.dll against that prefix.'
+$smokeCommand = '"{0}" -municode -O2 "{1}" -o "{2}"' -f $gcc,
+  (Join-Path $PSScriptRoot 'native\smoke_test.c'), (Join-Path $artifacts 'TerminalFfmpeg.SmokeTest.exe')
+& $env:ComSpec /d /s /c $smokeCommand
+if ($LASTEXITCODE -ne 0) { throw "Smoke test compilation failed: $LASTEXITCODE" }

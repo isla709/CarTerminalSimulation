@@ -45,8 +45,10 @@
     <None Include="..\FFmpeg.Native\artifacts\win-x64\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
       <Link>ffmpeg-native\%(RecursiveDir)%(Filename)%(Extension)</Link>
     </None>
+    <None Remove="..\FFmpeg.Native\artifacts\win-x64\TerminalFfmpeg.SmokeTest.exe" />
   </ItemGroup>
 
   <ItemGroup>
