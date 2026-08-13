@@ -31,25 +31,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <PublishSingleFile>true</PublishSingleFile>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <DebugType>embedded</DebugType>
-    <PublishDocumentationFiles>false</PublishDocumentationFiles>
-    <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <SelfContained>false</SelfContained>
-    <PublishDir>bin\Publish\</PublishDir>
   </PropertyGroup>
-
-  <ItemGroup>
-    <None Include="..\FFmpeg.Native\artifacts\win-x64\**\*">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
-      <Link>ffmpeg-native\%(RecursiveDir)%(Filename)%(Extension)</Link>
-    </None>
-    <None Remove="..\FFmpeg.Native\artifacts\win-x64\TerminalFfmpeg.SmokeTest.exe" />
-  </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="Themes\**\*" />
@@ -58,11 +42,23 @@
   <ItemGroup>
     <Content Remove="Regions.json" />
     <None Remove="Regions.json" />
-    <Content Include="Regions.json" Condition="'$(PublishSingleFile)' != 'true'">
+    <Content Include="Regions.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <EmbeddedResource Include="Regions.json" Condition="'$(PublishSingleFile)' == 'true'" />
   </ItemGroup>
+  <Target Name="BuildNativeFfmpegBridge" BeforeTargets="PrepareForBuild"
+          Condition="'$(OS)' == 'Windows_NT' and Exists('..\ThirdParty\ffmpeg\include\libavcodec\avcodec.h')">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\FFmpeg.Native\build-win-x64.ps1&quot;"
+          WorkingDirectory="$(MSBuildProjectDirectory)\.." />
+  </Target>
+  <Target Name="CopyNativeFfmpegRuntime" AfterTargets="Build" DependsOnTargets="BuildNativeFfmpegBridge">
+    <ItemGroup>
+      <NativeFfmpegRuntime Include="$(MSBuildProjectDirectory)\..\FFmpeg.Native\artifacts\win-x64\*.dll" />
+      <NativeFfmpegRuntime Include="$(MSBuildProjectDirectory)\..\FFmpeg.Native\artifacts\win-x64\FFmpeg-GPL-LICENSE.txt" />
+    </ItemGroup>
+    <MakeDir Directories="$(TargetDir)ffmpeg-native" />
+    <Copy SourceFiles="@(NativeFfmpegRuntime)" DestinationFolder="$(TargetDir)ffmpeg-native" SkipUnchangedFiles="true" />
+  </Target>
   <Target Name="GenerateBuildVersion" BeforeTargets="BeforeCompile">
     <PropertyGroup>
       <BuildDate>$([System.DateTime]::Now.ToString("yyyyMMdd"))</BuildDate>
