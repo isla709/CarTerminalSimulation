@@ -48,7 +48,11 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
                     var acc = settings.SavedAccounts.Find(a => a.Username == value);
                     if (acc != null)
                     {
-                        Password = UtilitySettingsManager.Decrypt(acc.EncryptedPassword);
+                        Password = UtilitySettingsManager.Decrypt(acc.EncryptedPassword, acc.CredentialVersion);
+                        if (acc.CredentialVersion < 2 && !string.IsNullOrEmpty(Password))
+                        {
+                            UtilitySettingsManager.SaveAccount(acc.Username, Password);
+                        }
                         if (!string.IsNullOrWhiteSpace(acc.LastDeviceNo))
                         {
                             DeviceNo = acc.LastDeviceNo;

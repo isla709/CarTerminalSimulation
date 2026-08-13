@@ -1071,7 +1071,15 @@ namespace TerminalSimulation.Wpf.ViewModels
 
         private void SaveConfig()
         {
-            var config = CaptureAppConfig();
+            AppConfig config;
+            if (Application.Current?.Dispatcher is { } dispatcher && !dispatcher.CheckAccess())
+            {
+                config = dispatcher.Invoke(CaptureAppConfig);
+            }
+            else
+            {
+                config = CaptureAppConfig();
+            }
             lock (_configLock)
             {
                 int retries = 5;
@@ -1084,9 +1092,9 @@ namespace TerminalSimulation.Wpf.ViewModels
                         File.WriteAllText(tempFile, json);
                         if (File.Exists(ConfigFile))
                         {
-                            File.Delete(ConfigFile);
+                            File.Replace(tempFile, ConfigFile, ConfigFile + ".bak", ignoreMetadataErrors: true);
                         }
-                        File.Move(tempFile, ConfigFile);
+                        else File.Move(tempFile, ConfigFile);
                         break; // Success!
                     }
                     catch (IOException) when (retries > 1)

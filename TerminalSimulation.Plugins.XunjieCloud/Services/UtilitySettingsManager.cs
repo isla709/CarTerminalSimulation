@@ -11,6 +11,7 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Services
     {
         public string Username { get; set; } = string.Empty;
         public string EncryptedPassword { get; set; } = string.Empty;
+        public int CredentialVersion { get; set; }
         public string LastDeviceNo { get; set; } = string.Empty;
     }
 
@@ -22,8 +23,10 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Services
     public static class UtilitySettingsManager
     {
         private static readonly string SettingsFile = Path.Combine(AppContext.BaseDirectory, "utility_settings.json");
-        private static readonly byte[] Key = Encoding.UTF8.GetBytes("TerminalSimUtili808AESKey123456!"); // 32 bytes
-        private static readonly byte[] Iv = Encoding.UTF8.GetBytes("TerminalSimIV123"); // 16 bytes
+        private const int CurrentCredentialVersion = 2;
+        private static readonly byte[] LegacyKey = Encoding.UTF8.GetBytes("TerminalSimUtili808AESKey123456!");
+        private static readonly byte[] LegacyIv = Encoding.UTF8.GetBytes("TerminalSimIV123");
+        private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("CarTerminalSimulation.XunjieCloud.v2");
 
         public static UtilitySettings LoadSettings()
         {
@@ -55,45 +58,38 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Services
         public static string Encrypt(string plainText)
         {
             if (string.IsNullOrEmpty(plainText)) return plainText;
-            try
-            {
-                using Aes aes = Aes.Create();
-                aes.Key = Key;
-                aes.IV = Iv;
-                using var encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
-                using var ms = new MemoryStream();
-                using var cs = new CryptoStream(ms, encryptor, CryptoStreamMode.Write);
-                using (var sw = new StreamWriter(cs))
-                {
-                    sw.Write(plainText);
-                }
-                return Convert.ToBase64String(ms.ToArray());
-            }
-            catch
-            {
-                return plainText; // Fallback
-            }
+            byte[] protectedBytes = ProtectedData.Protect(
+                Encoding.UTF8.GetBytes(plainText), Entropy, DataProtectionScope.CurrentUser);
+            return Convert.ToBase64String(protectedBytes);
         }
 
-        public static string Decrypt(string cipherText)
+        public static string Decrypt(string cipherText, int credentialVersion = CurrentCredentialVersion)
         {
             if (string.IsNullOrEmpty(cipherText)) return cipherText;
             try
             {
-                byte[] buffer = Convert.FromBase64String(cipherText);
-                using Aes aes = Aes.Create();
-                aes.Key = Key;
-                aes.IV = Iv;
-                using var decryptor = aes.CreateDecryptor(aes.Key, aes.IV);
-                using var ms = new MemoryStream(buffer);
-                using var cs = new CryptoStream(ms, decryptor, CryptoStreamMode.Read);
-                using var sr = new StreamReader(cs);
-                return sr.ReadToEnd();
+                return credentialVersion >= CurrentCredentialVersion
+                    ? Encoding.UTF8.GetString(ProtectedData.Unprotect(
+                        Convert.FromBase64String(cipherText), Entropy, DataProtectionScope.CurrentUser))
+                    : DecryptLegacy(cipherText);
             }
             catch
             {
                 return string.Empty;
             }
+        }
+
+        private static string DecryptLegacy(string cipherText)
+        {
+            byte[] buffer = Convert.FromBase64String(cipherText);
+            using Aes aes = Aes.Create();
+            aes.Key = LegacyKey;
+            aes.IV = LegacyIv;
+            using var decryptor = aes.CreateDecryptor();
+            using var ms = new MemoryStream(buffer);
+            using var cs = new CryptoStream(ms, decryptor, CryptoStreamMode.Read);
+            using var sr = new StreamReader(cs);
+            return sr.ReadToEnd();
         }
 
         public static void SaveAccount(string username, string password)
@@ -105,10 +101,11 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Services
             if (existing != null)
             {
                 existing.EncryptedPassword = Encrypt(password);
+                existing.CredentialVersion = CurrentCredentialVersion;
             }
             else
             {
-                settings.SavedAccounts.Add(new SavedAccount { Username = username, EncryptedPassword = Encrypt(password) });
+                settings.SavedAccounts.Add(new SavedAccount { Username = username, EncryptedPassword = Encrypt(password), CredentialVersion = CurrentCredentialVersion });
             }
             SaveSettings(settings);
         }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Security.Cryptography;
 using TerminalSimulation.PluginBase;
 
 namespace TerminalSimulation.Wpf.Plugins
@@ -25,6 +26,8 @@ namespace TerminalSimulation.Wpf.Plugins
             {
                 try
                 {
+                    var pluginHash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(file)));
+                    context.Log($"[插件审计] 将以主进程权限加载 {Path.GetFullPath(file)} | SHA-256={pluginHash}");
                     // Load dependency assemblies from the Plugins folder if they are present there
                     // A proper AssemblyResolve event handler could be better, but LoadFrom generally works for simple cases.
                     var assembly = Assembly.LoadFrom(file);

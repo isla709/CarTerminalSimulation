@@ -105,28 +105,14 @@ namespace TerminalSimulation.Wpf.ViewModels
                 }
                 else
                 {
-                    // Check and download FFmpeg
+                    // FFmpeg is a fixed, audited component shipped with the application.
                     string ffmpegPath = GetResolvedFFmpegPath();
                     if (!Directory.Exists(ffmpegPath) || !File.Exists(Path.Combine(ffmpegPath, "ffmpeg.exe")))
                     {
-                        var fileEx = new FileNotFoundException("未在本地找到 FFmpeg 转码组件，准备从备用网络源自动下载。");
+                        var fileEx = new FileNotFoundException("发布包缺少固定版本 FFmpeg，请重新安装完整发布包。", Path.Combine(ffmpegPath, "ffmpeg.exe"));
                         _logger?.Invoke("异常", $"通道 {LogicalChannelNo}: {fileEx.Message}");
-                        ConsoleLogger.LogError("FFmpeg", $"通道 {LogicalChannelNo}: 未在本地找到 FFmpeg，准备启动备用源下载。", fileEx);
-
-                        StatusText = "正在下载 FFmpeg 转码组件...";
-                        Directory.CreateDirectory(ffmpegPath);
-
-                        var progress = new Progress<(double percent, double speed)> (t => 
-                        {
-                            Application.Current?.Dispatcher?.Invoke(() => 
-                            {
-                                string speedText = FormatSpeed(t.speed);
-                                StatusText = $"正在下载 FFmpeg 转码组件... {t.percent * 100:F1}% ({speedText})";
-                            });
-                        });
-                        
-                        await DownloadFFmpegWithFallbackAsync(ffmpegPath, progress);
-                        FFmpeg.SetExecutablesPath(ffmpegPath);
+                        ConsoleLogger.LogError("FFmpeg", $"通道 {LogicalChannelNo}: 发布包缺少 FFmpeg。", fileEx);
+                        throw fileEx;
                     }
                     else
                     {
@@ -516,6 +502,7 @@ namespace TerminalSimulation.Wpf.ViewModels
             }
         }
 
+        /* Runtime FFmpeg downloading was intentionally removed. Executables are supplied by the release package.
         private async Task DownloadFFmpegWithFallbackAsync(string destinationFolder, IProgress<(double percent, double speed)> progress)
         {
             string[] sources = new string[]
@@ -727,6 +714,7 @@ namespace TerminalSimulation.Wpf.ViewModels
                 .ToArray();
         }
 
+        */
         private static string FormatSpeed(double bytesPerSecond)
         {
             if (bytesPerSecond < 1024)
