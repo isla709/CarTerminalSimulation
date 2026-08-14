@@ -64,7 +64,7 @@ namespace TerminalSimulation.Protocol
                      return node.ToJsonString(options);
                  }
              }
-             catch {}
+             catch (System.Text.Json.JsonException) { }
              return json;
         }
 

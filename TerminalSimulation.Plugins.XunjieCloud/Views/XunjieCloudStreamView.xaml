@@ -18,14 +18,20 @@
         <converters:InvertBooleanConverter x:Key="InvertBooleanConverter" />
         <converters:BooleanToHiddenVisibilityConverter x:Key="BooleanToHiddenVisibilityConverter" />
     </UserControl.Resources>
-    <Grid>
+    <Grid x:Name="ResponsiveLayout">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="2*" />
-            <ColumnDefinition Width="1*" MinWidth="250" />
+            <ColumnDefinition x:Name="VideoColumn" Width="2*" />
+            <ColumnDefinition x:Name="LayoutGapColumn" Width="8" />
+            <ColumnDefinition x:Name="ControlsColumn" Width="1*" MinWidth="250" />
         </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition x:Name="VideoRow" Height="*" />
+            <RowDefinition x:Name="LayoutGapRow" Height="0" />
+            <RowDefinition x:Name="ControlsRow" Height="0" />
+        </Grid.RowDefinitions>
 
         <!-- 左侧视频区域 -->
-        <materialDesign:Card Grid.Column="0" Margin="0,0,8,0" Background="Black">
+        <materialDesign:Card x:Name="VideoCard" Grid.Column="0" Margin="0" Background="Black">
             <Grid>
                 <!-- 防闪烁底衬: 刚开始拉流但未实际出图时(300ms延迟)展示的黑底与图标 -->
                 <Grid Background="#151515" Visibility="{Binding IsVideoViewVisible, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
@@ -43,8 +49,9 @@
         </materialDesign:Card>
 
         <!-- 右侧控制与日志区域 -->
-        <materialDesign:Card Grid.Column="1" Margin="0">
-            <Grid Margin="16">
+        <materialDesign:Card x:Name="ControlsCard" Grid.Column="2" Margin="0">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <Grid Margin="16" MinHeight="360">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
@@ -143,7 +150,7 @@
                     </Grid.RowDefinitions>
                     
                     <StackPanel Grid.Row="0" Margin="0,0,0,8">
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                        <WrapPanel Orientation="Horizontal" Margin="0,0,0,4">
                             <TextBlock Text="状态: " FontWeight="Bold" />
                             <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="0,0,16,0" />
                             
@@ -152,7 +159,7 @@
 
                             <TextBlock Text="音频: " FontWeight="Bold" />
                             <TextBlock Text="{Binding HasAudioTrack}" Foreground="Orange" />
-                        </StackPanel>
+                        </WrapPanel>
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <materialDesign:PackIcon Kind="VolumeHigh" VerticalAlignment="Center" Margin="0,0,8,0" />
                             <Slider Minimum="0" Maximum="100" Value="{Binding Volume}" Width="150" VerticalAlignment="Center" />
@@ -161,6 +168,8 @@
 
                     <DataGrid Grid.Row="1" ItemsSource="{Binding NetworkLogs}" 
                               AutoGenerateColumns="False" CanUserAddRows="False" 
+                              EnableRowVirtualization="True" EnableColumnVirtualization="True"
+                              VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
                               Background="{DynamicResource MaterialDesignPaper}"
                               HeadersVisibility="Column"
                               RowBackground="Transparent"
@@ -184,6 +193,7 @@
                     </DataGrid>
                 </Grid>
             </Grid>
+            </ScrollViewer>
         </materialDesign:Card>
     </Grid>
 </UserControl>

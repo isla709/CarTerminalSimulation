@@ -32,6 +32,7 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
     public partial class XunjieCloudStreamViewModel : ObservableObject, IDisposable
     {
         private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromSeconds(15) };
+        private CancellationTokenSource _apiCts = new();
         // Login properties
         [ObservableProperty] private bool _isLoggedIn = false;
         [ObservableProperty] private string _username = "";
@@ -50,7 +51,15 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
                     var acc = settings.SavedAccounts.Find(a => a.Username == value);
                     if (acc != null)
                     {
-                        Password = UtilitySettingsManager.Decrypt(acc.EncryptedPassword, acc.CredentialVersion);
+                        if (!UtilitySettingsManager.TryDecrypt(acc.EncryptedPassword, acc.CredentialVersion, out var decryptedPassword))
+                        {
+                            Password = string.Empty;
+                            LogNetwork("Credential", "已保存的密码无法解密，请重新输入密码");
+                        }
+                        else
+                        {
+                            Password = decryptedPassword;
+                        }
                         if (acc.CredentialVersion < 2 && !string.IsNullOrEmpty(Password))
                         {
                             UtilitySettingsManager.SaveAccount(acc.Username, Password);
@@ -107,9 +116,8 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
         private long _lastReadBytes = 0;
         private DateTime _lastReadTime = DateTime.MinValue;
         private int _audioDetectTicks = 0;
-        private CancellationTokenSource? _playbackCts;
+        private readonly PlaybackSessionGuard _playbackSession = new();
         private Media? _currentMedia;
-        private int _playbackGeneration;
         private bool _disposed;
 
         public XunjieCloudStreamViewModel()
@@ -122,25 +130,30 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
             
             LoadSavedAccounts();
 
+            // LibVLC is initialized only when the user starts playback.
+        }
+
+        private bool EnsureMediaPlayer()
+        {
+            if (MediaPlayer != null && _libVLC != null) return true;
             try
             {
-                // 开启调试日志以抓取底层网络请求
-                _libVLC = new LibVLC(enableDebugLogs: true);
+                _libVLC = new LibVLC(enableDebugLogs: false);
                 _libVLC.Log += LibVLC_Log;
-
                 MediaPlayer = new MediaPlayer(_libVLC);
                 MediaPlayer.EncounteredError += MediaPlayer_EncounteredError;
                 MediaPlayer.Playing += MediaPlayer_Playing;
                 MediaPlayer.Buffering += MediaPlayer_Buffering;
                 MediaPlayer.EndReached += MediaPlayer_EndReached;
-
-                // 初始化网速监控定时器
-                _statsTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+                _statsTimer ??= new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+                _statsTimer.Tick -= StatsTimer_Tick;
                 _statsTimer.Tick += StatsTimer_Tick;
+                return true;
             }
             catch (Exception ex)
             {
                 LogNetwork("ERROR", $"VLC 初始化失败: {ex.Message}");
+                return false;
             }
         }
 
@@ -271,14 +284,14 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
             LogNetwork("System", "正在登录...");
             try
             {
-                var client = HttpClient;
-                client.DefaultRequestHeaders.Add("platform-id", "0");
+                var cancellationToken = _apiCts.Token;
                 var payload = new { username = Username.Trim(), password = Password, loginType = "0" };
                 var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
 
                 LogNetwork("Auth", "POST https://wb.xajyun.com/prod-api/auth/login");
-                var response = await client.PostAsync("https://wb.xajyun.com/prod-api/auth/login", content);
-                var responseStr = await response.Content.ReadAsStringAsync();
+                using var request = CreateRequest(HttpMethod.Post, "https://wb.xajyun.com/prod-api/auth/login", content);
+                using var response = await HttpClient.SendAsync(request, cancellationToken);
+                var responseStr = await response.Content.ReadAsStringAsync(cancellationToken);
                 
                 using var doc = JsonDocument.Parse(responseStr);
                 if (doc.RootElement.TryGetProperty("code", out var code) && code.GetInt32() == 200)
@@ -312,6 +325,8 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
         [RelayCommand]
         private void Logout()
         {
+            StopPlay();
+            CancelApiOperations();
             IsLoggedIn = false;
             Token = string.Empty;
             LogNetwork("System", "已退出登录");
@@ -329,20 +344,16 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
             LogNetwork("System", $"正在获取设备 {DeviceNo} 的通道列表...");
             try
             {
-                var client = HttpClient;
-                client.DefaultRequestHeaders.Add("platform-id", "0");
-                if (!string.IsNullOrWhiteSpace(Token))
-                {
-                    client.DefaultRequestHeaders.Add("Authorization", Token.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? Token : "Bearer " + Token);
-                }
+                var cancellationToken = _apiCts.Token;
 
                 var payload = new { page = 1, pageSize = 10, params_ = new { input = DeviceNo.Trim() } };
                 var json = JsonSerializer.Serialize(payload).Replace("params_", "params");
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
                 LogNetwork("API", "POST .../getList");
-                var respList = await client.PostAsync("https://wb.xajyun.com/prod-api/map/rearviewMirror/getList", content);
-                var respListStr = await respList.Content.ReadAsStringAsync();
+                using var listRequest = CreateRequest(HttpMethod.Post, "https://wb.xajyun.com/prod-api/map/rearviewMirror/getList", content);
+                using var respList = await HttpClient.SendAsync(listRequest, cancellationToken);
+                var respListStr = await respList.Content.ReadAsStringAsync(cancellationToken);
                 
                 using var docList = JsonDocument.Parse(respListStr);
                 var bindObjectId = "";
@@ -365,8 +376,9 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
                 }
 
                 LogNetwork("API", $"GET .../getChannelsNum?bindObjectId={bindObjectId}");
-                var respChannels = await client.GetAsync($"https://wb.xajyun.com/prod-api/map/rearviewMirror/getChannelsNum?bindObjectId={bindObjectId}");
-                var respChannelsStr = await respChannels.Content.ReadAsStringAsync();
+                using var channelsRequest = CreateRequest(HttpMethod.Get, $"https://wb.xajyun.com/prod-api/map/rearviewMirror/getChannelsNum?bindObjectId={bindObjectId}");
+                using var respChannels = await HttpClient.SendAsync(channelsRequest, cancellationToken);
+                var respChannelsStr = await respChannels.Content.ReadAsStringAsync(cancellationToken);
                 
                 using var docChannels = JsonDocument.Parse(respChannelsStr);
                 if (docChannels.RootElement.TryGetProperty("code", out var statusCode) && statusCode.GetInt32() == 200)
@@ -405,12 +417,7 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
             LogNetwork("System", $"正在下发指令 {msgId} ...");
             try
             {
-                var client = HttpClient;
-                client.DefaultRequestHeaders.Add("platform-id", "0");
-                if (!string.IsNullOrWhiteSpace(Token))
-                {
-                    client.DefaultRequestHeaders.Add("Authorization", Token.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? Token : "Bearer " + Token);
-                }
+                var cancellationToken = _apiCts.Token;
 
                 var payload = new System.Collections.Generic.Dictionary<string, object>
                 {
@@ -424,8 +431,9 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
 
                 var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
                 LogNetwork("Command", $"POST .../downlinkCommand [{msgId}]");
-                var response = await client.PostAsync("https://wb.xajyun.com/prod-api/map/iot/downlinkCommand", content);
-                var responseStr = await response.Content.ReadAsStringAsync();
+                using var request = CreateRequest(HttpMethod.Post, "https://wb.xajyun.com/prod-api/map/iot/downlinkCommand", content);
+                using var response = await HttpClient.SendAsync(request, cancellationToken);
+                _ = await response.Content.ReadAsStringAsync(cancellationToken);
 
                 LogNetwork("Command", $"指令响应: {response.StatusCode}");
             }
@@ -458,7 +466,7 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
                 LogNetwork("System", "设备号或通道号不能为空");
                 return;
             }
-            if (_libVLC == null || MediaPlayer == null) return;
+            if (!EnsureMediaPlayer()) return;
 
             // 如果是人为主动点击拉流，则重置重试次数
             _retryCount = 0;
@@ -468,14 +476,32 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
         private void BeginPlaybackSession()
         {
             CancelPlaybackSession();
-            _playbackCts = new CancellationTokenSource();
-            var generation = Interlocked.Increment(ref _playbackGeneration);
-            ExecuteStartPlay(generation, _playbackCts.Token);
+            var session = _playbackSession.Begin();
+            ExecuteStartPlay(session.Generation, session.Token);
+        }
+
+        private HttpRequestMessage CreateRequest(HttpMethod method, string url, HttpContent? content = null)
+        {
+            var request = new HttpRequestMessage(method, url) { Content = content };
+            request.Headers.TryAddWithoutValidation("platform-id", "0");
+            if (!string.IsNullOrWhiteSpace(Token))
+            {
+                request.Headers.TryAddWithoutValidation("Authorization",
+                    Token.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? Token : "Bearer " + Token);
+            }
+            return request;
+        }
+
+        private void CancelApiOperations()
+        {
+            var old = Interlocked.Exchange(ref _apiCts, new CancellationTokenSource());
+            old.Cancel();
+            old.Dispose();
         }
 
         private void ExecuteStartPlay(int generation, CancellationToken token)
         {
-            if (_disposed || token.IsCancellationRequested || generation != _playbackGeneration || _libVLC == null || MediaPlayer == null) return;
+            if (_disposed || !_playbackSession.IsCurrent(generation, token) || _libVLC == null || MediaPlayer == null) return;
 
             if (MediaPlayer.IsPlaying) MediaPlayer.Stop();
 
@@ -533,10 +559,7 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
 
         private void CancelPlaybackSession()
         {
-            Interlocked.Increment(ref _playbackGeneration);
-            var cts = Interlocked.Exchange(ref _playbackCts, null);
-            cts?.Cancel();
-            cts?.Dispose();
+            _playbackSession.Cancel();
             _currentMedia?.Dispose();
             _currentMedia = null;
         }
@@ -554,8 +577,8 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
 
         private async void MediaPlayer_Playing(object? sender, EventArgs e)
         {
-            var generation = _playbackGeneration;
-            var token = _playbackCts?.Token ?? new CancellationToken(canceled: true);
+            var generation = _playbackSession.CurrentGeneration;
+            var token = _playbackSession.CurrentToken;
             LogNetwork("Player", "开始播放");
             _retryCount = 0; // 播放成功，重置重连计数
             Application.Current?.Dispatcher?.Invoke(() => 
@@ -569,7 +592,7 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
             catch (OperationCanceledException) { return; }
             Application.Current?.Dispatcher?.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
             {
-                if (!_disposed && !token.IsCancellationRequested && generation == _playbackGeneration && IsPlaying)
+                if (!_disposed && _playbackSession.IsCurrent(generation, token) && IsPlaying)
                 {
                     IsVideoViewVisible = true;
                 }
@@ -592,11 +615,11 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
                 {
                     _retryCount++;
                     LogNetwork("Retry", $"等待 2 秒后进行第 {_retryCount} 次重试...");
-                    var generation = _playbackGeneration;
-                    var token = _playbackCts?.Token ?? new CancellationToken(canceled: true);
+                    var generation = _playbackSession.CurrentGeneration;
+                    var token = _playbackSession.CurrentToken;
                     try { await Task.Delay(2000, token); }
                     catch (OperationCanceledException) { return; }
-                    if (!_disposed && !token.IsCancellationRequested && generation == _playbackGeneration)
+                    if (!_disposed && _playbackSession.IsCurrent(generation, token))
                     {
                         ExecuteStartPlay(generation, token);
                     }
@@ -612,6 +635,9 @@ namespace TerminalSimulation.Plugins.XunjieCloud.ViewModels
         {
             if (_disposed) return;
             _disposed = true;
+            _apiCts.Cancel();
+            _apiCts.Dispose();
+            _playbackSession.Dispose();
             StopPlay();
             _statsTimer?.Stop();
             
