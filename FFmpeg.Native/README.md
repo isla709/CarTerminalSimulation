@@ -16,6 +16,6 @@ Run `build-win-x64.ps1` in a reproducible MSYS2/MinGW environment. Copy the resu
 - `libx264-*.dll` and their required runtime DLLs
 - `COPYING.GPLv2`, `COPYING.GPLv3`, FFmpeg source/build offer and x264 license
 
-The WPF publish target copies this directory to `ffmpeg-native/`.
+The normal WPF Debug and Release build copies this directory to the output `ffmpeg-native/` folder. This repository does not use single-file publishing, and the native directory must remain beside the application.
 
 `TerminalFfmpeg.Native.dll` must implement `tf_probe`, `tf_transcode`, `tf_thumbnail`, and `tf_last_error` declared in `native/terminal_ffmpeg.h`. The native implementation should be built from FFmpeg's `transcode.c`/`encode_video.c` examples and must use the send/receive API.

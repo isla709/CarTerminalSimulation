@@ -38,21 +38,27 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Services
                 string json = File.ReadAllText(SettingsFile);
                 return JsonSerializer.Deserialize<UtilitySettings>(json) ?? new UtilitySettings();
             }
-            catch
+            catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
             {
+                var corruptPath = $"{SettingsFile}.corrupt-{DateTime.UtcNow:yyyyMMddHHmmssfff}";
+                try { File.Copy(SettingsFile, corruptPath, overwrite: false); }
+                catch (Exception copyException) { System.Diagnostics.Trace.WriteLine($"备份损坏设置失败: {copyException}"); }
                 return new UtilitySettings();
             }
         }
 
         public static void SaveSettings(UtilitySettings settings)
         {
-            try
+            ArgumentNullException.ThrowIfNull(settings);
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            string json = JsonSerializer.Serialize(settings, options);
+            var temporaryPath = SettingsFile + ".tmp";
+            File.WriteAllText(temporaryPath, json);
+            if (File.Exists(SettingsFile))
             {
-                var options = new JsonSerializerOptions { WriteIndented = true };
-                string json = JsonSerializer.Serialize(settings, options);
-                File.WriteAllText(SettingsFile, json);
+                File.Replace(temporaryPath, SettingsFile, SettingsFile + ".bak", ignoreMetadataErrors: true);
             }
-            catch { }
+            else File.Move(temporaryPath, SettingsFile);
         }
 
         public static string Encrypt(string plainText)
@@ -64,18 +70,23 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Services
         }
 
         public static string Decrypt(string cipherText, int credentialVersion = CurrentCredentialVersion)
+            => TryDecrypt(cipherText, credentialVersion, out var plainText) ? plainText : string.Empty;
+
+        public static bool TryDecrypt(string cipherText, int credentialVersion, out string plainText)
         {
-            if (string.IsNullOrEmpty(cipherText)) return cipherText;
+            plainText = string.Empty;
+            if (string.IsNullOrEmpty(cipherText)) return true;
             try
             {
-                return credentialVersion >= CurrentCredentialVersion
+                plainText = credentialVersion >= CurrentCredentialVersion
                     ? Encoding.UTF8.GetString(ProtectedData.Unprotect(
                         Convert.FromBase64String(cipherText), Entropy, DataProtectionScope.CurrentUser))
                     : DecryptLegacy(cipherText);
+                return true;
             }
             catch
             {
-                return string.Empty;
+                return false;
             }
         }
 
@@ -96,16 +107,17 @@ namespace TerminalSimulation.Plugins.XunjieCloud.Services
         {
             if (string.IsNullOrWhiteSpace(username)) return;
             
+            var encryptedPassword = Encrypt(password);
             var settings = LoadSettings();
             var existing = settings.SavedAccounts.Find(a => a.Username == username);
             if (existing != null)
             {
-                existing.EncryptedPassword = Encrypt(password);
+                existing.EncryptedPassword = encryptedPassword;
                 existing.CredentialVersion = CurrentCredentialVersion;
             }
             else
             {
-                settings.SavedAccounts.Add(new SavedAccount { Username = username, EncryptedPassword = Encrypt(password), CredentialVersion = CurrentCredentialVersion });
+                settings.SavedAccounts.Add(new SavedAccount { Username = username, EncryptedPassword = encryptedPassword, CredentialVersion = CurrentCredentialVersion });
             }
             SaveSettings(settings);
         }

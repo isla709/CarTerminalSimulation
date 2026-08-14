@@ -1,6 +1,12 @@
 param([string] $FfmpegDevelopmentPackage = (Join-Path $PSScriptRoot '..\ThirdParty\ffmpeg'))
 
 $ErrorActionPreference = 'Stop'
+$buildMutex = [System.Threading.Mutex]::new($false, 'Local\TerminalSimulation.FFmpegNativeBuild')
+$hasBuildMutex = $false
+try {
+  $hasBuildMutex = $buildMutex.WaitOne([TimeSpan]::FromMinutes(5))
+  if (-not $hasBuildMutex) { throw 'Timed out waiting for the FFmpeg native build lock.' }
+
 $ffmpeg = (Resolve-Path -LiteralPath $FfmpegDevelopmentPackage).Path
 $gcc = 'D:\App\mingw64\bin\gcc.exe'
 $mingwBin = Split-Path -Parent $gcc
@@ -25,3 +31,8 @@ $smokeCommand = '"{0}" -municode -O2 "{1}" -o "{2}"' -f $gcc,
   (Join-Path $PSScriptRoot 'native\smoke_test.c'), (Join-Path $artifacts 'TerminalFfmpeg.SmokeTest.exe')
 & $env:ComSpec /d /s /c $smokeCommand
 if ($LASTEXITCODE -ne 0) { throw "Smoke test compilation failed: $LASTEXITCODE" }
+}
+finally {
+  if ($hasBuildMutex) { $buildMutex.ReleaseMutex() }
+  $buildMutex.Dispose()
+}
