@@ -43,6 +43,18 @@
         <!-- Ensure Cards respond dynamically to background brush changes -->
         <Style TargetType="{x:Type materialDesign:Card}" BasedOn="{StaticResource {x:Type materialDesign:Card}}">
             <Setter Property="Background" Value="{DynamicResource MaterialDesignCardBackground}" />
+            <Setter Property="local:GlassBehavior.IsEnabled" Value="True" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding BackgroundEffectMode}" Value="None">
+                    <Setter Property="local:GlassBehavior.IsEnabled" Value="False" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding BackgroundImagePath}" Value="{x:Null}">
+                    <Setter Property="local:GlassBehavior.IsEnabled" Value="False" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding BackgroundImagePath}" Value="">
+                    <Setter Property="local:GlassBehavior.IsEnabled" Value="False" />
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
         <Style x:Key="TitleBarButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
