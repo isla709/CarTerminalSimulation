@@ -2,12 +2,12 @@
 
 [![Dotnet Version](https://img.shields.io/badge/.NET-8.0--windows-blue.svg)](https://dotnet.microsoft.com/)
 [![UI Library](https://img.shields.io/badge/UI-Material--Design--3-purple.svg)](https://github.com/MaterialDesignInXAML/MaterialDesignInXamlToolkit)
-[![Version](https://img.shields.io/badge/version-preview3-orange.svg)](#)
+[![Version](https://img.shields.io/badge/version-preview4-orange.svg)](#)
 
 欢迎使用**车载定位终端模拟系统**。这是一个基于 Windows Presentation Foundation (WPF) 与 .NET 8.0 构建的现代化、高性能车载终端模拟软件。系统深度实现了 **JT808 (道路运输车辆卫星定位系统终端通讯协议及数据格式)** 及 **JT1078 (道路运输车辆卫星定位系统视频通信协议)** 标准规范，旨在帮助车联网平台开发人员、硬件工程师以及测试人员在没有实体车载终端设备的情况下，轻松模拟各种高并发连接、复杂位置轨迹、音频/视频流推送及平台控制交互。
 
 > [!NOTE]
-> 本项目采用极富现代感的 UI 设计（支持毛玻璃与亚克力模糊、自定义主题壁纸），内嵌极速 FFmpeg 视频转码管道，以及全新设计的**类浏览器式按需多开动态插件系统**，拥有卓越的扩展性与用户体验。
+> 本项目采用支持 Per-Monitor V2 DPI 与响应式布局的现代 WPF UI，支持自定义主题壁纸，内嵌进程内 FFmpeg 视频转码管道，并提供类浏览器式按需多开动态插件系统。
 
 ---
 
@@ -157,8 +157,11 @@ CarTerminalSimulation/
 │   ├── Plugins/                           # 插件加载管理器 (PluginManager)
 │   ├── ViewModels/                        # MVVM 视图模型
 │   │   ├── MainViewModel.cs               # 主控 VM
+│   │   ├── MainViewModel.Configuration.cs # 配置快照与持久化编排
 │   │   ├── MainViewModel.Plugin.cs        # 动态插件加载与 Tab 维护逻辑
 │   │   └── VideoChannelItem.cs            # JT1078 通道控制及 FFmpeg 转码逻辑
+│   ├── Services/                           # 连接、配置、凭据、位置、串口、TTS、视频与日志服务
+│   ├── Views/                              # 主窗体拆分后的独立页面
 │   ├── MainWindow.xaml                    # 主窗体 XAML 布局
 │   └── Regions.json                       # 离线行政区域字典数据
 │
@@ -179,7 +182,7 @@ CarTerminalSimulation/
 | **JT1078** | `1.1.0` | JT1078 音视频协议底层封装器 |
 | **Microsoft.Web.WebView2** | `1.0.3967.48` | 内置 Chromium 高性能浏览器内核 (用于渲染地图) |
 | **LibVLCSharp.WPF** | `3.9.7.1` | 基于 LibVLC 的本地视频画面预览控件 |
-| **Xabe.FFmpeg** | `6.0.2` | FFmpeg 视频流控制、转码及多媒体管道包装器 |
+| **FFmpeg Native API** | 审核固定版本 | 通过进程内原生桥接调用所需编解码、封装、缩放与重采样模块 |
 | **System.IO.Ports** | `8.0.0` | 串口 COM 通信 API |
 | **System.Speech** | `8.0.0` | Windows 原生语音合成 (TTS) 发声服务 |
 | **System.Text.Json** | `9.0.0` | 配置文件导入与导出高性能 JSON 序列化 |
@@ -207,17 +210,8 @@ CarTerminalSimulation/
    ```
 3. 编译完成后，所有的插件 `.Plugin` 会由构建脚本自动分发至 `TerminalSimulation.Wpf/bin/Release/net8.0-windows/win-x64/Plugins` 目录下。直接运行主程序 `TerminalSimulation.Wpf.exe` 即可启动。
 
-### 3. 单文件独立打包
-如果希望将程序发布为单个无外部依赖的 `.exe` 可执行文件：
-* **在项目根目录下执行**：
-  ```bash
-  dotnet publish TerminalSimulation.Wpf/TerminalSimulation.Wpf.csproj -c Release -r win-x64 /p:PublishSingleFile=true /p:SelfContained=false
-  ```
-* **如果当前命令行目录已经在 `TerminalSimulation.Wpf` 子目录下执行**：
-  ```bash
-  dotnet publish TerminalSimulation.Wpf.csproj -c Release -r win-x64 /p:PublishSingleFile=true /p:SelfContained=false
-  ```
-发布后的独立程序将输出在 `TerminalSimulation.Wpf/bin/Publish/` 目录下。
+### 3. 输出与分发
+本项目不采用单文件发布。正常编译产物位于 `TerminalSimulation.Wpf/bin/<Configuration>/net8.0-windows/win-x64/`，分发时必须保留 `Plugins/`、`ffmpeg-native/`、LibVLC 运行库和配置资源的目录结构。应用不会联网下载或回写 FFmpeg。
 
 
 ---
@@ -233,6 +227,14 @@ CarTerminalSimulation/
 
 * 迅洁云保存的账号密码使用 Windows DPAPI（当前用户范围）保护；旧版 AES 数据会在成功读取后自动迁移。
 * `Plugins/` 中的 `.Plugin` 会获得与主程序相同的本机权限。程序记录每个插件的绝对路径和 SHA-256，但不会阻止第三方插件；仅安装你信任的插件。
+* `config.json` 与 `utility_settings.json` 使用临时文件加原子替换；损坏的主配置会保留为 `.corrupt-<时间戳>` 后回退默认值。
+
+### 故障排查
+
+* 启动失败时查看程序目录下的 `startup-crash.log`。
+* FFmpeg 转码失败时确认 `ffmpeg-native/TerminalFfmpeg.Native.dll` 及其依赖 DLL 完整存在；程序不会尝试联网下载。
+* 插件加载失败时在通信日志中核对插件绝对路径、SHA-256 与加载异常；插件与主程序拥有相同权限。
+* 已保存的迅洁云密码无法由当前 Windows 用户解密时，应用会清空密码并提示重新输入，不会回退明文保存。
 
 ### Q: 为什么我自己新建的插件 DLL 主程序检测不到？
 **A**: 
