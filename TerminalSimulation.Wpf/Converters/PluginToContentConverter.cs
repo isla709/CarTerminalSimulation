@@ -3,16 +3,19 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
 using TerminalSimulation.PluginBase;
+using System.Runtime.CompilerServices;
 
 namespace TerminalSimulation.Wpf.Converters
 {
     public class PluginToContentConverter : IValueConverter
     {
+        private static readonly ConditionalWeakTable<IPlugin, ContentHolder> ContentCache = new();
+
         public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
         {
             if (value is IPlugin plugin)
             {
-                return plugin.GetConfigurationPanel();
+                return ContentCache.GetValue(plugin, item => new ContentHolder(item.GetConfigurationPanel())).Content;
             }
             return null;
         }
@@ -21,5 +24,16 @@ namespace TerminalSimulation.Wpf.Converters
         {
             throw new NotImplementedException();
         }
+
+        internal static void DisposeCachedContent()
+        {
+            foreach (var entry in ContentCache)
+            {
+                if (entry.Value.Content.DataContext is IDisposable disposable) disposable.Dispose();
+            }
+            ContentCache.Clear();
+        }
+
+        private sealed record ContentHolder(FrameworkElement Content);
     }
 }

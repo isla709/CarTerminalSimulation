@@ -40,12 +40,17 @@ namespace TerminalSimulation.Wpf.Plugins
                         {
                             plugin.Initialize(context);
                             LoadedPlugins.Add(plugin);
+                            context.Log($"[插件加载成功] {plugin.Name} {plugin.Version} | {Path.GetFullPath(file)} | SHA-256={pluginHash}");
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    context.Log($"[插件加载失败] {Path.GetFileName(file)}: {ex.Message}");
+                    var fullPath = Path.GetFullPath(file);
+                    string hash;
+                    try { hash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(file))); }
+                    catch { hash = "UNAVAILABLE"; }
+                    context.Log($"[插件加载失败] {fullPath} | SHA-256={hash} | {ex.Message}");
                 }
             }
         }

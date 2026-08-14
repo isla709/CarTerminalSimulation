@@ -5,7 +5,7 @@ using MaterialDesignThemes.Wpf;
 
 namespace TerminalSimulation.Wpf;
 
-public partial class ThemeSettingsControl : UserControl
+public partial class ThemeSettingsControl : System.Windows.Controls.UserControl
 {
     private readonly PaletteHelper _paletteHelper = new PaletteHelper();
 

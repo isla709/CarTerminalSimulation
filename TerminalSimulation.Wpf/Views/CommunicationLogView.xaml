@@ -1,0 +1,41 @@
+<UserControl x:Class="TerminalSimulation.Wpf.Views.CommunicationLogView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes">
+    <Grid>
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="8,8,8,4">
+            <CheckBox Content="自动滚动至最新" IsChecked="{Binding AutoScrollLogs}" Margin="0,0,16,0" />
+            <Button Content="清空日志" Command="{Binding ClearLogsCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" Height="24" Padding="8,0" />
+        </StackPanel>
+        <ListBox Grid.Row="1" x:Name="LogListBox" materialDesign:ThemeAssist.Theme="Dark"
+                 ItemsSource="{Binding LogMessages}" Background="#1E1E1E" Foreground="#D4D4D4"
+                 Margin="8,0,8,8" Padding="4"
+                 VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling"
+                 VirtualizingStackPanel.ScrollUnit="Pixel" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto">
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem">
+                    <Setter Property="Padding" Value="0" /><Setter Property="Margin" Value="0" />
+                    <Setter Property="MinHeight" Value="24" /><Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                    <Setter Property="ContextMenu"><Setter.Value><ContextMenu><MenuItem Header="复制整条日志 (Ctrl+C)" Command="{Binding CopyFullLogCommand}" /></ContextMenu></Setter.Value></Setter>
+                    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><Border Background="Transparent" Padding="{TemplateBinding Padding}"><ContentPresenter /></Border></ControlTemplate></Setter.Value></Setter>
+                </Style>
+            </ListBox.ItemContainerStyle>
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <Grid Margin="2,1">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="{Binding TimestampStr}" Foreground="#888888" FontFamily="Consolas" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Top" />
+                        <TextBlock Grid.Column="1" Text="{Binding DirectionStr}" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" FontFamily="Consolas" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Top" />
+                        <Button Grid.Column="2" Content="复制" Command="{Binding CopyRawCommand}" Visibility="{Binding HasRaw, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}" Height="20" Padding="4,0" Margin="0,0,8,0" FontSize="10" VerticalAlignment="Top" />
+                        <TextBox Grid.Column="3" Text="{Binding Message}" IsReadOnly="True" BorderThickness="0" Background="Transparent" Foreground="#D4D4D4"
+                                 FontFamily="Consolas" FontSize="13" VerticalAlignment="Top" ContextMenu="{x:Null}" TextWrapping="Wrap"
+                                 materialDesign:TextFieldAssist.DecorationVisibility="Hidden" materialDesign:TextFieldAssist.UnderlineBrush="Transparent" />
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </Grid>
+</UserControl>

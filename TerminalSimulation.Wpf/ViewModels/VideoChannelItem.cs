@@ -9,10 +9,11 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LibVLCSharp.Shared;
 using TerminalSimulation.Wpf.Services.Media;
+using TerminalSimulation.Wpf.Services;
 
 namespace TerminalSimulation.Wpf.ViewModels
 {
-    public partial class VideoChannelItem : ObservableObject, IDisposable
+    public partial class VideoChannelItem : ObservableObject, IDisposable, IAsyncDisposable
     {
         [ObservableProperty] private byte _logicalChannelNo;
         [ObservableProperty]
@@ -59,8 +60,8 @@ namespace TerminalSimulation.Wpf.ViewModels
         private long _lastTotalBytes = 0;
         private DateTime _lastTrafficUpdateTime = DateTime.MinValue;
 
-        private LibVLC _libVLC;
-        [ObservableProperty] private MediaPlayer _mediaPlayer;
+        private LibVLC? _libVLC;
+        [ObservableProperty] private MediaPlayer? _mediaPlayer;
 
         private readonly Action<string, string>? _logger;
         private readonly IInProcessMediaTranscoder _transcoder = new NativeFfmpegTranscoder();
@@ -69,8 +70,14 @@ namespace TerminalSimulation.Wpf.ViewModels
         {
             LogicalChannelNo = logicalChannelNo;
             _logger = logger;
+        }
+
+        private MediaPlayer EnsureMediaPlayer()
+        {
+            if (MediaPlayer != null) return MediaPlayer;
             _libVLC = new LibVLC(enableDebugLogs: false);
-            _mediaPlayer = new MediaPlayer(_libVLC);
+            MediaPlayer = new MediaPlayer(_libVLC);
+            return MediaPlayer;
         }
 
         [RelayCommand]
@@ -168,7 +175,7 @@ namespace TerminalSimulation.Wpf.ViewModels
             }
         }
 
-        private TerminalSimulation.Protocol.JT1078Pusher? _pusher;
+        private IVideoPushSession? _pusher;
 
         public bool IsVideoViewVisible => IsStreaming || IsPreviewing;
 
@@ -211,7 +218,8 @@ namespace TerminalSimulation.Wpf.ViewModels
 
         private Media CreateMedia(string filePath)
         {
-            var media = new Media(_libVLC, filePath, FromType.FromPath);
+            EnsureMediaPlayer();
+            var media = new Media(_libVLC!, filePath, FromType.FromPath);
             media.AddOption(":input-repeat=65535"); // 无限循环
             if (Path.GetExtension(filePath).Equals(".h264", StringComparison.OrdinalIgnoreCase))
             {
@@ -240,9 +248,10 @@ namespace TerminalSimulation.Wpf.ViewModels
             Application.Current?.Dispatcher?.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(async () => 
             {
                 var media = CreateMedia(VideoFilePath);
-                MediaPlayer.Play(media);
+                var player = EnsureMediaPlayer();
+                player.Play(media);
                 await Task.Delay(200); // 延迟设置静音，等待VLC初始化音频输出
-                MediaPlayer.Mute = IsMuted;
+                player.Mute = IsMuted;
             }));
         }
 
@@ -300,8 +309,8 @@ namespace TerminalSimulation.Wpf.ViewModels
                 if (!File.Exists(targetAudioFile)) targetAudioFile = null;
             }
 
-            _pusher = new TerminalSimulation.Protocol.JT1078Pusher(simCard, LogicalChannelNo, H264FilePath, targetAudioFile, dataType, audioCodec, TargetFps, IsConstantFramerate);
-            _pusher.OnLog += msg => 
+            _pusher = new Jt1078VideoPushSession(ip, port, simCard, LogicalChannelNo, H264FilePath, targetAudioFile ?? string.Empty, dataType, audioCodec, TargetFps, IsConstantFramerate);
+            _pusher.Log += msg =>
             {
                 _logger?.Invoke("音视频", $"通道 {LogicalChannelNo}: {msg}");
             };
@@ -310,7 +319,7 @@ namespace TerminalSimulation.Wpf.ViewModels
             _lastTotalBytes = 0;
             TrafficText = "计算中...";
 
-            _pusher.OnStatusUpdate += msg =>
+            _pusher.StatusUpdated += msg =>
             {
                 Application.Current?.Dispatcher?.Invoke(() => 
                 {
@@ -318,7 +327,7 @@ namespace TerminalSimulation.Wpf.ViewModels
                 });
             };
 
-            _pusher.OnDisconnected += () =>
+            _pusher.Disconnected += () =>
             {
                 Application.Current?.Dispatcher?.BeginInvoke(new Action(() =>
                 {
@@ -330,10 +339,11 @@ namespace TerminalSimulation.Wpf.ViewModels
                     }
                 }));
             };
+            _pusher.Error += ex => _logger?.Invoke("异常", $"通道 {LogicalChannelNo} 推流异常: {ex.Message}");
 
             try
             {
-                await _pusher.StartAsync(ip, port);
+                await _pusher.StartAsync();
                 IsStreaming = true;
             }
             catch (Exception ex)
@@ -354,9 +364,10 @@ namespace TerminalSimulation.Wpf.ViewModels
                 if (!string.IsNullOrEmpty(VideoFilePath) && File.Exists(VideoFilePath))
                 {
                     var media = CreateMedia(VideoFilePath);
-                    MediaPlayer.Play(media);
+                    var player = EnsureMediaPlayer();
+                    player.Play(media);
                     await Task.Delay(200); // 延迟设置静音，等待VLC初始化音频输出
-                    MediaPlayer.Mute = IsMuted;
+                    player.Mute = IsMuted;
                 }
             }));
         }
@@ -385,7 +396,7 @@ namespace TerminalSimulation.Wpf.ViewModels
         private void ToggleMute()
         {
             IsMuted = !IsMuted;
-            MediaPlayer.Mute = IsMuted;
+            if (MediaPlayer != null) MediaPlayer.Mute = IsMuted;
         }
 
         private async Task ExtractThumbnailAsync(string videoPath)
@@ -398,7 +409,8 @@ namespace TerminalSimulation.Wpf.ViewModels
                 // Clean up old thumbnail if any
                 if (!string.IsNullOrEmpty(ThumbnailPath) && File.Exists(ThumbnailPath))
                 {
-                    try { File.Delete(ThumbnailPath); } catch { }
+                    try { File.Delete(ThumbnailPath); }
+                    catch (IOException ex) { ConsoleLogger.LogError("Thumbnail", "删除旧缩略图失败", ex); }
                 }
 
                 string thumbPath = Path.Combine(thumbDir, $"thumb_{LogicalChannelNo}_{Guid.NewGuid():N}.jpg");
@@ -416,9 +428,11 @@ namespace TerminalSimulation.Wpf.ViewModels
             }
         }
 
-        public void Dispose()
+        public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
+
+        public async ValueTask DisposeAsync()
         {
-            StopPushing();
+            await StopPushingAsync().ConfigureAwait(false);
             StopPreviewing();
             MediaPlayer?.Dispose();
             _libVLC?.Dispose();
@@ -426,224 +440,12 @@ namespace TerminalSimulation.Wpf.ViewModels
             // 清理生成的缩略图临时文件
             if (!string.IsNullOrEmpty(ThumbnailPath) && File.Exists(ThumbnailPath))
             {
-                try { File.Delete(ThumbnailPath); } catch { }
+                try { File.Delete(ThumbnailPath); }
+                catch (IOException ex) { ConsoleLogger.LogError("Thumbnail", "清理缩略图失败", ex); }
             }
+            GC.SuppressFinalize(this);
         }
-
-#if false // Historical executable downloader retained only for source archaeology; never compiled.
-        private async Task DownloadFFmpegWithFallbackAsync(string destinationFolder, IProgress<(double percent, double speed)> progress)
-        {
-            string[] sources = new string[]
-            {
-                // 推荐源 1: ghproxy.net (国内高速 CDN 加速代理，无限制)
-                "https://ghproxy.net/https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
-                
-                // 推荐源 2: gh-proxy.org (国内高速 CDN 加速代理)
-                "https://gh-proxy.org/https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
-                
-                // Gyan.dev 官方推荐 Windows 静态包源
-                "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
-                
-                // GitHub 官方原生源
-                "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
-            };
-
-            _logger?.Invoke("系统", "正在对所有下载源进行延迟测速，以选择最优下载地址...");
-            ConsoleLogger.LogInfo("正在对所有下载源进行延迟测速，以选择最优下载地址...");
-
-            string[] sortedSources;
-            try
-            {
-                sortedSources = await SortSourcesBySpeedAsync(sources);
-            }
-            catch (Exception ex)
-            {
-                ConsoleLogger.LogError("FFmpegDownloader", "测速时发生异常，使用默认源顺序", ex);
-                sortedSources = sources;
-            }
-
-            Exception? lastException = null;
-
-            foreach (var url in sortedSources)
-            {
-                try
-                {
-                    _logger?.Invoke("系统", $"正在尝试从以下源下载 FFmpeg: {url}");
-                    ConsoleLogger.LogInfo($"开始尝试从 {url} 下载 FFmpeg...");
-                    
-                    await DownloadAndExtractZipAsync(url, destinationFolder, progress);
-                    
-                    if (File.Exists(Path.Combine(destinationFolder, "ffmpeg.exe")))
-                    {
-                        _logger?.Invoke("系统", "FFmpeg 下载并解压完成。");
-                        ConsoleLogger.LogInfo("FFmpeg 下载并解压成功！");
-
-                        // Try caching downloaded FFmpeg back to the project's ./FFmpeg folder for future builds
-                        try
-                        {
-                            string? projectFFmpegPath = FindProjectFFmpegPath();
-                            if (!string.IsNullOrEmpty(projectFFmpegPath))
-                            {
-                                Directory.CreateDirectory(projectFFmpegPath);
-                                CopyFileIfExists(Path.Combine(destinationFolder, "ffmpeg.exe"), Path.Combine(projectFFmpegPath, "ffmpeg.exe"));
-                                CopyFileIfExists(Path.Combine(destinationFolder, "ffprobe.exe"), Path.Combine(projectFFmpegPath, "ffprobe.exe"));
-                                ConsoleLogger.LogInfo($"已将下载的 FFmpeg 缓存复制到工程目录: {projectFFmpegPath}");
-                            }
-                        }
-                        catch (Exception cacheEx)
-                        {
-                            ConsoleLogger.LogError("FFmpegDownloader", "尝试缓存到工程目录失败", cacheEx);
-                        }
-
-                        return;
-                    }
-                    
-                    throw new FileNotFoundException("下载完成，但未在解压目录中找到 ffmpeg.exe");
-                }
-                catch (Exception ex)
-                {
-                    lastException = ex;
-                    _logger?.Invoke("异常", $"从该源下载 FFmpeg 失败: {ex.Message}");
-                    ConsoleLogger.LogError("FFmpegDownloader", $"从 {url} 下载失败", ex);
-                }
-            }
-
-            throw new Exception("所有 FFmpeg 下载源尝试均失败！", lastException);
-        }
-
-        private async Task DownloadAndExtractZipAsync(string url, string destinationFolder, IProgress<(double percent, double speed)> progress)
-        {
-            using var client = new System.Net.Http.HttpClient();
-            using var response = await client.GetAsync(url, System.Net.Http.HttpCompletionOption.ResponseHeadersRead);
-            response.EnsureSuccessStatusCode();
-
-            long? totalBytes = response.Content.Headers.ContentLength;
-            using var contentStream = await response.Content.ReadAsStreamAsync();
-
-            string tempZipFile = Path.Combine(Path.GetTempPath(), $"ffmpeg_{Guid.NewGuid():N}.zip");
-            
-            try
-            {
-                var stopwatch = Stopwatch.StartNew();
-                using (var fileStream = new FileStream(tempZipFile, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true))
-                {
-                    byte[] buffer = new byte[8192];
-                    long totalReadBytes = 0;
-                    int readBytes;
-
-                    while ((readBytes = await contentStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
-                    {
-                        await fileStream.WriteAsync(buffer, 0, readBytes);
-                        totalReadBytes += readBytes;
-
-                        double elapsedSeconds = stopwatch.Elapsed.TotalSeconds;
-                        double currentSpeed = elapsedSeconds > 0.1 ? totalReadBytes / elapsedSeconds : 0;
-
-                        if (totalBytes.HasValue && totalBytes.Value > 0)
-                        {
-                            double percent = (double)totalReadBytes / totalBytes.Value;
-                            progress.Report((percent, currentSpeed));
-                        }
-                        else
-                        {
-                            progress.Report((0.0, currentSpeed));
-                        }
-                    }
-                }
-
-                _logger?.Invoke("系统", "正在解压 FFmpeg 压缩包...");
-                ConsoleLogger.LogInfo("正在解压 FFmpeg 压缩包...");
-                
-                if (!Directory.Exists(destinationFolder))
-                {
-                    Directory.CreateDirectory(destinationFolder);
-                }
-
-                using (var archive = System.IO.Compression.ZipFile.OpenRead(tempZipFile))
-                {
-                    foreach (var entry in archive.Entries)
-                    {
-                        string name = entry.Name.ToLower();
-                        if (name == "ffmpeg.exe" || name == "ffprobe.exe")
-                        {
-                            string destinationPath = Path.Combine(destinationFolder, entry.Name);
-                            if (File.Exists(destinationPath))
-                            {
-                                File.Delete(destinationPath);
-                            }
-                            entry.ExtractToFile(destinationPath);
-                            ConsoleLogger.LogInfo($"已成功解压并提取: {entry.Name}");
-                        }
-                    }
-                }
-            }
-            finally
-            {
-                if (File.Exists(tempZipFile))
-                {
-                    try { File.Delete(tempZipFile); } catch { }
-                }
-            }
-        }
-
-        private async Task<string[]> SortSourcesBySpeedAsync(string[] sources)
-        {
-            var tasks = sources.Select(async url =>
-            {
-                try
-                {
-                    using var client = new System.Net.Http.HttpClient();
-                    client.Timeout = TimeSpan.FromSeconds(3);
-                    
-                    var sw = Stopwatch.StartNew();
-                    using var request = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Head, url);
-                    using var response = await client.SendAsync(request, System.Net.Http.HttpCompletionOption.ResponseHeadersRead);
-                    sw.Stop();
-                    
-                    if (response.IsSuccessStatusCode)
-                    {
-                        return (url, latency: sw.ElapsedMilliseconds);
-                    }
-                }
-                catch
-                {
-                    try
-                    {
-                        using var client = new System.Net.Http.HttpClient();
-                        client.Timeout = TimeSpan.FromSeconds(3);
-                        var sw = Stopwatch.StartNew();
-                        using var response = await client.GetAsync(url, System.Net.Http.HttpCompletionOption.ResponseHeadersRead);
-                        sw.Stop();
-                        
-                        if (response.IsSuccessStatusCode)
-                        {
-                            return (url, latency: sw.ElapsedMilliseconds);
-                        }
-                    }
-                    catch
-                    {
-                        // Ignore
-                    }
-                }
-                return (url, latency: long.MaxValue);
-            });
-
-            var results = await Task.WhenAll(tasks);
-            
-            foreach (var r in results.OrderBy(x => x.latency))
-            {
-                string latencyText = r.latency == long.MaxValue ? "测试失败/超时" : $"{r.latency}ms";
-                ConsoleLogger.LogInfo($"源: {r.url} | 响应延迟: {latencyText}");
-            }
-
-            return results
-                .OrderBy(r => r.latency)
-                .Select(r => r.url)
-                .ToArray();
-        }
-
-#endif
-        private static string FormatSpeed(double bytesPerSecond)
+private static string FormatSpeed(double bytesPerSecond)
         {
             if (bytesPerSecond < 1024)
                 return $"{bytesPerSecond:F0} B/s";
@@ -689,28 +491,5 @@ namespace TerminalSimulation.Wpf.ViewModels
 
         public long CurrentPusherBytes => _pusher?.TotalPushedBytes ?? 0;
 
-        private string? FindProjectFFmpegPath()
-        {
-            string? current = AppDomain.CurrentDomain.BaseDirectory;
-            for (int i = 0; i < 6; i++)
-            {
-                if (string.IsNullOrEmpty(current)) break;
-                
-                if (File.Exists(Path.Combine(current, "TerminalSimulation.slnx")) || Directory.Exists(Path.Combine(current, ".git")))
-                {
-                    return Path.Combine(current, "FFmpeg");
-                }
-                current = Path.GetDirectoryName(current);
-            }
-            return null;
-        }
-
-        private void CopyFileIfExists(string source, string dest)
-        {
-            if (File.Exists(source))
-            {
-                File.Copy(source, dest, true);
-            }
-        }
     }
 }

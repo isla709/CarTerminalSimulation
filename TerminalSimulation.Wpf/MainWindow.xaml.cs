@@ -8,6 +8,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using TerminalSimulation.PluginBase;
 
 namespace TerminalSimulation.Wpf;
 
@@ -16,15 +17,27 @@ namespace TerminalSimulation.Wpf;
 /// </summary>
 public partial class MainWindow : Window
 {
+    private readonly System.Windows.Threading.DispatcherTimer _videoLayoutTimer;
+    private readonly HashSet<LibVLCSharp.WPF.VideoView> _loadedVideoViews = new();
+
     public MainWindow()
     {
         InitializeComponent();
-        InitializeMapAsync();
+        _videoLayoutTimer = new System.Windows.Threading.DispatcherTimer(
+            TimeSpan.FromMilliseconds(32),
+            System.Windows.Threading.DispatcherPriority.Render,
+            (_, _) => UpdateVideoViewsVisibility(),
+            Dispatcher);
         this.Loaded += MainWindow_Loaded;
+        this.SizeChanged += MainWindow_SizeChanged;
     }
 
-    private async void InitializeMapAsync()
+    private bool _mapInitialized;
+
+    private async Task InitializeMapAsync()
     {
+        if (_mapInitialized) return;
+        _mapInitialized = true;
         try
         {
             await MapWebView.EnsureCoreWebView2Async(null);
@@ -334,9 +347,17 @@ public partial class MainWindow : Window
         }
         catch
         {
+            _mapInitialized = false;
             // Fallback if WebView2 runtime is missing
             System.Diagnostics.Debug.WriteLine("WebView2 init failed.");
         }
+    }
+
+    private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        // Keep both work areas usable while allowing compact laptop windows.
+        ControlColumn.Width = new GridLength(ResponsiveLayoutPolicy.GetMainControlColumnWidth(ActualWidth));
+        RequestVideoViewsUpdate();
     }
 
     private void MapWebView_WebMessageReceived(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
@@ -409,21 +430,7 @@ public partial class MainWindow : Window
                 }
             }
         }
-        catch { }
-    }
-
-    private void LogMessages_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
-    {
-        var vm = DataContext as TerminalSimulation.Wpf.ViewModels.MainViewModel;
-        if (vm != null && vm.AutoScrollLogs && LogListBox.Items.Count > 0)
-        {
-            var border = System.Windows.Media.VisualTreeHelper.GetChild(LogListBox, 0) as System.Windows.Controls.Decorator;
-            if (border != null)
-            {
-                var scroll = border.Child as System.Windows.Controls.ScrollViewer;
-                if (scroll != null) scroll.ScrollToEnd();
-            }
-        }
+        catch (Exception ex) { ConsoleLogger.LogError("Map", "处理地图消息失败", ex); }
     }
 
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -471,26 +478,41 @@ public partial class MainWindow : Window
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        ConstrainWindowToWorkingArea();
         try
         {
             var helper = new System.Windows.Interop.WindowInteropHelper(this);
             var source = System.Windows.Interop.HwndSource.FromHwnd(helper.Handle);
             source?.AddHook(WndProc);
         }
-        catch { }
+        catch (Exception ex) { ConsoleLogger.LogError("Window", "注册窗口消息钩子失败", ex); }
 
         if (DataContext is ViewModels.MainViewModel vm)
         {
-            vm.LogMessages.CollectionChanged += LogMessages_CollectionChanged;
             vm.PropertyChanged += Vm_PropertyChanged;
         }
 
-        try
+    }
+
+    private void ConstrainWindowToWorkingArea()
+    {
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        var monitor = MonitorFromWindow(hwnd, 2);
+        var dpi = VisualTreeHelper.GetDpi(this);
+        Rect workArea = SystemParameters.WorkArea;
+        var info = new MonitorInfo { Size = System.Runtime.InteropServices.Marshal.SizeOf<MonitorInfo>() };
+        if (monitor != IntPtr.Zero && GetMonitorInfo(monitor, ref info))
         {
-            var configJson = System.IO.File.ReadAllText("terminal_config.json");
-            var config = System.Text.Json.JsonSerializer.Deserialize<ViewModels.AppConfig>(configJson);
+            workArea = new Rect(
+                info.WorkArea.Left / dpi.DpiScaleX,
+                info.WorkArea.Top / dpi.DpiScaleY,
+                (info.WorkArea.Right - info.WorkArea.Left) / dpi.DpiScaleX,
+                (info.WorkArea.Bottom - info.WorkArea.Top) / dpi.DpiScaleY);
         }
-        catch { }
+        Width = Math.Clamp(Width, MinWidth, Math.Max(MinWidth, workArea.Width));
+        Height = Math.Clamp(Height, MinHeight, Math.Max(MinHeight, workArea.Height));
+        Left = Math.Clamp(Left, workArea.Left, Math.Max(workArea.Left, workArea.Right - Width));
+        Top = Math.Clamp(Top, workArea.Top, Math.Max(workArea.Top, workArea.Bottom - Height));
     }
 
     private void Vm_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -532,25 +554,42 @@ public partial class MainWindow : Window
         }
     }
 
-    protected override void OnClosed(System.EventArgs e)
+    private bool _shutdownInProgress;
+    private bool _shutdownCompleted;
+
+    protected override async void OnClosing(System.ComponentModel.CancelEventArgs e)
     {
-        base.OnClosed(e);
-        if (DataContext is System.IDisposable disposable)
+        if (_shutdownCompleted)
         {
-            disposable.Dispose();
+            base.OnClosing(e);
+            return;
+        }
+
+        e.Cancel = true;
+        if (_shutdownInProgress) return;
+        _shutdownInProgress = true;
+        try
+        {
+            if (DataContext is IAsyncDisposable asyncDisposable) await asyncDisposable.DisposeAsync();
+            else if (DataContext is IDisposable disposable) disposable.Dispose();
+        }
+        catch (Exception ex) { ConsoleLogger.LogError("Shutdown", "等待后台任务退出失败", ex); }
+        finally
+        {
+            _shutdownCompleted = true;
+            _shutdownInProgress = false;
+            Close();
         }
     }
 
-    private void AnalyzerTreeView_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    protected override void OnClosed(System.EventArgs e)
     {
-        if (e.Key == System.Windows.Input.Key.C && System.Windows.Input.Keyboard.Modifiers == System.Windows.Input.ModifierKeys.Control)
+        _videoLayoutTimer.Stop();
+        if (DataContext is ViewModels.MainViewModel vm)
         {
-            if (sender is TreeView tv && tv.SelectedItem is ViewModels.AnalyzerNode node)
-            {
-                System.Windows.Clipboard.SetText($"{node.Name} {node.Value}".Trim());
-                e.Handled = true;
-            }
+            vm.PropertyChanged -= Vm_PropertyChanged;
         }
+        base.OnClosed(e);
     }
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
@@ -559,16 +598,30 @@ public partial class MainWindow : Window
     [System.Runtime.InteropServices.DllImport("gdi32.dll")]
     private static extern IntPtr CreateRectRgn(int nLeftRect, int nTopRect, int nRightRect, int nBottomRect);
 
-    private double _dpiScale = 1.0;
-
-    private void UpdateDpiScale()
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct NativeRect
     {
-        var source = PresentationSource.FromVisual(this);
-        if (source?.CompositionTarget != null)
-        {
-            _dpiScale = source.CompositionTarget.TransformToDevice.M11;
-        }
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
     }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct MonitorInfo
+    {
+        public int Size;
+        public NativeRect Monitor;
+        public NativeRect WorkArea;
+        public uint Flags;
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo monitorInfo);
 
     private static IntPtr GetHwnd(DependencyObject control)
     {
@@ -587,19 +640,23 @@ public partial class MainWindow : Window
 
     private void VideoScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
     {
-        UpdateVideoViewsVisibility();
+        RequestVideoViewsUpdate();
     }
 
     private void VideoScrollViewer_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        UpdateVideoViewsVisibility();
+        RequestVideoViewsUpdate();
     }
 
     private void MainTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (e.Source == MainTabControl)
         {
-            UpdateVideoViewsVisibility();
+            if (MainTabControl.SelectedIndex == 1)
+            {
+                _ = InitializeMapAsync();
+            }
+            RequestVideoViewsUpdate();
         }
     }
 
@@ -609,7 +666,7 @@ public partial class MainWindow : Window
 
         if (msg == WM_EXITSIZEMOVE)
         {
-            UpdateVideoViewsVisibility();
+            RequestVideoViewsUpdate();
         }
 
         return IntPtr.Zero;
@@ -617,9 +674,7 @@ public partial class MainWindow : Window
 
     private void HideAllVideoViews()
     {
-        if (VideoItemsControl == null) return;
-        var videoViews = FindVisualChildren<LibVLCSharp.WPF.VideoView>(VideoItemsControl);
-        foreach (var videoView in videoViews)
+        foreach (var videoView in _loadedVideoViews)
         {
             videoView.Visibility = Visibility.Hidden;
         }
@@ -627,20 +682,13 @@ public partial class MainWindow : Window
 
     private void UpdateVideoViewsVisibility()
     {
+        _videoLayoutTimer.Stop();
         if (VideoScrollViewer == null || VideoItemsControl == null) return;
-
-        // Ensure layout is updated before we do visual tree bounds calculation
-        VideoScrollViewer.UpdateLayout();
 
         double viewportHeight = VideoScrollViewer.ViewportHeight;
         double viewportWidth = VideoScrollViewer.ViewportWidth;
 
-        // Update DPI scale dynamically
-        UpdateDpiScale();
-
-        var videoViews = FindVisualChildren<LibVLCSharp.WPF.VideoView>(VideoItemsControl);
-
-        foreach (var videoView in videoViews)
+        foreach (var videoView in _loadedVideoViews.ToArray())
         {
             try
             {
@@ -684,10 +732,11 @@ public partial class MainWindow : Window
                         double bottom = top + intersection.Height;
 
                         // 转换为物理像素 (考虑系统 DPI 缩放)
-                        int physLeft = (int)Math.Round(left * _dpiScale);
-                        int physTop = (int)Math.Round(top * _dpiScale);
-                        int physRight = (int)Math.Round(right * _dpiScale);
-                        int physBottom = (int)Math.Round(bottom * _dpiScale);
+                        var dpi = VisualTreeHelper.GetDpi(videoView);
+                        int physLeft = (int)Math.Round(left * dpi.DpiScaleX);
+                        int physTop = (int)Math.Round(top * dpi.DpiScaleY);
+                        int physRight = (int)Math.Round(right * dpi.DpiScaleX);
+                        int physBottom = (int)Math.Round(bottom * dpi.DpiScaleY);
 
                         // 设定原生窗口裁剪区
                         IntPtr hRgn = CreateRectRgn(physLeft, physTop, physRight, physBottom);
@@ -705,15 +754,34 @@ public partial class MainWindow : Window
         }
     }
 
+    private void RequestVideoViewsUpdate()
+    {
+        _videoLayoutTimer.Stop();
+        _videoLayoutTimer.Start();
+    }
+
     private void VideoView_Loaded(object sender, RoutedEventArgs e)
     {
         if (sender is LibVLCSharp.WPF.VideoView videoView && videoView.MediaPlayer != null)
         {
+            _loadedVideoViews.Add(videoView);
             // 防止重复订阅
             videoView.MediaPlayer.Playing -= MediaPlayer_Playing;
             videoView.MediaPlayer.Playing += MediaPlayer_Playing;
         }
-        UpdateVideoViewsVisibility();
+        RequestVideoViewsUpdate();
+    }
+
+    private void VideoView_Unloaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is LibVLCSharp.WPF.VideoView videoView)
+        {
+            _loadedVideoViews.Remove(videoView);
+            if (videoView.MediaPlayer != null)
+            {
+                videoView.MediaPlayer.Playing -= MediaPlayer_Playing;
+            }
+        }
     }
 
     private async void MediaPlayer_Playing(object? sender, EventArgs e)
@@ -723,7 +791,7 @@ public partial class MainWindow : Window
         
         Application.Current?.Dispatcher?.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, new Action(() =>
         {
-            UpdateVideoViewsVisibility();
+            RequestVideoViewsUpdate();
         }));
     }
 
@@ -733,27 +801,8 @@ public partial class MainWindow : Window
         {
             Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, new Action(() =>
             {
-                UpdateVideoViewsVisibility();
+                RequestVideoViewsUpdate();
             }));
         }
-    }
-
-
-    private static System.Collections.Generic.List<T> FindVisualChildren<T>(DependencyObject depObj) where T : DependencyObject
-    {
-        var list = new System.Collections.Generic.List<T>();
-        if (depObj != null)
-        {
-            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(depObj); i++)
-            {
-                DependencyObject child = VisualTreeHelper.GetChild(depObj, i);
-                if (child is T t)
-                {
-                    list.Add(t);
-                }
-                list.AddRange(FindVisualChildren<T>(child));
-            }
-        }
-        return list;
     }
 }

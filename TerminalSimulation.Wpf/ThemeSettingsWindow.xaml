@@ -103,7 +103,7 @@
             </Grid.InputBindings>
         </Grid>
         <!-- The actual settings control centered -->
-        <local:ThemeSettingsControl x:Name="SettingsControl" HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5">
+        <local:ThemeSettingsControl x:Name="SettingsControl" Margin="24" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" RenderTransformOrigin="0.5,0.5">
             <local:ThemeSettingsControl.RenderTransform>
                 <ScaleTransform ScaleX="1" ScaleY="1" />
             </local:ThemeSettingsControl.RenderTransform>

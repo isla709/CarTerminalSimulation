@@ -28,32 +28,33 @@ namespace TerminalSimulation.Protocol
         public event Action<string>? OnStatusUpdate;
         
         public event Action? OnDisconnected;
+        public event Action<Exception>? OnError;
 
         public long TotalPushedBytes { get; private set; } = 0;
 
-        private readonly string? _audioFile;
+        private readonly string _audioFile;
         private readonly int _dataType;
         private readonly int _audioCodec;
 
-        public JT1078Pusher(string simCard, byte channelNo, string h264File, string? audioFile, int dataType, int audioCodec, double targetFps, bool isConstantFps)
+        public JT1078Pusher(string simCard, byte channelNo, string h264File, string audioFile, int dataType, int audioCodec, double targetFps, bool isConstantFps)
         {
             _simCard = simCard.PadLeft(12, '0');
             _channelNo = channelNo;
             _h264File = h264File;
-            _audioFile = audioFile;
+            _audioFile = audioFile ?? throw new ArgumentNullException(nameof(audioFile));
             _dataType = dataType;
             _audioCodec = audioCodec;
             _targetFps = targetFps;
             _isConstantFps = isConstantFps;
         }
 
-        public async Task StartAsync(string ip, int port)
+        public async Task StartAsync(string ip, int port, CancellationToken cancellationToken = default)
         {
             await StopAsync().ConfigureAwait(false);
-            await _lifecycleLock.WaitAsync().ConfigureAwait(false);
+            await _lifecycleLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-            _cts = new CancellationTokenSource();
+            _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
             List<VideoFrame> frames = new List<VideoFrame>();
             if (_dataType == 0 || _dataType == 1)
@@ -88,7 +89,7 @@ namespace TerminalSimulation.Protocol
             }
 
             _client = new TcpClient();
-            await _client.ConnectAsync(ip, port);
+            await _client.ConnectAsync(ip, port, _cts.Token);
             _stream = _client.GetStream();
             
             OnLog?.Invoke($"已连接到音视频服务器: {ip}:{port}");
@@ -442,6 +443,7 @@ namespace TerminalSimulation.Protocol
             catch (Exception ex)
             {
                 OnLog?.Invoke($"推流异常: {ex.Message}");
+                OnError?.Invoke(ex);
             }
             finally
             {
@@ -589,6 +591,7 @@ namespace TerminalSimulation.Protocol
             catch (Exception ex)
             {
                 OnLog?.Invoke($"纯音频推流异常: {ex.Message}");
+                OnError?.Invoke(ex);
             }
             finally
             {

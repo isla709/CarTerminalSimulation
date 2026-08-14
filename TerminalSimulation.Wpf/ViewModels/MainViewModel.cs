@@ -17,6 +17,8 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Threading.Channels;
+using TerminalSimulation.Wpf.Services;
 
 namespace TerminalSimulation.Wpf.ViewModels
 {
@@ -269,10 +271,24 @@ namespace TerminalSimulation.Wpf.ViewModels
         public bool UseAppVersionAsFirmwareVersion { get; set; } = true;
     }
 
-    public partial class MainViewModel : ObservableObject, IDisposable, TerminalSimulation.PluginBase.IPluginContext
+    public partial class MainViewModel : ObservableObject, IDisposable, IAsyncDisposable, TerminalSimulation.PluginBase.IPluginContext
     {
-        private readonly TerminalNetworkClient _networkClient;
+        private readonly IConnectionSession _networkClient;
         private readonly JT808Manager _protocolManager;
+        private readonly IAppLogger _appLogger;
+        private readonly ISerialPortService _serialPortService;
+        private readonly ITtsService _ttsService;
+        private readonly ILocationSimulationService _locationSimulationService;
+        private readonly Services.AtomicJsonConfigStore<AppConfig> _configStore;
+        private readonly Channel<byte[]> _protocolQueue = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = false,
+            AllowSynchronousContinuations = false
+        });
+        private readonly CancellationTokenSource _protocolProcessorCts = new();
+        private readonly Task _protocolProcessorTask;
+        private int _disposeState;
 
         partial void OnBackgroundImagePathChanged(string value)
         {
@@ -426,11 +442,18 @@ namespace TerminalSimulation.Wpf.ViewModels
         public string AppTitle => $"车载定位终端模拟系统 (JT808) {AppVersionInfo.FullVersion}";
         public MainViewModel()
         {
+            _appLogger = new AppLogger();
+            _serialPortService = new SerialPortService();
+            _serialPortService.DataReceived += data => _ = HandleSerialDataReceivedAsync(data);
+            _ttsService = new SystemTtsService();
+            _locationSimulationService = new LocationSimulationService();
             InitializeFlags();
-            _networkClient = new TerminalNetworkClient();
-            _networkClient.OnDataReceived += NetworkClient_OnDataReceived;
-            _networkClient.OnError += ex => Log("网络", ex.Message);
-            _networkClient.OnDisconnected += () =>
+            _configStore = new Services.AtomicJsonConfigStore<AppConfig>(ConfigFile, warning => Log("配置", warning));
+            _protocolManager = new JT808Manager();
+            _networkClient = new TerminalConnectionSession();
+            _networkClient.DataReceived += NetworkClient_OnDataReceived;
+            _networkClient.Error += ex => Log("网络", ex.Message);
+            _networkClient.Disconnected += () =>
             {
                 Application.Current.Dispatcher.Invoke(() =>
                 {
@@ -439,7 +462,7 @@ namespace TerminalSimulation.Wpf.ViewModels
                 });
             };
 
-            _protocolManager = new JT808Manager();
+            _protocolProcessorTask = ProcessProtocolQueueAsync(_protocolProcessorCts.Token);
             
             UpdateVideoChannels(VideoChannelCount);
             UpdateSerializerEncoding();
@@ -718,399 +741,6 @@ namespace TerminalSimulation.Wpf.ViewModels
             return val;
         }
 
-        private bool _isLoadingConfig = false;
-        private readonly object _configLock = new object();
-        private System.Threading.Timer? _saveTimer;
-        private readonly object _saveLock = new object();
-
-        private void SaveConfigDebounced()
-        {
-            lock (_saveLock)
-            {
-                if (_saveTimer == null)
-                {
-                    _saveTimer = new System.Threading.Timer(SaveTimerCallback, null, 500, System.Threading.Timeout.Infinite);
-                }
-                else
-                {
-                    _saveTimer.Change(500, System.Threading.Timeout.Infinite);
-                }
-            }
-        }
-
-        private void SaveTimerCallback(object? state)
-        {
-            SaveConfig();
-        }
-
-        private void LoadConfig()
-        {
-            lock (_configLock)
-            {
-                _isLoadingConfig = true;
-                try
-                {
-                    string tempFile = ConfigFile + ".tmp";
-                    if (!File.Exists(ConfigFile) && File.Exists(tempFile))
-                    {
-                        try
-                        {
-                            File.Move(tempFile, ConfigFile);
-                        }
-                        catch { }
-                    }
-
-                    if (File.Exists(ConfigFile))
-                    {
-                        var json = File.ReadAllText(ConfigFile);
-                        var config = System.Text.Json.JsonSerializer.Deserialize<AppConfig>(json);
-                        if (config != null)
-                        {
-                            ServerIp = config.ServerIp;
-                            ServerPort = config.ServerPort;
-                            ServerAddressInput = $"{ServerIp}:{ServerPort}";
-                            
-                            if (config.ServerAddressHistory != null)
-                            {
-                                ServerAddressHistory.Clear();
-                                foreach (var addr in config.ServerAddressHistory)
-                                {
-                                    ServerAddressHistory.Add(addr);
-                                }
-                            }
-                            TerminalPhoneNo = config.TerminalPhoneNo;
-                            AuthCode = config.AuthCode;
-                            UseJT808_2019 = config.UseJT808_2019;
-                            Speed = config.Speed;
-                            Direction = config.Direction;
-                            Altitude = config.Altitude;
-                            AutoReportInterval = config.AutoReportInterval;
-                            ProvinceIdInput = config.ProvinceId.ToString();
-                            CityIdInput = config.CityId.ToString();
-                            ManufacturerId = config.ManufacturerId ?? "TEST ";
-                            TerminalModel = config.TerminalModel ?? "Model-1";
-                            TerminalId = config.TerminalId ?? "T000001";
-                            PlateColor = config.PlateColor;
-                            PlateNo = config.PlateNo ?? "京A88888";
-                            SimNumber = config.SimNumber ?? "13812345678";
-                            TerminalIMEI = config.TerminalIMEI ?? "861234567890123";
-                            HardwareVersion = config.HardwareVersion ?? "V1.0.0";
-                            FirmwareVersion = config.FirmwareVersion ?? "V1.0.0";
-                            UseAppVersionAsFirmwareVersion = config.UseAppVersionAsFirmwareVersion;
-                            AnalyzerMode = config.AnalyzerMode;
-                            ConfigWindowWidth = config.WindowWidth > 400 ? config.WindowWidth : 1200;
-                            ConfigWindowHeight = config.WindowHeight > 300 ? config.WindowHeight : 800;
-
-                            Enable0x01 = config.Enable0x01;
-                            Mileage0x01 = config.Mileage0x01;
-                            Enable0x02 = config.Enable0x02;
-                            Oil0x02 = config.Oil0x02;
-                            Enable0x03 = config.Enable0x03;
-                            Speed0x03 = config.Speed0x03;
-                            Enable0x04 = config.Enable0x04;
-                            AlarmEventId0x04 = config.AlarmEventId0x04;
-                            Enable0x25 = config.Enable0x25;
-                            ExtVehicleSignal0x25 = config.ExtVehicleSignal0x25;
-                            Enable0x2A = config.Enable0x2A;
-                            IOStatus0x2A = config.IOStatus0x2A;
-                            Enable0x2B = config.Enable0x2B;
-                            AnalogAD0 = config.AnalogAD0;
-                            AnalogAD1 = config.AnalogAD1;
-                            Enable0x30 = config.Enable0x30;
-                            NetworkSignal0x30 = config.NetworkSignal0x30;
-                            Enable0x31 = config.Enable0x31;
-                            GNSSCount0x31 = config.GNSSCount0x31;
-
-                            EnableMileageSimulation = config.EnableMileageSimulation;
-                            Sync0x03SpeedWithMainSpeed = config.Sync0x03SpeedWithMainSpeed;
-                            EnableOilConsumption = config.EnableOilConsumption;
-                            OilConsumptionRate = config.OilConsumptionRate;
-                            EnableNetworkSignalFluctuation = config.EnableNetworkSignalFluctuation;
-                            EnableGNSSFluctuation = config.EnableGNSSFluctuation;
-                            EnableTTSPlayback = config.EnableTTSPlayback;
-                            SelectedTTSVoice = config.SelectedTTSVoice ?? "";
-                            TextDownlinkEncodingIndex = config.TextDownlinkEncodingIndex;
-
-                            var bgPath = config.BackgroundImagePath;
-                            var bgEffect = config.BackgroundEffectMode;
-
-                            if (!string.IsNullOrEmpty(bgPath))
-                            {
-                                if (bgPath.StartsWith("pack://embedded/"))
-                                {
-                                    // Embedded resource
-                                }
-                                else
-                                {
-                                    var fileName = System.IO.Path.GetFileName(bgPath);
-                                    var relativePath = System.IO.Path.Combine("Themes", fileName);
-                                    var fullPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, relativePath);
-
-                                    if (System.IO.File.Exists(fullPath))
-                                    {
-                                        bgPath = relativePath;
-                                    }
-                                    else if (System.IO.Path.IsPathRooted(bgPath) && System.IO.File.Exists(bgPath))
-                                    {
-                                        try
-                                        {
-                                            var themeDir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Themes");
-                                            if (!System.IO.Directory.Exists(themeDir)) System.IO.Directory.CreateDirectory(themeDir);
-                                            var destFile = System.IO.Path.Combine(themeDir, fileName);
-                                            System.IO.File.Copy(bgPath, destFile, true);
-                                            bgPath = relativePath;
-                                        }
-                                        catch
-                                        {
-                                            // Keep as is if copy fails
-                                        }
-                                    }
-                                    else
-                                    {
-                                        bgPath = "";
-                                        bgEffect = BackgroundEffectMode.None;
-                                    }
-                                }
-                            }
-
-                            BackgroundImagePath = bgPath;
-                            BackgroundEffectMode = bgEffect;
-                            BackgroundOpacity = config.BackgroundOpacity;
-                            
-                            SetFlagsFromValue(AlarmFlags, config.AlarmFlagValue);
-                            SetFlagsFromValue(StatusFlags, config.StatusFlagValue);
-
-                            if (config.CustomAttachItems != null)
-                            {
-                                CustomAttachItems.Clear();
-                                foreach (var item in config.CustomAttachItems)
-                                {
-                                    CustomAttachItems.Add(item);
-                                }
-                            }
-                        }
-                    }
-                    else
-                    {
-                        SaveConfig(); // Create default config file if it does not exist
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Log("系统", $"加载配置失败: {ex.Message}");
-                }
-                finally
-                {
-                    _isLoadingConfig = false;
-                }
-            }
-        }
-
-        private class LocationReportSnapshot
-        {
-            public string TerminalPhoneNo { get; set; } = "";
-            public uint AlarmFlag { get; set; }
-            public uint StatusFlag { get; set; }
-            public double Latitude { get; set; }
-            public double Longitude { get; set; }
-            public double Altitude { get; set; }
-            public double Speed { get; set; }
-            public int Direction { get; set; }
-            public System.Collections.Generic.List<CustomAttachItem> CustomAttachItems { get; set; } = new();
-
-            public bool Enable0x01 { get; set; }
-            public uint Mileage0x01 { get; set; }
-            public bool Enable0x02 { get; set; }
-            public ushort Oil0x02 { get; set; }
-            public bool Enable0x03 { get; set; }
-            public ushort Speed0x03 { get; set; }
-            public bool Enable0x04 { get; set; }
-            public ushort AlarmEventId0x04 { get; set; }
-            public bool Enable0x25 { get; set; }
-            public uint ExtVehicleSignal0x25 { get; set; }
-            public bool Enable0x2A { get; set; }
-            public ushort IOStatus0x2A { get; set; }
-            public bool Enable0x2B { get; set; }
-            public ushort AnalogAD0 { get; set; }
-            public ushort AnalogAD1 { get; set; }
-            public bool Enable0x30 { get; set; }
-            public byte NetworkSignal0x30 { get; set; }
-            public bool Enable0x31 { get; set; }
-            public byte GNSSCount0x31 { get; set; }
-        }
-
-        private LocationReportSnapshot CaptureLocationReportSnapshot()
-        {
-            if (Application.Current != null && !Application.Current.Dispatcher.CheckAccess())
-            {
-                return Application.Current.Dispatcher.Invoke(() => CaptureLocationReportSnapshotInternal());
-            }
-            return CaptureLocationReportSnapshotInternal();
-        }
-
-        private LocationReportSnapshot CaptureLocationReportSnapshotInternal()
-        {
-            return new LocationReportSnapshot
-            {
-                TerminalPhoneNo = TerminalPhoneNo,
-                AlarmFlag = GetValueFromFlags(AlarmFlags),
-                StatusFlag = GetValueFromFlags(StatusFlags),
-                Latitude = Latitude,
-                Longitude = Longitude,
-                Altitude = Altitude,
-                Speed = Speed,
-                Direction = Direction,
-                CustomAttachItems = CustomAttachItems.Select(x => new CustomAttachItem
-                {
-                    AttachId = x.AttachId,
-                    AttachLength = x.AttachLength,
-                    AttachData = x.AttachData
-                }).ToList(),
-                
-                Enable0x01 = Enable0x01,
-                Mileage0x01 = Mileage0x01,
-                Enable0x02 = Enable0x02,
-                Oil0x02 = Oil0x02,
-                Enable0x03 = Enable0x03,
-                Speed0x03 = Speed0x03,
-                Enable0x04 = Enable0x04,
-                AlarmEventId0x04 = AlarmEventId0x04,
-                Enable0x25 = Enable0x25,
-                ExtVehicleSignal0x25 = ExtVehicleSignal0x25,
-                Enable0x2A = Enable0x2A,
-                IOStatus0x2A = IOStatus0x2A,
-                Enable0x2B = Enable0x2B,
-                AnalogAD0 = AnalogAD0,
-                AnalogAD1 = AnalogAD1,
-                Enable0x30 = Enable0x30,
-                NetworkSignal0x30 = NetworkSignal0x30,
-                Enable0x31 = Enable0x31,
-                GNSSCount0x31 = GNSSCount0x31
-            };
-        }
-
-        private AppConfig CaptureAppConfig()
-        {
-            if (Application.Current != null && !Application.Current.Dispatcher.CheckAccess())
-            {
-                return Application.Current.Dispatcher.Invoke(() => CaptureAppConfigInternal());
-            }
-            return CaptureAppConfigInternal();
-        }
-
-        private AppConfig CaptureAppConfigInternal()
-        {
-            return new AppConfig
-            {
-                ServerIp = ServerIp,
-                ServerPort = ServerPort,
-                ServerAddressHistory = ServerAddressHistory.ToList(),
-                TerminalPhoneNo = TerminalPhoneNo,
-                AuthCode = AuthCode,
-                UseJT808_2019 = UseJT808_2019,
-                Speed = Speed,
-                Direction = Direction,
-                Altitude = Altitude,
-                AutoReportInterval = AutoReportInterval,
-                AlarmFlagValue = GetValueFromFlags(AlarmFlags),
-                StatusFlagValue = GetValueFromFlags(StatusFlags),
-                CustomAttachItems = CustomAttachItems.Select(x => new CustomAttachItem
-                {
-                    AttachId = x.AttachId,
-                    AttachLength = x.AttachLength,
-                    AttachData = x.AttachData
-                }).ToList(),
-                BackgroundImagePath = BackgroundImagePath,
-                BackgroundEffectMode = BackgroundEffectMode,
-                BackgroundOpacity = BackgroundOpacity,
-                ProvinceId = ParseProvinceId(ProvinceIdInput, 11),
-                CityId = ParseCityId(CityIdInput, 1101),
-                ManufacturerId = ManufacturerId,
-                TerminalModel = TerminalModel,
-                TerminalId = TerminalId,
-                PlateColor = PlateColor,
-                PlateNo = PlateNo,
-                SimNumber = SimNumber,
-                TerminalIMEI = TerminalIMEI,
-                HardwareVersion = HardwareVersion,
-                FirmwareVersion = FirmwareVersion,
-                UseAppVersionAsFirmwareVersion = UseAppVersionAsFirmwareVersion,
-                AnalyzerMode = AnalyzerMode,
-                WindowWidth = ConfigWindowWidth,
-                WindowHeight = ConfigWindowHeight,
-                Enable0x01 = Enable0x01,
-                Mileage0x01 = Mileage0x01,
-                Enable0x02 = Enable0x02,
-                Oil0x02 = Oil0x02,
-                Enable0x03 = Enable0x03,
-                Speed0x03 = Speed0x03,
-                Enable0x04 = Enable0x04,
-                AlarmEventId0x04 = AlarmEventId0x04,
-                Enable0x25 = Enable0x25,
-                ExtVehicleSignal0x25 = ExtVehicleSignal0x25,
-                Enable0x2A = Enable0x2A,
-                IOStatus0x2A = IOStatus0x2A,
-                Enable0x2B = Enable0x2B,
-                AnalogAD0 = AnalogAD0,
-                AnalogAD1 = AnalogAD1,
-                Enable0x30 = Enable0x30,
-                NetworkSignal0x30 = NetworkSignal0x30,
-                Enable0x31 = Enable0x31,
-                GNSSCount0x31 = GNSSCount0x31,
-                EnableMileageSimulation = EnableMileageSimulation,
-                Sync0x03SpeedWithMainSpeed = Sync0x03SpeedWithMainSpeed,
-                EnableOilConsumption = EnableOilConsumption,
-                OilConsumptionRate = OilConsumptionRate,
-                EnableNetworkSignalFluctuation = EnableNetworkSignalFluctuation,
-                EnableGNSSFluctuation = EnableGNSSFluctuation,
-                EnableTTSPlayback = EnableTTSPlayback,
-                SelectedTTSVoice = SelectedTTSVoice,
-                TextDownlinkEncodingIndex = TextDownlinkEncodingIndex
-            };
-        }
-
-        private void SaveConfig()
-        {
-            AppConfig config;
-            if (Application.Current?.Dispatcher is { } dispatcher && !dispatcher.CheckAccess())
-            {
-                config = dispatcher.Invoke(CaptureAppConfig);
-            }
-            else
-            {
-                config = CaptureAppConfig();
-            }
-            lock (_configLock)
-            {
-                int retries = 5;
-                while (retries > 0)
-                {
-                    try
-                    {
-                        var json = System.Text.Json.JsonSerializer.Serialize(config, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-                        var tempFile = ConfigFile + ".tmp";
-                        File.WriteAllText(tempFile, json);
-                        if (File.Exists(ConfigFile))
-                        {
-                            File.Replace(tempFile, ConfigFile, ConfigFile + ".bak", ignoreMetadataErrors: true);
-                        }
-                        else File.Move(tempFile, ConfigFile);
-                        break; // Success!
-                    }
-                    catch (IOException) when (retries > 1)
-                    {
-                        retries--;
-                        System.Threading.Thread.Sleep(50);
-                    }
-                    catch (Exception ex)
-                    {
-                        Log("系统", $"保存配置失败: {ex.Message}");
-                        break;
-                    }
-                }
-            }
-        }
-
         [ObservableProperty] private string _serverIp = "127.0.0.1";
         [ObservableProperty] private int _serverPort = 808;
         
@@ -1291,6 +921,7 @@ namespace TerminalSimulation.Wpf.ViewModels
         [ObservableProperty] private int _autoReportInterval = 5;
         [ObservableProperty] private bool _isAutoReporting = false;
         private System.Threading.CancellationTokenSource? _autoReportCts;
+        private Task? _autoReportTask;
 
         [ObservableProperty] private bool _autoScrollLogs = true;
         [ObservableProperty] private ObservableCollection<LogMessageItem> _logMessages = new();
@@ -1311,15 +942,9 @@ namespace TerminalSimulation.Wpf.ViewModels
         private DateTime _lastGlobalTrafficUpdateTime = DateTime.MinValue;
 
         [RelayCommand]
-        private void StopAllPushStreams()
+        private async Task StopAllPushStreamsAsync()
         {
-            foreach (var ch in VideoChannels)
-            {
-                if (ch.IsStreaming)
-                {
-                    ch.StopPushing();
-                }
-            }
+            await Task.WhenAll(VideoChannels.Select(channel => channel.StopPushingAsync()));
         }
 
         partial void OnVideoChannelCountChanged(int value)
@@ -1734,6 +1359,7 @@ namespace TerminalSimulation.Wpf.ViewModels
         public ObservableCollection<AnalyzerTableRow> AnalyzerResultTable { get; } = new();
 
         private System.Threading.CancellationTokenSource? _pathSimulationCts;
+        private Task? _pathSimulationTask;
         [ObservableProperty] private bool _isPathSimulating = false;
         
         [ObservableProperty] private bool _isSettingsOpen = false;
@@ -1752,6 +1378,16 @@ namespace TerminalSimulation.Wpf.ViewModels
         public ObservableCollection<CustomAttachItem> CustomAttachItems { get; } = new ObservableCollection<CustomAttachItem>();
         
         public ObservableCollection<PassthroughMessage> PassthroughMessages { get; } = new ObservableCollection<PassthroughMessage>();
+        private const int MaxPassthroughMessages = 1000;
+        private const int MaxTextDownlinkMessages = 1000;
+
+        private static void TrimOldest<T>(ObservableCollection<T> collection, int maximum)
+        {
+            while (collection.Count > maximum)
+            {
+                collection.RemoveAt(0);
+            }
+        }
         [ObservableProperty] private string _passthroughInputText = "";
         [ObservableProperty] private string _passthroughTypeHex = "00";
         [ObservableProperty] private int _passthroughEncodingIndex = 0; // 0: GBK, 1: UTF-8, 2: HEX
@@ -1760,7 +1396,6 @@ namespace TerminalSimulation.Wpf.ViewModels
         [ObservableProperty] private bool _isHexInputInvalid = false;
 
         // Serial Port Properties
-        private System.IO.Ports.SerialPort? _serialPort;
         public ObservableCollection<string> SerialPorts { get; } = new ObservableCollection<string>();
         [ObservableProperty] private string? _selectedSerialPort;
         public ObservableCollection<int> BaudRates { get; } = new ObservableCollection<int> { 4800, 9600, 19200, 38400, 57600, 115200 };
@@ -1774,6 +1409,7 @@ namespace TerminalSimulation.Wpf.ViewModels
         [ObservableProperty] private int _heartbeatInterval = 30;
         [ObservableProperty] private bool _isHeartbeatDisabled = false;
         private System.Threading.CancellationTokenSource? _heartbeatCts;
+        private Task? _heartbeatTask;
 
 
         public ObservableCollection<ThemeImageItem> ThemeImages { get; } = new ObservableCollection<ThemeImageItem>();
@@ -1782,15 +1418,9 @@ namespace TerminalSimulation.Wpf.ViewModels
         {
             try
             {
-                using (var synth = new System.Speech.Synthesis.SpeechSynthesizer())
+                foreach (var voiceName in _ttsService.GetInstalledVoices())
                 {
-                    foreach (var voice in synth.GetInstalledVoices())
-                    {
-                        if (voice.Enabled)
-                        {
-                            InstalledTTSVoices.Add(voice.VoiceInfo.Name);
-                        }
-                    }
+                    InstalledTTSVoices.Add(voiceName);
                 }
                 
                 if (InstalledTTSVoices.Count > 0)
@@ -1808,25 +1438,11 @@ namespace TerminalSimulation.Wpf.ViewModels
         }
 
         [RelayCommand]
-        private void ReplayTTS(TextDownlinkMessage? msg)
+        private async Task ReplayTTSAsync(TextDownlinkMessage? msg)
         {
             if (msg == null || !EnableTTSPlayback) return;
-            string textToSpeak = msg.Content;
-            string voiceName = SelectedTTSVoice;
-            Task.Run(() =>
-            {
-                try
-                {
-                    using var synth = new System.Speech.Synthesis.SpeechSynthesizer();
-                    if (!string.IsNullOrEmpty(voiceName))
-                        synth.SelectVoice(voiceName);
-                    synth.Speak(textToSpeak);
-                }
-                catch (Exception ex)
-                {
-                    Log("系统", $"TTS重播失败: {ex.Message}");
-                }
-            });
+            try { await _ttsService.SpeakAsync(msg.Content, SelectedTTSVoice); }
+            catch (Exception ex) { Log("系统", $"TTS重播失败: {ex.Message}"); }
         }
 
         private void InitThemeImages()
@@ -1886,7 +1502,7 @@ namespace TerminalSimulation.Wpf.ViewModels
                                 item.Thumbnail = bmp;
                             }
                         }
-                        catch { }
+                        catch (Exception ex) { _appLogger.Error("主题", $"读取缩略图失败: {resName}", ex); }
                         ThemeImages.Add(item);
                     }
                 }
@@ -1917,13 +1533,13 @@ namespace TerminalSimulation.Wpf.ViewModels
                             bmp.Freeze();
                             item.Thumbnail = bmp;
                         }
-                        catch { }
+                        catch (Exception ex) { _appLogger.Error("主题", $"读取缩略图失败: {file}", ex); }
                         
                         ThemeImages.Add(item);
                     }
                 }
             }
-            catch { }
+            catch (Exception ex) { _appLogger.Error("主题", "扫描主题图片失败", ex); }
         }
 
         [RelayCommand]
@@ -2017,1180 +1633,6 @@ namespace TerminalSimulation.Wpf.ViewModels
         }
 
         [RelayCommand]
-        private void ClearLogs()
-        {
-            LogMessages.Clear();
-            PassthroughMessages.Clear();
-        }
-
-        [RelayCommand]
-        private void AnalyzeMessage()
-        {
-            try
-            {
-                AnalyzerResultTree.Clear();
-                if (string.IsNullOrWhiteSpace(AnalyzerInputHex)) return;
-                
-                string hex = AnalyzerInputHex.Replace(" ", "").Replace("\r", "").Replace("\n", "");
-                byte[] data = Convert.FromHexString(hex);
-                
-                string json = _protocolManager.Analyze(data);
-                
-                using (var doc = JsonDocument.Parse(json))
-                {
-                    var rootNode = ParseJsonElement("JT808 Package", doc.RootElement);
-                    AnalyzerResultTree.Add(rootNode);
-                    
-                    AnalyzerResultTable.Clear();
-                    int offset = 0;
-                    TraverseJsonForTable("JT808 Package", doc.RootElement, ref offset);
-                }
-            }
-            catch (Exception ex)
-            {
-                AnalyzerResultTree.Add(new AnalyzerNode { Name = "解析错误", Value = ex.Message });
-            }
-        }
-        
-        private AnalyzerNode ParseJsonElement(string name, JsonElement element)
-        {
-            var node = new AnalyzerNode { Name = TranslateKey(name) };
-            
-            if (element.ValueKind == JsonValueKind.Object)
-            {
-                foreach (var prop in element.EnumerateObject())
-                {
-                    node.Children.Add(ParseJsonElement(prop.Name, prop.Value));
-                }
-            }
-            else if (element.ValueKind == JsonValueKind.Array)
-            {
-                int i = 0;
-                foreach (var item in element.EnumerateArray())
-                {
-                    node.Children.Add(ParseJsonElement($"[{i}]", item));
-                    i++;
-                }
-            }
-            else
-            {
-                string rawValue = element.ToString() ?? "";
-                node.Value = TranslateValue(name, rawValue);
-            }
-            
-            return node;
-        }
-
-        private string TranslateKey(string key)
-        {
-            if (key.Contains("消息Id", StringComparison.OrdinalIgnoreCase)) return key.Replace("消息Id", "消息ID ", StringComparison.OrdinalIgnoreCase);
-            if (key.Contains("车牌颜色")) return key.Replace("车牌颜色", "车牌颜色 ");
-            
-            return key switch
-            {
-                "MsgId" => "消息ID",
-                "MsgNum" => "消息流水号",
-                "TerminalPhoneNo" => "终端手机号",
-                "Header" => "消息头",
-                "MessageBodyProperty" => "消息体属性",
-                "VersionFlag" => "版本标识",
-                "Encrypt" => "加密方式",
-                "DataLength" => "数据长度",
-                "TerminalId" => "终端ID",
-                "PlateColor" => "车牌颜色",
-                "Bodies" => "消息体",
-                "CheckCode" => "校验码",
-                "JT808 Package" => "JT808 报文",
-                _ => key
-            };
-        }
-
-        private string TranslateMsgId(ushort msgId)
-        {
-            string hex = msgId.ToString("X4");
-            string desc = hex switch
-            {
-                "0001" => "终端通用应答",
-                "8001" => "平台通用应答",
-                "0002" => "终端心跳",
-                "8003" => "补传分包请求",
-                "0100" => "终端注册",
-                "8100" => "终端注册应答",
-                "0102" => "终端鉴权",
-                "0104" => "查询终端参数应答",
-                "8103" => "设置终端参数",
-                "8104" => "查询终端参数",
-                "8105" => "终端控制",
-                "8106" => "查询指定终端参数",
-                "8107" => "查询终端属性",
-                "0107" => "查询终端属性应答",
-                "0108" => "终端升级结果通知",
-                "0200" => "位置信息汇报",
-                "0201" => "位置信息查询应答",
-                "8201" => "位置信息查询",
-                "8202" => "临时位置跟踪控制",
-                "8203" => "人工确认报警消息",
-                "8300" => "文本信息下发",
-                "8301" => "事件设置",
-                "0301" => "事件报告",
-                "8302" => "提问下发",
-                "0302" => "提问应答",
-                "8303" => "信息点播菜单设置",
-                "0303" => "信息点播/取消",
-                "8304" => "信息服务",
-                "8400" => "电话回拨",
-                "8401" => "设置电话本",
-                "8500" => "车辆控制",
-                "0500" => "车辆控制应答",
-                "8600" => "设置多边形区域",
-                "8601" => "删除多边形区域",
-                "8602" => "设置矩形区域",
-                "8603" => "删除矩形区域",
-                "8604" => "设置圆形区域",
-                "8605" => "删除圆形区域",
-                "8606" => "设置路线",
-                "8607" => "删除路线",
-                "8800" => "多媒体数据上传应答",
-                "0800" => "多媒体事件信息上传",
-                "0801" => "多媒体数据上传",
-                "8801" => "摄像头立即拍摄命令",
-                "0805" => "摄像头立即拍摄命令应答",
-                "8802" => "存储多媒体数据检索",
-                "0802" => "存储多媒体数据检索应答",
-                "8803" => "存储多媒体数据上传",
-                "8804" => "录音开始命令",
-                "0900" => "数据上行透传",
-                "8900" => "数据下行透传",
-                "0901" => "数据压缩上报",
-                "0A00" => "终端RSA公钥",
-                "8A00" => "平台RSA公钥",
-                _ => ""
-            };
-            return desc;
-        }
-
-        private string TranslateValue(string key, string value)
-        {
-            if (key.Contains("消息Id", StringComparison.OrdinalIgnoreCase) && int.TryParse(value, out int msgId))
-            {
-                string desc = TranslateMsgId((ushort)msgId);
-                return $"{msgId} {desc}".Trim();
-            }
-            else if (key.Contains("车牌颜色") && int.TryParse(value, out int colorId))
-            {
-                string colorDesc = colorId switch
-                {
-                    1 => "蓝色",
-                    2 => "黄色",
-                    3 => "黑色",
-                    4 => "白色",
-                    5 => "绿色",
-                    9 => "其他",
-                    _ => "未指定"
-                };
-                return $"{colorId} {colorDesc}";
-            }
-
-            return value;
-        }
-
-        private void TraverseJsonForTable(string name, JsonElement element, ref int offset)
-        {
-            if (name == "JT808 Package")
-            {
-                if (element.ValueKind == JsonValueKind.Object)
-                {
-                    foreach (var prop in element.EnumerateObject())
-                    {
-                        TraverseJsonForTable(prop.Name, prop.Value, ref offset);
-                    }
-                }
-                return;
-            }
-
-            string hexData = "";
-            string field = name;
-            var match = System.Text.RegularExpressions.Regex.Match(name, @"^\[([0-9A-Fa-f]+|bit[0-9~]+)\](.*)$");
-            if (match.Success)
-            {
-                hexData = match.Groups[1].Value;
-                field = match.Groups[2].Value.Trim();
-            }
-
-            field = TranslateKey(field).Replace(" ", "");
-            string rawValue = element.ValueKind != JsonValueKind.Object && element.ValueKind != JsonValueKind.Array ? element.ToString() ?? "" : "";
-            string result = TranslateValue(name, rawValue);
-
-            string offsetStr = "";
-            string lengthStr = "";
-            string dataType = "";
-
-            if (!string.IsNullOrEmpty(hexData))
-            {
-                if (hexData.StartsWith("bit"))
-                {
-                    offsetStr = "-";
-                    lengthStr = "bit";
-                    dataType = "BIT";
-                }
-                else
-                {
-                    offsetStr = offset.ToString();
-                    int len = hexData.Length / 2;
-                    lengthStr = len.ToString();
-                    dataType = len switch
-                    {
-                        1 => "BYTE",
-                        2 => "WORD",
-                        4 => "DWORD",
-                        _ => "BYTES"
-                    };
-                    offset += len;
-                }
-            }
-            
-            if (!string.IsNullOrEmpty(hexData) || (!string.IsNullOrEmpty(rawValue) && element.ValueKind != JsonValueKind.Object && element.ValueKind != JsonValueKind.Array))
-            {
-                if (element.ValueKind != JsonValueKind.Object && element.ValueKind != JsonValueKind.Array)
-                {
-                    AnalyzerResultTable.Add(new AnalyzerTableRow
-                    {
-                        Index = AnalyzerResultTable.Count,
-                        Field = field,
-                        HexData = hexData,
-                        DataType = dataType,
-                        OffsetStr = offsetStr,
-                        LengthStr = lengthStr,
-                        Result = result
-                    });
-                }
-            }
-
-            if (element.ValueKind == JsonValueKind.Object)
-            {
-                foreach (var prop in element.EnumerateObject())
-                {
-                    TraverseJsonForTable(prop.Name, prop.Value, ref offset);
-                }
-            }
-            else if (element.ValueKind == JsonValueKind.Array)
-            {
-                int i = 0;
-                foreach (var item in element.EnumerateArray())
-                {
-                    TraverseJsonForTable($"[{i}]", item, ref offset);
-                    i++;
-                }
-            }
-        }
-
-        private void Log(string direction, string message)
-        {
-            // Forward to console logger
-            if (direction == "发送")
-            {
-                ConsoleLogger.LogNetwork("发送", Array.Empty<byte>(), message);
-            }
-            else if (direction == "发送解析")
-            {
-                ConsoleLogger.LogNetwork("发送解析", Array.Empty<byte>(), message);
-            }
-            else if (direction == "接收")
-            {
-                ConsoleLogger.LogNetwork("接收", Array.Empty<byte>(), message);
-            }
-            else if (direction == "接收解析")
-            {
-                ConsoleLogger.LogNetwork("接收解析", Array.Empty<byte>(), message);
-            }
-            else if (direction == "系统")
-            {
-                ConsoleLogger.LogInfo(message);
-            }
-            else if (direction == "异常" || direction == "解析异常")
-            {
-                ConsoleLogger.LogError(direction, message);
-            }
-            else
-            {
-                ConsoleLogger.LogDebug(direction, message);
-            }
-
-            if (Application.Current != null)
-            {
-                Application.Current.Dispatcher.Invoke(() =>
-                {
-                    bool isRaw = message.StartsWith("RAW: ");
-                    string rawHex = "";
-                    string displayMsg = message;
-
-                    if (isRaw)
-                    {
-                        rawHex = message.Substring(5).Trim();
-                        displayMsg = message; // Keep RAW: prefix for visual clarity, or you can strip it
-                    }
-
-                    var item = new LogMessageItem
-                    {
-                        TimestampStr = $"[{DateTime.Now:HH:mm:ss.fff}]",
-                        DirectionStr = $"[{direction}]",
-                        Message = displayMsg,
-                        HasRaw = isRaw,
-                        RawData = rawHex
-                    };
-
-                    LogMessages.Add(item);
-
-                    // Keep only the last 2000 log items to prevent memory issues
-                    if (LogMessages.Count > 2000)
-                    {
-                        LogMessages.RemoveAt(0);
-                    }
-                });
-            }
-        }
-
-        private void RemoveErrorProperties(JsonNode node)
-        {
-            if (node is JsonObject jObj)
-            {
-                jObj.Remove("解析外部部未知附加信息报错");
-                jObj.Remove("解析异常");
-                foreach (var kvp in jObj.ToArray())
-                {
-                    if (kvp.Value != null) RemoveErrorProperties(kvp.Value);
-                }
-            }
-            else if (node is JsonArray jArr)
-            {
-                foreach (var item in jArr)
-                {
-                    if (item != null) RemoveErrorProperties(item);
-                }
-            }
-        }
-
-        private void NetworkClient_OnDataReceived(byte[] data)
-        {
-            string hexStr = data.ToHexString();
-            Log("接收", $"RAW: {hexStr}");
-
-            try
-            {
-                var package = _protocolManager.Deserialize(data);
-                string desc = TranslateMsgId(package.Header.MsgId);
-                if (!string.IsNullOrEmpty(desc))
-                {
-                    Log("接收", $"{desc}(0x{package.Header.MsgId:X4})");
-                }
-
-                string analysis = _protocolManager.Analyze(data);
-                
-                // 格式化解析出的 JSON 以提高可读性，包含中文支持
-                try
-                {
-                    var options = new System.Text.Json.JsonSerializerOptions 
-                    { 
-                        WriteIndented = true,
-                        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-                    };
-                    var jNode = JsonNode.Parse(analysis);
-                    if (jNode != null)
-                    {
-                        RemoveErrorProperties(jNode);
-                        analysis = jNode.ToJsonString(options);
-                    }
-                }
-                catch { } // 如果不是标准 JSON 就不格式化
-
-                Log("接收解析", $"\n{analysis}");
-
-                // 自动获取注册应答 (0x8100) 中的鉴权码
-                if (package.Header.MsgId == 0x8100 && package.Bodies is JT808_0x8100 registerResponse)
-                {
-                    if (registerResponse.JT808TerminalRegisterResult == JT808TerminalRegisterResult.success)
-                    {
-                        Application.Current.Dispatcher.Invoke(() =>
-                        {
-                            AuthCode = registerResponse.Code;
-                            Log("系统", $"已自动获取鉴权码: {AuthCode}");
-                            TerminalStatusText = "已注册，待鉴权";
-                            TerminalStatusColor = "#2196F3"; // Blue
-                        });
-                    }
-                    else
-                    {
-                        Log("系统", $"注册失败，错误码: {registerResponse.JT808TerminalRegisterResult}");
-                        Application.Current.Dispatcher.Invoke(() =>
-                        {
-                            TerminalStatusText = $"注册失败: {registerResponse.JT808TerminalRegisterResult}";
-                            TerminalStatusColor = "#F44336"; // Red
-                        });
-                    }
-                }
-                // 拦截查询终端属性 (0x8107)
-                if (package.Header.MsgId == 0x8107)
-                {
-                    Task.Run(async () =>
-                    {
-                        try
-                        {
-                            var header = new JT808Header
-                            {
-                                MsgId = 0x0107,
-                                TerminalPhoneNo = TerminalPhoneNo,
-                                MsgNum = 1,
-                            };
-
-                            var body = new JT808_0x0107
-                            {
-                                TerminalType = 0,
-                                MakerId = ManufacturerId,
-                                TerminalModel = TerminalModel,
-                                TerminalId = TerminalId,
-                                Terminal_SIM_ICCID = SimNumber,
-                                Terminal_Hardware_Version_Num = HardwareVersion,
-                                Terminal_Firmware_Version_Num = UseAppVersionAsFirmwareVersion ? AppVersionInfo.FullVersion : FirmwareVersion,
-                                GNSSModule = 1,
-                                CommunicationModule = 1
-                            };
-
-                            var replyPackage = new JT808Package
-                            {
-                                Header = header,
-                                Bodies = body
-                            };
-
-                            var version = UseJT808_2019 ? JT808Version.JTT2019 : JT808Version.JTT2013;
-                            byte[] replyData = _protocolManager.Serialize(replyPackage, version);
-                            await _networkClient.SendAsync(replyData);
-                            Log("发送", $"自动应答 0x0107 查询终端属性");
-                        }
-                        catch (Exception ex)
-                        {
-                            Log("系统", $"发送 0x0107 应答异常: {ex.Message}");
-                        }
-                    });
-                }
-                
-                // 拦截平台通用应答 (0x8001)
-                if (package.Header.MsgId == 0x8001 && package.Bodies is JT808_0x8001 platformResponse)
-                {
-                    // 判断是否为终端鉴权 (0x0102) 的应答
-                    if (platformResponse.AckMsgId == 0x0102)
-                    {
-                        Application.Current.Dispatcher.Invoke(() =>
-                        {
-                            if (platformResponse.JT808PlatformResult == JT808.Protocol.Enums.JT808PlatformResult.succeed)
-                            {
-                                TerminalStatusText = "鉴权成功";
-                                TerminalStatusColor = "#4CAF50"; // Green
-                                Log("系统", "鉴权成功！");
-                            }
-                            else
-                            {
-                                TerminalStatusText = $"鉴权失败: {platformResponse.JT808PlatformResult}";
-                                TerminalStatusColor = "#F44336"; // Red
-                                Log("系统", $"鉴权失败: {platformResponse.JT808PlatformResult}");
-                            }
-                        });
-                    }
-                }
-                
-                // 拦截下行透传报文 (0x8900)
-                if (package.Header.MsgId == 0x8900 && package.Bodies is JT808_0x8900 ptDown)
-                {
-                    // If serial port is open, write data to it
-                    bool writeToSerialSuccess = false;
-                    if (_serialPort != null && _serialPort.IsOpen)
-                    {
-                        try
-                        {
-                            _serialPort.Write(ptDown.PassthroughData, 0, ptDown.PassthroughData.Length);
-                            writeToSerialSuccess = true;
-                        }
-                        catch (Exception ex)
-                        {
-                            Log("系统", $"接收数据写入串口失败: {ex.Message}");
-                        }
-                    }
-
-                    Application.Current.Dispatcher.Invoke(() =>
-                    {
-                        PassthroughMessages.Add(new PassthroughMessage
-                        {
-                            IsFromServer = true,
-                            Time = DateTime.Now.ToString("HH:mm:ss"),
-                            TypeHex = ptDown.PassthroughType.ToString("X2"),
-                            RawData = ptDown.PassthroughData,
-                            Content = DecodePassthroughData(ptDown.PassthroughData, ChatEncodingIndex),
-                            Label = writeToSerialSuccess ? "[平台 -> 串口]" : "[平台 -> 终端]"
-                        });
-                    });
-
-                    // 通用应答
-                    _ = SendTerminalGeneralResponseAsync(package.Header.MsgId, package.Header.MsgNum, JT808.Protocol.Enums.JT808TerminalResult.Success);
-                }
-                // 拦截文本信息下发 (0x8300)
-                else if (package.Header.MsgId == 0x8300 && package.Bodies is JT808_0x8300 textDown)
-                {
-                    // 保存原始字节用于后续重编码切换
-                    byte[] rawBytes;
-                    try
-                    {
-                        rawBytes = TextDownlinkEncodingIndex == 1
-                            ? System.Text.Encoding.GetEncoding("GBK").GetBytes(textDown.TextInfo)
-                            : System.Text.Encoding.UTF8.GetBytes(textDown.TextInfo ?? "");
-                    }
-                    catch
-                    {
-                        rawBytes = System.Text.Encoding.UTF8.GetBytes(textDown.TextInfo ?? "");
-                    }
-
-                    var msg = new TextDownlinkMessage
-                    {
-                        Time = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
-                        Content = textDown.TextInfo ?? string.Empty,
-                        Flag = textDown.TextFlag,
-                        RawBytes = rawBytes
-                    };
-
-                    Application.Current.Dispatcher.Invoke(() =>
-                    {
-                        TextDownlinkMessages.Add(msg);
-                    });
-
-                    // TTS语音播报
-                    if (msg.IsTTS && EnableTTSPlayback)
-                    {
-                        string voiceName = SelectedTTSVoice;
-                        string textToSpeak = textDown.TextInfo ?? string.Empty;
-                        Task.Run(() =>
-                        {
-                            try
-                            {
-                                using (var synth = new System.Speech.Synthesis.SpeechSynthesizer())
-                                {
-                                    if (!string.IsNullOrEmpty(voiceName))
-                                    {
-                                        synth.SelectVoice(voiceName);
-                                    }
-                                    synth.Speak(textToSpeak);
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                Log("系统", $"TTS语音播报失败: {ex.Message}");
-                            }
-                        });
-                    }
-
-                    // 回复通用应答
-                    _ = SendTerminalGeneralResponseAsync(package.Header.MsgId, package.Header.MsgNum, JT808.Protocol.Enums.JT808TerminalResult.Success);
-                }
-                // 拦截查询终端参数 (0x8104)
-                else if (package.Header.MsgId == 0x8104)
-                {
-                    var replyBody = new JT808_0x0104
-                    {
-                        MsgNum = package.Header.MsgNum,
-                        ParamList = new System.Collections.Generic.List<JT808_0x8103_BodyBase>()
-                    };
-                    
-                    replyBody.ParamList.Add(new JT808_0x8103_0x0081 { ParamValue = ParseProvinceId(ProvinceIdInput, 11) });
-                    replyBody.ParamList.Add(new JT808_0x8103_0x0082 { ParamValue = ParseCityId(CityIdInput, 1101) });
-                    replyBody.ParamList.Add(new JT808_0x8103_0x0083 { ParamValue = PlateNo ?? "沪A88888" });
-                    replyBody.ParamList.Add(new JT808_0x8103_0x0084 { ParamValue = PlateColor });
-
-                    // 0x0075: 音视频参数
-                    replyBody.ParamList.Add(new JT808.Protocol.Extensions.JT1078.MessageBody.JT808_0x8103_0x0075 
-                    { 
-                        RTS_EncodeMode = 0,
-                        RTS_Resolution = 5,
-                        RTS_KF_Interval = 250,
-                        RTS_Target_FPS = 25,
-                        RTS_Target_CodeRate = 0,
-                        StreamStore_EncodeMode = 0,
-                        StreamStore_Resolution = 5,
-                        StreamStore_KF_Interval = 250,
-                        StreamStore_Target_FPS = 25,
-                        StreamStore_Target_CodeRate = 0,
-                        OSD = 1,
-                        AudioOutputEnabled = 0
-                    });
-
-                    // 0x0076: 音视频通道列表设置
-                    var avChannels = new System.Collections.Generic.List<JT808.Protocol.Extensions.JT1078.MessageBody.JT808_0x8103_0x0076_AVChannelRefTable>();
-                    foreach (var c in VideoChannels)
-                    {
-                        avChannels.Add(new JT808.Protocol.Extensions.JT1078.MessageBody.JT808_0x8103_0x0076_AVChannelRefTable 
-                        {
-                            PhysicalChannelNo = c.LogicalChannelNo,
-                            LogicChannelNo = c.LogicalChannelNo,
-                            ChannelType = 0, // 0:音视频
-                            IsConnectCloudPlat = 0
-                        });
-                    }
-                    replyBody.ParamList.Add(new JT808.Protocol.Extensions.JT1078.MessageBody.JT808_0x8103_0x0076 
-                    {
-                        AVChannelTotal = (byte)avChannels.Count,
-                        AudioChannelTotal = 0,
-                        VudioChannelTotal = (byte)avChannels.Count,
-                        AVChannelRefTables = avChannels
-                    });
-
-                    // 0x0077: 单独视频通道参数设置
-                    var signalChannels = new System.Collections.Generic.List<JT808.Protocol.Extensions.JT1078.MessageBody.JT808_0x8103_0x0077_SignalChannel>();
-                    foreach (var c in VideoChannels)
-                    {
-                        signalChannels.Add(new JT808.Protocol.Extensions.JT1078.MessageBody.JT808_0x8103_0x0077_SignalChannel
-                        {
-                            LogicChannelNo = c.LogicalChannelNo,
-                            RTS_EncodeMode = 0,
-                            RTS_Resolution = 5,
-                            RTS_KF_Interval = 250,
-                            RTS_Target_FPS = 25,
-                            RTS_Target_CodeRate = 0,
-                            StreamStore_EncodeMode = 0,
-                            StreamStore_Resolution = 5,
-                            StreamStore_KF_Interval = 250,
-                            StreamStore_Target_FPS = 25,
-                            StreamStore_Target_CodeRate = 0,
-                            OSD = 1
-                        });
-                    }
-                    replyBody.ParamList.Add(new JT808.Protocol.Extensions.JT1078.MessageBody.JT808_0x8103_0x0077 
-                    {
-                        NeedSetChannelTotal = (byte)signalChannels.Count,
-                        SignalChannels = signalChannels
-                    });
-                    
-                    var replyPackage = new JT808Package
-                    {
-                        Header = new JT808Header
-                        {
-                            MsgId = 0x0104,
-                            MsgNum = 0, // Using 0 as default or we can keep track of SN
-                            TerminalPhoneNo = TerminalPhoneNo,
-                        },
-                        Bodies = replyBody
-                    };
-                    
-                    Task.Run(async () =>
-                    {
-                        try
-                        {
-                            var version = UseJT808_2019 ? JT808Version.JTT2019 : JT808Version.JTT2013;
-                            byte[] replyData = _protocolManager.Serialize(replyPackage, version);
-                            await _networkClient.SendAsync(replyData);
-                            Application.Current.Dispatcher.Invoke(() =>
-                            {
-                                Log("发送", $"查询终端参数应答(0x0104)，响应流水号: {package.Header.MsgNum}，参数个数: {replyBody.ParamList.Count}");
-                                Log("发送", $"RAW: {replyData.ToHexString()}");
-                                try { Log("解析", _protocolManager.Analyze(replyData)); } catch { }
-                            });
-                        }
-                        catch (Exception ex)
-                        {
-                            Application.Current.Dispatcher.Invoke(() =>
-                            {
-                                Log("发送异常", $"0x0104序列化失败: {ex.Message}");
-                            });
-                        }
-                    });
-                }
-                // 拦截音视频传输请求 (0x9101)
-                else if (package.Header.MsgId == 0x9101)
-                {
-                    try
-                    {
-                        var body = package.Bodies as JT808.Protocol.Extensions.JT1078.MessageBody.JT808_0x9101;
-                        if (body != null)
-                        {
-                            string ip = body.ServerIp;
-                            int port = body.TcpPort > 0 ? body.TcpPort : body.UdpPort;
-                            byte channel = body.ChannelNo;
-                            
-                            Log("音视频", $"收到 0x9101 实时传输请求: 通道={channel}, IP={ip}:{port}, 数据类型={body.DataType}");
-
-                            var videoItem = VideoChannels.FirstOrDefault(c => c.LogicalChannelNo == channel);
-                            if (videoItem != null)
-                            {
-                                _ = StartVideoPushingAsync(videoItem, ip, port, body.DataType);
-                            }
-                        }
-
-                        _ = SendTerminalGeneralResponseAsync(package.Header.MsgId, package.Header.MsgNum, JT808.Protocol.Enums.JT808TerminalResult.Success);
-                    }
-                    catch (Exception ex)
-                    {
-                        Log("异常", $"解析 0x9101 失败: {ex.Message}");
-                    }
-                }
-                // 拦截音视频传输控制 (0x9102)
-                else if (package.Header.MsgId == 0x9102)
-                {
-                    try
-                    {
-                        var body = package.Bodies as JT808.Protocol.Extensions.JT1078.MessageBody.JT808_0x9102;
-                        if (body != null)
-                        {
-                            byte channel = body.ChannelNo;
-                            int ctrlCmd = body.ControlCmd;
-                            
-                            Log("音视频控制", $"收到 0x9102 传输控制: 通道={channel}, 命令={ctrlCmd}");
-
-                            if (ctrlCmd == 0) // 0表示关闭音视频传输
-                            {
-                                if (channel == 0)
-                                {
-                                    // 通道号为0表示操作所有通道
-                                    foreach (var ch in VideoChannels)
-                                    {
-                                        ch.StopPushing();
-                                    }
-                                }
-                                else
-                                {
-                                    var videoItem = VideoChannels.FirstOrDefault(c => c.LogicalChannelNo == channel);
-                                    if (videoItem != null)
-                                    {
-                                        videoItem.StopPushing();
-                                    }
-                                }
-                            }
-                        }
-
-                        _ = SendTerminalGeneralResponseAsync(package.Header.MsgId, package.Header.MsgNum, JT808.Protocol.Enums.JT808TerminalResult.Success);
-                    }
-                    catch (Exception ex)
-                    {
-                        Log("异常", $"解析 0x9102 失败: {ex.Message}");
-                    }
-                }
-                // 拦截其他需要通用应答的下行指令
-                else if (package.Header.MsgId != 0x8100 && package.Header.MsgId != 0x8001 && package.Header.MsgId.ToString("X4").StartsWith("8"))
-                {
-                    // 大部分8开头的消息（除了8100注册应答、8001平台通用应答等特定消息）默认回复终端通用应答
-                    // 在这里做一个保守的默认回复机制
-                    _ = SendTerminalGeneralResponseAsync(package.Header.MsgId, package.Header.MsgNum, JT808.Protocol.Enums.JT808TerminalResult.Success);
-                }
-            }
-            catch (Exception ex)
-            {
-                Log("解析异常", ex.Message);
-            }
-        }
-
-        private async Task StartVideoPushingAsync(VideoChannelItem videoItem, string ip, int port, int dataType)
-        {
-            try
-            {
-                await videoItem.StartPushingAsync(ip, port, TerminalPhoneNo, dataType, AudioCodecIndex);
-            }
-            catch (Exception ex)
-            {
-                Log("音视频", $"通道 {videoItem.LogicalChannelNo} 推流失败: {ex.Message}");
-            }
-        }
-
-        [RelayCommand]
-        private async Task ConnectAsync()
-        {
-            if (IsConnected) return;
-
-            var addr = $"{ServerIp}:{ServerPort}";
-            int existingIndex = ServerAddressHistory.IndexOf(addr);
-            if (existingIndex < 0)
-            {
-                ServerAddressHistory.Insert(0, addr);
-                if (ServerAddressHistory.Count > 10) ServerAddressHistory.RemoveAt(ServerAddressHistory.Count - 1);
-            }
-            else if (existingIndex > 0)
-            {
-                ServerAddressHistory.Move(existingIndex, 0);
-            }
-            ServerAddressInput = addr; // Ensure the UI maintains the text
-            
-            SaveConfigDebounced();
-
-            ConsoleLogger.LogAction("连接服务器", $"IP={ServerIp}, 端口={ServerPort}");
-            try
-            {
-                Log("系统", $"正在连接 {ServerIp}:{ServerPort}...");
-                await _networkClient.ConnectAsync(ServerIp, ServerPort);
-                IsConnected = true;
-                TerminalStatusText = "已连接 (未注册)";
-                TerminalStatusColor = "#FF9800"; // Orange
-                Log("系统", "连接成功！");
-                StartHeartbeatLoop();
-            }
-            catch (Exception ex)
-            {
-                Log("系统", $"连接失败：{ex.Message}");
-            }
-        }
-
-        [RelayCommand]
-        private void Disconnect()
-        {
-            ConsoleLogger.LogAction("断开连接", "正在断开与服务器的连接");
-            _networkClient.Disconnect();
-            IsConnected = false;
-            TerminalStatusText = "未连接";
-            TerminalStatusColor = "Gray";
-            _heartbeatCts?.Cancel();
-        }
-
-        private byte[] AppendRawBytesToJT808Package(byte[] data, byte[] rawAttach)
-        {
-            if (rawAttach == null || rawAttach.Length == 0) return data;
-
-            // 1. Remove 7E markers
-            if (data[0] != 0x7E || data[data.Length - 1] != 0x7E) return data;
-            var escaped = new byte[data.Length - 2];
-            Array.Copy(data, 1, escaped, 0, data.Length - 2);
-
-            // 2. Unescape
-            var unescapedList = new System.Collections.Generic.List<byte>();
-            for (int i = 0; i < escaped.Length; i++)
-            {
-                if (escaped[i] == 0x7D && i + 1 < escaped.Length)
-                {
-                    if (escaped[i + 1] == 0x01) { unescapedList.Add(0x7D); i++; }
-                    else if (escaped[i + 1] == 0x02) { unescapedList.Add(0x7E); i++; }
-                    else unescapedList.Add(escaped[i]);
-                }
-                else
-                {
-                    unescapedList.Add(escaped[i]);
-                }
-            }
-            var unescaped = unescapedList.ToArray();
-
-            // 3. Extract parts
-            // Header (unknown length due to variable phone length in 2019, but we know body length)
-            ushort msgProps = (ushort)((unescaped[2] << 8) | unescaped[3]);
-            int oldBodyLength = msgProps & 0x03FF;
-            int newBodyLength = oldBodyLength + rawAttach.Length;
-            if (newBodyLength > 0x03FF)
-            {
-                throw new InvalidOperationException($"JT808 消息体长度 {newBodyLength} 超过 1023 字节，必须使用分包发送。");
-            }
-            
-            // Update Body Length in properties
-            msgProps = (ushort)((msgProps & ~0x03FF) | newBodyLength);
-            unescaped[2] = (byte)(msgProps >> 8);
-            unescaped[3] = (byte)(msgProps & 0xFF);
-
-            // Insert raw bytes before checksum
-            var newUnescaped = new byte[unescaped.Length + rawAttach.Length];
-            // Copy everything except the old checksum
-            Array.Copy(unescaped, 0, newUnescaped, 0, unescaped.Length - 1);
-            // Insert rawAttach
-            Array.Copy(rawAttach, 0, newUnescaped, unescaped.Length - 1, rawAttach.Length);
-
-            // 4. Recalculate checksum
-            byte checksum = 0;
-            for (int i = 0; i < newUnescaped.Length - 1; i++)
-            {
-                checksum ^= newUnescaped[i];
-            }
-            newUnescaped[newUnescaped.Length - 1] = checksum;
-
-            // 5. Escape
-            var newEscapedList = new System.Collections.Generic.List<byte>();
-            newEscapedList.Add(0x7E); // Start
-            for (int i = 0; i < newUnescaped.Length; i++)
-            {
-                if (newUnescaped[i] == 0x7E)
-                {
-                    newEscapedList.Add(0x7D);
-                    newEscapedList.Add(0x02);
-                }
-                else if (newUnescaped[i] == 0x7D)
-                {
-                    newEscapedList.Add(0x7D);
-                    newEscapedList.Add(0x01);
-                }
-                else
-                {
-                    newEscapedList.Add(newUnescaped[i]);
-                }
-            }
-            newEscapedList.Add(0x7E); // End
-
-            return newEscapedList.ToArray();
-        }
-
-        private async Task SendPackageAsync<T>(JT808Package package, byte[]? rawAppendBytes = null) where T : JT808Bodies
-        {
-            if (!IsConnected)
-            {
-                Log("系统", "请先连接服务器！");
-                return;
-            }
-
-            try
-            {
-                JT808Version version = UseJT808_2019 ? JT808Version.JTT2019 : JT808Version.JTT2013;
-                byte[] data = _protocolManager.Serialize<T>(package, version);
-                
-                if (rawAppendBytes != null && rawAppendBytes.Length > 0)
-                {
-                    data = AppendRawBytesToJT808Package(data, rawAppendBytes);
-                }
-                
-                Log("发送", $"RAW: {data.ToHexString()}");
-                string analysis = _protocolManager.Analyze(data);
-                try
-                {
-                    var options = new System.Text.Json.JsonSerializerOptions 
-                    { 
-                        WriteIndented = true,
-                        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-                    };
-                    var jNode = JsonNode.Parse(analysis);
-                    if (jNode != null)
-                    {
-                        RemoveErrorProperties(jNode);
-                        analysis = jNode.ToJsonString(options);
-                    }
-                }
-                catch { }
-
-                Log("发送解析", $"\n{analysis}");
-
-                await _networkClient.SendAsync(data);
-            }
-            catch (Exception ex)
-            {
-                Log("系统", $"发送异常: {ex.Message}");
-            }
-        }
-
-        [RelayCommand]
-        private async Task RegisterAsync()
-        {
-            ConsoleLogger.LogAction("终端注册", $"手机号={TerminalPhoneNo}, 省域={ProvinceIdInput}, 市县={CityIdInput}, 制造商ID={ManufacturerId}, 终端型号={TerminalModel}, 终端ID={TerminalId}, 车牌号={PlateNo}, 车牌颜色={PlateColor}");
-            var header = new JT808Header
-            {
-                MsgId = 0x0100,
-                TerminalPhoneNo = TerminalPhoneNo,
-                MsgNum = 1,
-            };
-
-            var body = new JT808_0x0100
-            {
-                AreaID = ParseProvinceId(ProvinceIdInput, 0),
-                CityOrCountyId = ParseCityId(CityIdInput, 0),
-                MakerId = ManufacturerId,
-                TerminalId = TerminalId,
-                TerminalModel = TerminalModel,
-                PlateColor = PlateColor,
-                PlateNo = PlateNo
-            };
-
-            var package = new JT808Package
-            {
-                Header = header,
-                Bodies = body
-            };
-
-            await SendPackageAsync<JT808_0x0100>(package);
-        }
-
-        [RelayCommand]
-        private async Task AuthAsync()
-        {
-            ConsoleLogger.LogAction("终端鉴权", $"手机号={TerminalPhoneNo}, 鉴权码={AuthCode}");
-            if (string.IsNullOrEmpty(AuthCode))
-            {
-                Log("系统", "鉴权码不能为空！请先注册获取或手动输入。");
-                return;
-            }
-
-            var header = new JT808Header
-            {
-                MsgId = 0x0102,
-                TerminalPhoneNo = TerminalPhoneNo,
-                MsgNum = 2,
-            };
-
-            var body = new JT808_0x0102
-            {
-                Code = AuthCode,
-                IMEI = "123456789012345",
-                SoftwareVersion = "V1.0.0"
-            };
-
-            var package = new JT808Package
-            {
-                Header = header,
-                Bodies = body
-            };
-
-            await SendPackageAsync<JT808_0x0102>(package);
-        }
-
-        [RelayCommand]
-        private async Task ReportLocationAsync()
-        {
-            var snapshot = CaptureLocationReportSnapshot();
-            ConsoleLogger.LogAction("发送位置汇报", $"手机号={snapshot.TerminalPhoneNo}, 经度={snapshot.Longitude}, 纬度={snapshot.Latitude}, 速度={snapshot.Speed}, 方向={snapshot.Direction}, 高程={snapshot.Altitude}, 报警标志=0x{snapshot.AlarmFlag:X8}, 状态标志=0x{snapshot.StatusFlag:X8}");
-
-            var header = new JT808Header
-            {
-                MsgId = 0x0200,
-                TerminalPhoneNo = snapshot.TerminalPhoneNo,
-                MsgNum = 3,
-            };
-
-            var body = new JT808_0x0200
-            {
-                AlarmFlag = snapshot.AlarmFlag,
-                StatusFlag = snapshot.StatusFlag,
-                Lat = (int)(snapshot.Latitude * 1000000),
-                Lng = (int)(snapshot.Longitude * 1000000),
-                Altitude = (ushort)snapshot.Altitude,
-                Speed = (ushort)(snapshot.Speed * 10),
-                Direction = (ushort)snapshot.Direction,
-                GPSTime = DateTime.Now,
-                UnknownLocationAttachData = new Dictionary<ushort, byte[]>()
-            };
-
-            // 标准附加信息注入 (直接转为RAW字节追加，避免依赖底层库的序列化兼容性问题)
-            var standardAttachBytes = new System.Collections.Generic.List<byte>();
-            if (snapshot.Enable0x01)
-            {
-                standardAttachBytes.Add(0x01); standardAttachBytes.Add(0x04);
-                standardAttachBytes.AddRange(BitConverter.GetBytes(System.Net.IPAddress.HostToNetworkOrder((int)snapshot.Mileage0x01)));
-            }
-            if (snapshot.Enable0x02)
-            {
-                standardAttachBytes.Add(0x02); standardAttachBytes.Add(0x02);
-                standardAttachBytes.AddRange(BitConverter.GetBytes(System.Net.IPAddress.HostToNetworkOrder((short)snapshot.Oil0x02)));
-            }
-            if (snapshot.Enable0x03)
-            {
-                standardAttachBytes.Add(0x03); standardAttachBytes.Add(0x02);
-                standardAttachBytes.AddRange(BitConverter.GetBytes(System.Net.IPAddress.HostToNetworkOrder((short)snapshot.Speed0x03)));
-            }
-            if (snapshot.Enable0x04)
-            {
-                standardAttachBytes.Add(0x04); standardAttachBytes.Add(0x02);
-                standardAttachBytes.AddRange(BitConverter.GetBytes(System.Net.IPAddress.HostToNetworkOrder((short)snapshot.AlarmEventId0x04)));
-            }
-            if (snapshot.Enable0x25)
-            {
-                standardAttachBytes.Add(0x25); standardAttachBytes.Add(0x04);
-                standardAttachBytes.AddRange(BitConverter.GetBytes(System.Net.IPAddress.HostToNetworkOrder((int)snapshot.ExtVehicleSignal0x25)));
-            }
-            if (snapshot.Enable0x2A)
-            {
-                standardAttachBytes.Add(0x2A); standardAttachBytes.Add(0x02);
-                standardAttachBytes.AddRange(BitConverter.GetBytes(System.Net.IPAddress.HostToNetworkOrder((short)snapshot.IOStatus0x2A)));
-            }
-            if (snapshot.Enable0x2B)
-            {
-                standardAttachBytes.Add(0x2B); standardAttachBytes.Add(0x04);
-                int analog = (snapshot.AnalogAD1 << 16) | snapshot.AnalogAD0;
-                standardAttachBytes.AddRange(BitConverter.GetBytes(System.Net.IPAddress.HostToNetworkOrder(analog)));
-            }
-            if (snapshot.Enable0x30)
-            {
-                standardAttachBytes.Add(0x30); standardAttachBytes.Add(0x01);
-                standardAttachBytes.Add(snapshot.NetworkSignal0x30);
-            }
-            if (snapshot.Enable0x31)
-            {
-                standardAttachBytes.Add(0x31); standardAttachBytes.Add(0x01);
-                standardAttachBytes.Add(snapshot.GNSSCount0x31);
-            }
-
-            // 自定义 Hex 透传 (格式：ID|Length|Data 或 ID|Data，支持逗号分隔多个)
-            var rawAppendBytesList = new System.Collections.Generic.List<byte>();
-            Log("系统", $"开始处理位置汇报，当前配置附加项数量: {snapshot.CustomAttachItems.Count}");
-            foreach (var attach in snapshot.CustomAttachItems)
-            {
-                try
-                {
-                    if (!string.IsNullOrWhiteSpace(attach.AttachId))
-                    {
-                        string idStr = attach.AttachId.Replace(" ", "").Replace("-", "").Replace("|", "");
-                        if (!string.IsNullOrEmpty(idStr)) rawAppendBytesList.AddRange(idStr.ToHexBytes());
-                    }
-                    
-                    if (!string.IsNullOrWhiteSpace(attach.AttachLength))
-                    {
-                        string lenStr = attach.AttachLength.Replace(" ", "").Replace("-", "").Replace("|", "");
-                        if (!string.IsNullOrEmpty(lenStr)) rawAppendBytesList.AddRange(lenStr.ToHexBytes());
-                    }
-                    
-                    if (!string.IsNullOrWhiteSpace(attach.AttachData))
-                    {
-                        string dataStr = attach.AttachData.Replace(" ", "").Replace("-", "").Replace("|", "");
-                        if (!string.IsNullOrEmpty(dataStr)) rawAppendBytesList.AddRange(dataStr.ToHexBytes());
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Log("系统", $"自定义附加字段[{attach.AttachId}]解析失败: {ex.Message}");
-                }
-            }
-            
-            TriggerOnLocationReporting(rawAppendBytesList);
-            
-            if (standardAttachBytes.Count > 0)
-            {
-                rawAppendBytesList.InsertRange(0, standardAttachBytes);
-            }
-
-            Log("系统", $"最终拼接的附加数据(RAW Hex): {(rawAppendBytesList.Count > 0 ? rawAppendBytesList.ToArray().ToHexString() : "无")}");
-
-            var package = new JT808Package
-            {
-                Header = header,
-                Bodies = body
-            };
-
-            await SendPackageAsync<JT808_0x0200>(package, rawAppendBytesList.Count > 0 ? rawAppendBytesList.ToArray() : null);
-        }
-
-        private async Task SendTerminalGeneralResponseAsync(ushort replyMsgId, ushort replyMsgNum, JT808.Protocol.Enums.JT808TerminalResult result)
-        {
-            try
-            {
-                var header = new JT808Header
-                {
-                    MsgId = 0x0001,
-                    TerminalPhoneNo = TerminalPhoneNo,
-                    MsgNum = 0 // Will be set in SendPackageAsync if needed, or explicitly increment if managing sequence here
-                };
-
-                var body = new JT808_0x0001
-                {
-                    ReplyMsgId = replyMsgId,
-                    ReplyMsgNum = replyMsgNum,
-                    TerminalResult = result
-                };
-
-                var package = new JT808Package
-                {
-                    Header = header,
-                    Bodies = body
-                };
-
-                Log("系统", $"发送终端通用应答(0x0001)，响应消息ID: 0x{replyMsgId:X4}，流水号: {replyMsgNum}");
-                await SendPackageAsync<JT808_0x0001>(package);
-            }
-            catch (Exception ex)
-            {
-                Log("系统", $"发送通用应答失败: {ex.Message}");
-            }
-        }
-
-        [RelayCommand]
         private void ToggleAutoReport()
         {
             ConsoleLogger.LogAction("切换自动位置汇报", $"当前状态={IsAutoReporting} -> 目标状态={!IsAutoReporting}, 间隔={AutoReportInterval}秒");
@@ -3207,13 +1649,13 @@ namespace TerminalSimulation.Wpf.ViewModels
                     Log("系统", "自动汇报间隔不能小于1秒");
                     return;
                 }
-                
+
                 IsAutoReporting = true;
                 _autoReportCts = new System.Threading.CancellationTokenSource();
                 var token = _autoReportCts.Token;
                 Log("系统", $"已开启自动位置汇报，间隔 {AutoReportInterval} 秒");
 
-                _ = Task.Run(async () =>
+                _autoReportTask = Task.Run(async () =>
                 {
                     try
                     {
@@ -3223,12 +1665,11 @@ namespace TerminalSimulation.Wpf.ViewModels
                             await Task.Delay(TimeSpan.FromSeconds(AutoReportInterval), token);
                         }
                     }
-                    catch (TaskCanceledException)
-                    {
-                    }
+                    catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+                    catch (Exception ex) { Log("自动汇报", $"后台任务异常: {ex.Message}"); }
                     finally
                     {
-                        Application.Current.Dispatcher.Invoke(() => IsAutoReporting = false);
+                        Application.Current?.Dispatcher?.BeginInvoke(new Action(() => IsAutoReporting = false));
                     }
                 }, token);
             }
@@ -3239,14 +1680,14 @@ namespace TerminalSimulation.Wpf.ViewModels
             _heartbeatCts = new System.Threading.CancellationTokenSource();
             var token = _heartbeatCts.Token;
 
-            _ = Task.Run(async () =>
+            _heartbeatTask = Task.Run(async () =>
             {
                 try
                 {
                     while (!token.IsCancellationRequested)
                     {
                         await Task.Delay(TimeSpan.FromSeconds(HeartbeatInterval > 0 ? HeartbeatInterval : 30), token);
-                        
+
                         if (!IsHeartbeatDisabled && IsConnected)
                         {
                             var header = new JT808Header
@@ -3261,7 +1702,8 @@ namespace TerminalSimulation.Wpf.ViewModels
                         }
                     }
                 }
-                catch { }
+                catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+                catch (Exception ex) { Log("心跳", $"后台任务异常: {ex.Message}"); }
             }, token);
         }
 
@@ -3327,11 +1769,11 @@ namespace TerminalSimulation.Wpf.ViewModels
 
                 // If serial port is open, also write data to it
                 bool writeToSerialSuccess = false;
-                if (_serialPort != null && _serialPort.IsOpen)
+                if (_serialPortService.IsOpen)
                 {
                     try
                     {
-                        _serialPort.Write(ptData, 0, ptData.Length);
+                        _serialPortService.Write(ptData);
                         writeToSerialSuccess = true;
                     }
                     catch (Exception ex)
@@ -3352,6 +1794,7 @@ namespace TerminalSimulation.Wpf.ViewModels
                         Content = DecodePassthroughData(ptData, ChatEncodingIndex),
                         Label = writeToSerialSuccess ? "[终端 -> 平台/串口]" : "[终端 -> 平台]"
                     });
+                    TrimOldest(PassthroughMessages, MaxPassthroughMessages);
                     PassthroughInputText = "";
                 });
             }
@@ -3366,7 +1809,7 @@ namespace TerminalSimulation.Wpf.ViewModels
         {
             try
             {
-                var ports = System.IO.Ports.SerialPort.GetPortNames();
+                var ports = _serialPortService.GetPortNames();
                 SerialPorts.Clear();
                 foreach (var port in ports)
                 {
@@ -3413,9 +1856,7 @@ namespace TerminalSimulation.Wpf.ViewModels
 
             try
             {
-                _serialPort = new System.IO.Ports.SerialPort(SelectedSerialPort, SelectedBaudRate);
-                _serialPort.DataReceived += SerialPort_DataReceived;
-                _serialPort.Open();
+                _serialPortService.Open(SelectedSerialPort, SelectedBaudRate);
 
                 IsSerialPortOpen = true;
                 SerialPortBtnText = "关闭串口";
@@ -3432,15 +1873,9 @@ namespace TerminalSimulation.Wpf.ViewModels
         {
             try
             {
-                if (_serialPort != null)
+                if (_serialPortService.IsOpen)
                 {
-                    _serialPort.DataReceived -= SerialPort_DataReceived;
-                    if (_serialPort.IsOpen)
-                    {
-                        _serialPort.Close();
-                    }
-                    _serialPort.Dispose();
-                    _serialPort = null;
+                    _serialPortService.Close();
                     Log("系统", "串口已关闭");
                 }
             }
@@ -3455,36 +1890,13 @@ namespace TerminalSimulation.Wpf.ViewModels
             }
         }
 
-        private void SerialPort_DataReceived(object sender, System.IO.Ports.SerialDataReceivedEventArgs e)
-        {
-            if (_serialPort == null || !_serialPort.IsOpen) return;
-
-            try
-            {
-                int bytesToRead = _serialPort.BytesToRead;
-                if (bytesToRead <= 0) return;
-
-                byte[] buffer = new byte[bytesToRead];
-                _serialPort.Read(buffer, 0, bytesToRead);
-
-                _ = HandleSerialDataReceivedAsync(buffer);
-            }
-            catch (Exception ex)
-            {
-                Log("系统", $"串口数据读取失败: {ex.Message}");
-            }
-        }
-
         private async Task HandleSerialDataReceivedAsync(byte[] data)
         {
             try
             {
                 byte ptType = 0;
-                try
-                {
-                    ptType = Convert.ToByte(PassthroughTypeHex, 16);
-                }
-                catch { }
+                _ = byte.TryParse(PassthroughTypeHex, System.Globalization.NumberStyles.HexNumber,
+                    System.Globalization.CultureInfo.InvariantCulture, out ptType);
 
                 string contentStr;
                 if (PassthroughEncodingIndex == 2) // HEX
@@ -3534,6 +1946,7 @@ namespace TerminalSimulation.Wpf.ViewModels
                         Content = DecodePassthroughData(data, ChatEncodingIndex),
                         Label = IsConnected ? "[串口 -> 平台]" : "[串口接收]"
                     });
+                    TrimOldest(PassthroughMessages, MaxPassthroughMessages);
                 });
             }
             catch (Exception ex)
@@ -3576,233 +1989,79 @@ namespace TerminalSimulation.Wpf.ViewModels
             IsPathSimulating = true;
             Log("系统", "开始路径模拟行驶");
 
-            _ = Task.Run(async () =>
+            _pathSimulationTask = Task.Run(async () =>
             {
                 try
                 {
-                    DateTime lastReportTime = DateTime.MinValue;
-                    double totalDistance = 0;
-                    var segmentDistances = new List<double>();
-                    for (int i = 0; i < path.Count - 1; i++)
+                    await _locationSimulationService.RunAsync(path, () => Speed, (point, bearing) =>
                     {
-                        var dist = CalculateDistance(path[i].Lat, path[i].Lng, path[i + 1].Lat, path[i + 1].Lng);
-                        segmentDistances.Add(dist);
-                        totalDistance += dist;
-                    }
-
-                    double currentTraveled = 0;
-                    while (currentTraveled < totalDistance && !token.IsCancellationRequested)
-                    {
-                        // 查找当前所在的线段
-                        double distAccum = 0;
-                        int segIndex = 0;
-                        for (int i = 0; i < segmentDistances.Count; i++)
+                        Application.Current?.Dispatcher?.Invoke(() =>
                         {
-                            if (currentTraveled <= distAccum + segmentDistances[i])
-                            {
-                                segIndex = i;
-                                break;
-                            }
-                            distAccum += segmentDistances[i];
-                        }
-
-                        double segmentFraction = 0;
-                        if (segmentDistances[segIndex] > 0)
-                        {
-                            segmentFraction = (currentTraveled - distAccum) / segmentDistances[segIndex];
-                        }
-                        
-                        var p1 = path[segIndex];
-                        var p2 = path[segIndex + 1];
-                        var currentPt = Interpolate(p1, p2, segmentFraction);
-
-                        Application.Current.Dispatcher.Invoke(() =>
-                        {
-                            Latitude = Math.Round(currentPt.Lat, 6);
-                            Longitude = Math.Round(currentPt.Lng, 6);
-                            Direction = CalculateBearing(p1.Lat, p1.Lng, p2.Lat, p2.Lng);
-                            OnMapCarMoved?.Invoke(currentPt.Lat, currentPt.Lng); // 传递高精度原始坐标给地图避免偏差
+                            Latitude = Math.Round(point.Lat, 6);
+                            Longitude = Math.Round(point.Lng, 6);
+                            Direction = bearing;
+                            OnMapCarMoved?.Invoke(point.Lat, point.Lng);
                         });
-
-                        await Task.Delay(100, token); // 100ms
-                        
-                        double speedMs = Speed * 1000.0 / 3600.0;
-                        currentTraveled += speedMs * 0.1; // 0.1s
-                    }
-
+                    }, token);
                     if (!token.IsCancellationRequested)
                     {
                         Log("系统", "路径模拟行驶已到达终点");
-                        Application.Current.Dispatcher.Invoke(() =>
-                        {
-                            OnSimulationFinished?.Invoke();
-                        });
+                        Application.Current?.Dispatcher?.Invoke(() => OnSimulationFinished?.Invoke());
                     }
                 }
-                catch (TaskCanceledException) { }
+                catch (OperationCanceledException) when (token.IsCancellationRequested) { }
                 catch (Exception ex)
                 {
                     Log("系统", $"路径模拟出错: {ex.Message}");
-                    Application.Current.Dispatcher.Invoke(() =>
-                    {
-                        OnSimulationFinished?.Invoke();
-                    });
+                    Application.Current?.Dispatcher?.Invoke(() => OnSimulationFinished?.Invoke());
                 }
                 finally
                 {
-                    Application.Current.Dispatcher.Invoke(() => IsPathSimulating = false);
+                    Application.Current?.Dispatcher?.BeginInvoke(new Action(() => IsPathSimulating = false));
                 }
             }, token);
         }
 
-        private double CalculateDistance(double lat1, double lon1, double lat2, double lon2)
+        public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
+
+        public async ValueTask DisposeAsync()
         {
-            var R = 6371e3;
-            var phi1 = lat1 * Math.PI / 180;
-            var phi2 = lat2 * Math.PI / 180;
-            var dPhi = (lat2 - lat1) * Math.PI / 180;
-            var dLam = (lon2 - lon1) * Math.PI / 180;
+            if (Interlocked.Exchange(ref _disposeState, 1) != 0) return;
 
-            var a = Math.Sin(dPhi / 2) * Math.Sin(dPhi / 2) +
-                    Math.Cos(phi1) * Math.Cos(phi2) *
-                    Math.Sin(dLam / 2) * Math.Sin(dLam / 2);
-            var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
-            return R * c;
-        }
-
-        private int CalculateBearing(double lat1, double lon1, double lat2, double lon2)
-        {
-            var phi1 = lat1 * Math.PI / 180;
-            var phi2 = lat2 * Math.PI / 180;
-            var lam1 = lon1 * Math.PI / 180;
-            var lam2 = lon2 * Math.PI / 180;
-
-            var y = Math.Sin(lam2 - lam1) * Math.Cos(phi2);
-            var x = Math.Cos(phi1) * Math.Sin(phi2) -
-                    Math.Sin(phi1) * Math.Cos(phi2) * Math.Cos(lam2 - lam1);
-            var theta = Math.Atan2(y, x);
-            var brng = (theta * 180 / Math.PI + 360) % 360;
-            return (int)Math.Round(brng);
-        }
-
-        private GeoPoint Interpolate(GeoPoint p1, GeoPoint p2, double fraction)
-        {
-            return new GeoPoint
-            {
-                Lat = p1.Lat + (p2.Lat - p1.Lat) * fraction,
-                Lng = p1.Lng + (p2.Lng - p1.Lng) * fraction
-            };
-        }
-
-        [RelayCommand]
-        private void ExportConfig()
-        {
-            var dialog = new Microsoft.Win32.SaveFileDialog
-            {
-                Filter = "JSON 配置文件|*.json",
-                FileName = "terminal_config.json"
-            };
-            if (dialog.ShowDialog() == true)
-            {
-                try
-                {
-                    var config = new WorkStateConfig
-                    {
-                        ServerIp = ServerIp,
-                        ServerPort = ServerPort,
-                        TerminalPhoneNo = TerminalPhoneNo,
-                        AuthCode = AuthCode,
-                        UseJT808_2019 = UseJT808_2019,
-                        Speed = Speed,
-                        Direction = Direction,
-                        Altitude = Altitude,
-                        AutoReportInterval = AutoReportInterval,
-                        AlarmFlagValue = GetValueFromFlags(AlarmFlags),
-                        StatusFlagValue = GetValueFromFlags(StatusFlags),
-                        CustomAttachItems = CustomAttachItems.ToList()
-                    };
-                    var json = System.Text.Json.JsonSerializer.Serialize(config, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-                    File.WriteAllText(dialog.FileName, json);
-                    Log("系统", $"配置已成功导出至: {dialog.FileName}");
-                }
-                catch (Exception ex)
-                {
-                    Log("系统", $"配置导出失败: {ex.Message}");
-                }
-            }
-        }
-
-        [RelayCommand]
-        private void ImportConfig()
-        {
-            var dialog = new Microsoft.Win32.OpenFileDialog
-            {
-                Filter = "JSON 配置文件|*.json"
-            };
-            if (dialog.ShowDialog() == true)
-            {
-                try
-                {
-                    var json = File.ReadAllText(dialog.FileName);
-                    var config = System.Text.Json.JsonSerializer.Deserialize<WorkStateConfig>(json);
-                    if (config != null)
-                    {
-                        _isLoadingConfig = true;
-                        try
-                        {
-                            ServerIp = config.ServerIp;
-                            ServerPort = config.ServerPort;
-                            TerminalPhoneNo = config.TerminalPhoneNo;
-                            AuthCode = config.AuthCode;
-                            UseJT808_2019 = config.UseJT808_2019;
-                            Speed = config.Speed;
-                            Direction = config.Direction;
-                            Altitude = config.Altitude;
-                            AutoReportInterval = config.AutoReportInterval;
-                            
-                            SetFlagsFromValue(AlarmFlags, config.AlarmFlagValue);
-                            SetFlagsFromValue(StatusFlags, config.StatusFlagValue);
-
-                            if (config.CustomAttachItems != null)
-                            {
-                                CustomAttachItems.Clear();
-                                foreach (var item in config.CustomAttachItems)
-                                {
-                                    item.PropertyChanged += (s, e) => SaveConfigDebounced();
-                                    CustomAttachItems.Add(item);
-                                }
-                            }
-                        }
-                        finally
-                        {
-                            _isLoadingConfig = false;
-                        }
-                        
-                        SaveConfig(); // Update local config.json immediately
-                        Log("系统", $"配置已成功从 {dialog.FileName} 导入");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Log("系统", $"配置导入失败: {ex.Message}");
-                }
-            }
-        }
-
-        public void Dispose()
-        {
             _autoReportCts?.Cancel();
-            _autoReportCts?.Dispose();
             _heartbeatCts?.Cancel();
-            _heartbeatCts?.Dispose();
             _pathSimulationCts?.Cancel();
-            _pathSimulationCts?.Dispose();
-            foreach (var channel in VideoChannels.ToList())
+
+            foreach (var tab in OpenedUtilityTabs.ToArray())
             {
-                channel.Dispose();
+                if (tab.Content.DataContext is IDisposable disposable) disposable.Dispose();
             }
-            _networkClient?.Dispose();
+            OpenedUtilityTabs.Clear();
+            Converters.PluginToContentConverter.DisposeCachedContent();
+
+            var backgroundTasks = new[] { _autoReportTask, _heartbeatTask, _pathSimulationTask }
+                .Where(task => task != null).Cast<Task>().ToArray();
+            try { await Task.WhenAll(backgroundTasks); }
+            catch (OperationCanceledException) { }
+
+            await Task.WhenAll(VideoChannels.Select(channel => channel.DisposeAsync().AsTask()));
+            await _networkClient.DisposeAsync();
+            _protocolQueue.Writer.TryComplete();
+            try { await _protocolProcessorTask; }
+            catch (OperationCanceledException) { }
+            _protocolProcessorCts.Cancel();
+            _protocolProcessorCts.Dispose();
             CloseSerialPort();
+
+            _autoReportCts?.Dispose();
+            _heartbeatCts?.Dispose();
+            _pathSimulationCts?.Dispose();
+            _autoReportCts = null;
+            _heartbeatCts = null;
+            _pathSimulationCts = null;
+            _autoReportTask = null;
+            _heartbeatTask = null;
+            _pathSimulationTask = null;
 
             _simulationTimer?.Dispose();
             _simulationTimer = null;
@@ -3814,6 +2073,10 @@ namespace TerminalSimulation.Wpf.ViewModels
                 _saveTimer = null;
                 SaveConfig();
             }
+            Task pendingSave;
+            lock (_saveLock) { pendingSave = _lastConfigSaveTask; }
+            await pendingSave;
+            GC.SuppressFinalize(this);
         }
 
         

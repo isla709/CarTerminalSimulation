@@ -1,0 +1,52 @@
+<UserControl x:Class="TerminalSimulation.Wpf.Views.MessageAnalyzerView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes">
+    <materialDesign:Card Background="{DynamicResource MaterialDesignCardBackground}">
+        <Grid Margin="8">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <materialDesign:Card Margin="0,0,0,8" Background="Transparent" materialDesign:ElevationAssist.Elevation="Dp0">
+                <Grid Margin="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox materialDesign:HintAssist.Hint="输入 JT808 16进制原始报文" Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                             Text="{Binding AnalyzerInputHex}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                             MinHeight="72" MaxHeight="140" Margin="0,0,12,0" FontFamily="Consolas" />
+                    <WrapPanel Grid.Column="1" VerticalAlignment="Center" MaxWidth="260">
+                        <Button Command="{Binding AnalyzeMessageCommand}" Content="解析报文" MinWidth="96" Height="40"
+                                Style="{StaticResource MaterialDesignRaisedButton}" Foreground="White" Margin="0,0,8,8" />
+                        <ComboBox SelectedIndex="{Binding AnalyzerMode}" materialDesign:HintAssist.Hint="解析模式" MinWidth="130" Margin="0,0,0,8">
+                            <ComboBoxItem Content="表格解析模式" />
+                            <ComboBoxItem Content="树状解析模式" />
+                        </ComboBox>
+                    </WrapPanel>
+                </Grid>
+            </materialDesign:Card>
+            <Grid Grid.Row="1">
+                <TreeView PreviewKeyDown="AnalyzerTreeView_PreviewKeyDown" ItemsSource="{Binding AnalyzerResultTree}" Margin="8" FontFamily="Consolas" FontSize="14">
+                    <TreeView.Style><Style TargetType="TreeView" BasedOn="{StaticResource MaterialDesignTreeView}"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding AnalyzerMode}" Value="1"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TreeView.Style>
+                    <TreeView.ItemContainerStyle><Style TargetType="TreeViewItem" BasedOn="{StaticResource MaterialDesignTreeViewItem}"><Setter Property="IsExpanded" Value="True"/></Style></TreeView.ItemContainerStyle>
+                    <TreeView.ItemTemplate><HierarchicalDataTemplate ItemsSource="{Binding Children}"><WrapPanel Margin="0,2"><TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Margin="0,0,8,0"/><TextBlock Text="{Binding Value}" TextWrapping="Wrap"/></WrapPanel></HierarchicalDataTemplate></TreeView.ItemTemplate>
+                </TreeView>
+                <DataGrid ItemsSource="{Binding AnalyzerResultTable}" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True" Margin="8" FontFamily="Consolas" FontSize="14"
+                          HeadersVisibility="Column" SelectionUnit="Cell" SelectionMode="Extended" ClipboardCopyMode="ExcludeHeader"
+                          EnableRowVirtualization="True" EnableColumnVirtualization="True" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                    <DataGrid.Style><Style TargetType="DataGrid" BasedOn="{StaticResource MaterialDesignDataGrid}"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding AnalyzerMode}" Value="0"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></DataGrid.Style>
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="字段" Binding="{Binding Field}" CanUserSort="False" />
+                        <DataGridTextColumn Header="报文原数据" Binding="{Binding HexData}" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" FontWeight="Bold" />
+                        <DataGridTextColumn Header="数据类型" Binding="{Binding DataType}" />
+                        <DataGridTextColumn Header="起始位" Binding="{Binding OffsetStr}" />
+                        <DataGridTextColumn Header="数据长度" Binding="{Binding LengthStr}" />
+                        <DataGridTextColumn Header="分析结果" Binding="{Binding Result}" Width="*" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+        </Grid>
+    </materialDesign:Card>
+</UserControl>

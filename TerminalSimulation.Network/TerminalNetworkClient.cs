@@ -36,7 +36,15 @@ public sealed class TerminalNetworkClient : IDisposable, IAsyncDisposable
         try
         {
             var client = new TcpClient();
-            await client.ConnectAsync(ip, port, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await client.ConnectAsync(ip, port, cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                client.Dispose();
+                throw;
+            }
             var stream = client.GetStream();
             var cts = new CancellationTokenSource();
             var queue = Channel.CreateUnbounded<WriteRequest>(new UnboundedChannelOptions

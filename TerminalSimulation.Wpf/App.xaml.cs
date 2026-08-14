@@ -7,11 +7,19 @@ namespace TerminalSimulation.Wpf;
 /// <summary>
 /// Interaction logic for App.xaml
 /// </summary>
-public partial class App : Application
+public partial class App : System.Windows.Application
 {
     protected override async void OnStartup(StartupEventArgs e)
     {
         ConsoleLogger.Setup(e.Args);
+        DispatcherUnhandledException += (_, args) =>
+        {
+            WriteStartupCrash(args.Exception);
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+        {
+            if (args.ExceptionObject is Exception exception) WriteStartupCrash(exception);
+        };
         base.OnStartup(e);
 
         var splash = new SplashWindow();
@@ -51,6 +59,19 @@ public partial class App : Application
         Application.Current.MainWindow = mainWindow;
         mainWindow.Show();
         splash.Close();
+    }
+
+    private static void WriteStartupCrash(Exception exception)
+    {
+        try
+        {
+            var path = System.IO.Path.Combine(Helpers.PathHelper.ExeDir, "startup-crash.log");
+            System.IO.File.AppendAllText(path, $"[{DateTime.Now:O}] {exception}\n\n");
+        }
+        catch
+        {
+            // Last-resort diagnostics must not mask the original exception.
+        }
     }
 
     private static void ClearVideoCache()
