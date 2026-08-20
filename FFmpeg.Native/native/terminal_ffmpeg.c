@@ -6,6 +6,7 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/avutil.h>
+#include <libavutil/audio_fifo.h>
 #include <libavutil/channel_layout.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/opt.h>
@@ -103,7 +104,18 @@ static int open_video_output(VideoOutput* output, AVCodecContext* decoder, const
     return av_frame_get_buffer(output->frame, 32);
 }
 
-static int write_encoded(AVCodecContext* encoder, AVFrame* frame, FILE* file) {
+static void write_adts_header(uint8_t* header, int payload_size) {
+    int length = payload_size + 7;
+    header[0] = 0xFF;
+    header[1] = 0xF1;
+    header[2] = 0x6C; /* AAC LC, 8000 Hz, channel config high bit 0 */
+    header[3] = (uint8_t)(0x40 | ((length >> 11) & 0x03)); /* channel config 1 (mono) */
+    header[4] = (uint8_t)((length >> 3) & 0xFF);
+    header[5] = (uint8_t)(((length & 0x07) << 5) | 0x1F); /* buffer fullness 0x7FF */
+    header[6] = 0xFC;
+}
+
+static int write_encoded(AVCodecContext* encoder, AVFrame* frame, FILE* file, int adts) {
     int rc = avcodec_send_frame(encoder, frame);
     AVPacket* packet = av_packet_alloc();
     if (!packet) return AVERROR(ENOMEM);
@@ -111,6 +123,11 @@ static int write_encoded(AVCodecContext* encoder, AVFrame* frame, FILE* file) {
         rc = avcodec_receive_packet(encoder, packet);
         if (rc == AVERROR(EAGAIN) || rc == AVERROR_EOF) { rc = 0; break; }
         if (rc < 0) break;
+        if (adts) {
+            uint8_t header[7];
+            write_adts_header(header, packet->size);
+            if (fwrite(header, 1, sizeof(header), file) != sizeof(header)) { rc = AVERROR(EIO); break; }
+        }
         if (fwrite(packet->data, 1, (size_t)packet->size, file) != (size_t)packet->size) { rc = AVERROR(EIO); break; }
         av_packet_unref(packet);
     }
@@ -119,7 +136,7 @@ static int write_encoded(AVCodecContext* encoder, AVFrame* frame, FILE* file) {
 }
 
 static void close_video_output(VideoOutput* output) {
-    if (output->encoder && output->file) write_encoded(output->encoder, NULL, output->file);
+    if (output->encoder && output->file) write_encoded(output->encoder, NULL, output->file, 0);
     if (output->file) fclose(output->file);
     sws_freeContext(output->scaler);
     av_frame_free(&output->frame);
@@ -129,9 +146,12 @@ static void close_video_output(VideoOutput* output) {
 typedef struct AudioOutput {
     AVCodecContext* encoder;
     SwrContext* resampler;
+    AVAudioFifo* fifo;
     FILE* file;
     AVFrame* frame;
     int64_t pts;
+    int frame_size;
+    int adts;
 } AudioOutput;
 
 static int open_audio_output(AudioOutput* output, AVCodecContext* decoder, const char* codec_name,
@@ -162,16 +182,23 @@ static int open_audio_output(AudioOutput* output, AVCodecContext* decoder, const
     output->frame->format = format;
     output->frame->sample_rate = 8000;
     av_channel_layout_default(&output->frame->ch_layout, 1);
-    output->frame->nb_samples = frame_size > 0 ? frame_size : 1024;
-    return av_frame_get_buffer(output->frame, 0);
+    output->frame_size = frame_size > 0 ? frame_size : 1024;
+    output->adts = codec_name && strcmp(codec_name, "aac") == 0;
+    output->frame->nb_samples = output->frame_size;
+    rc = av_frame_get_buffer(output->frame, 0);
+    if (rc < 0) return rc;
+    output->fifo = av_audio_fifo_alloc(format, 1, output->frame_size * 8);
+    if (!output->fifo) return AVERROR(ENOMEM);
+    return rc;
 }
 
 static int convert_audio(AudioOutput* output, AVFrame* input) {
     int target = (int)av_rescale_rnd(swr_get_delay(output->resampler, input->sample_rate) + input->nb_samples,
         8000, input->sample_rate, AV_ROUND_UP);
-    if (target > output->frame->nb_samples) {
+    int needed = target > output->frame_size ? target : output->frame_size;
+    if (needed > output->frame->nb_samples) {
         av_frame_unref(output->frame);
-        output->frame->nb_samples = target;
+        output->frame->nb_samples = needed;
         output->frame->format = output->encoder->sample_fmt;
         output->frame->sample_rate = 8000;
         av_channel_layout_copy(&output->frame->ch_layout, &output->encoder->ch_layout);
@@ -184,14 +211,49 @@ static int convert_audio(AudioOutput* output, AVFrame* input) {
         (const uint8_t**)input->extended_data, input->nb_samples);
     if (rc < 0) return rc;
     output->frame->nb_samples = rc;
-    output->frame->pts = output->pts;
-    output->pts += rc;
-    return write_encoded(output->encoder, output->frame, output->file);
+    rc = av_audio_fifo_write(output->fifo, (void* const*)output->frame->extended_data, rc);
+    if (rc < 0) return rc;
+    while (av_audio_fifo_size(output->fifo) >= output->frame_size) {
+        rc = av_audio_fifo_read(output->fifo, (void* const*)output->frame->data, output->frame_size);
+        if (rc < 0) return rc;
+        output->frame->nb_samples = rc;
+        output->frame->pts = output->pts;
+        output->pts += rc;
+        rc = write_encoded(output->encoder, output->frame, output->file, output->adts);
+        if (rc < 0) return rc;
+    }
+    return 0;
 }
 
 static void close_audio_output(AudioOutput* output) {
-    if (output->encoder && output->file) write_encoded(output->encoder, NULL, output->file);
+    if (output->encoder && output->file) {
+        if (output->resampler && output->fifo) {
+            int drained = 0;
+            do {
+                av_frame_make_writable(output->frame);
+                output->frame->nb_samples = output->frame_size;
+                drained = swr_convert(output->resampler, output->frame->data, output->frame->nb_samples, NULL, 0);
+                if (drained > 0) {
+                    output->frame->nb_samples = drained;
+                    av_audio_fifo_write(output->fifo, (void* const*)output->frame->extended_data, drained);
+                }
+            } while (drained > 0);
+        }
+        if (output->fifo) {
+            while (av_audio_fifo_size(output->fifo) > 0) {
+                int count = av_audio_fifo_size(output->fifo);
+                if (count > output->frame_size) count = output->frame_size;
+                av_audio_fifo_read(output->fifo, (void* const*)output->frame->data, count);
+                output->frame->nb_samples = count;
+                output->frame->pts = output->pts;
+                output->pts += count;
+                write_encoded(output->encoder, output->frame, output->file, output->adts);
+            }
+        }
+        write_encoded(output->encoder, NULL, output->file, output->adts);
+    }
     if (output->file) fclose(output->file);
+    av_audio_fifo_free(output->fifo);
     swr_free(&output->resampler);
     av_frame_free(&output->frame);
     avcodec_free_context(&output->encoder);
@@ -224,7 +286,7 @@ TF_EXPORT int __cdecl tf_transcode(const wchar_t* input_path, const wchar_t* h26
                 if(decoder==video_decoder){
                     av_frame_make_writable(video.frame);
                     sws_scale(video.scaler,(const uint8_t* const*)decoded->data,decoded->linesize,0,decoded->height,video.frame->data,video.frame->linesize);
-                    video.frame->pts=video.pts++; rc=write_encoded(video.encoder,video.frame,video.file);
+                    video.frame->pts=video.pts++; rc=write_encoded(video.encoder,video.frame,video.file,0);
                     if(callback && input->duration>0) callback((double)decoded->best_effort_timestamp*av_q2d(input->streams[video_index]->time_base)/(input->duration/(double)AV_TIME_BASE),user_data);
                 } else { if(g711.encoder)rc=convert_audio(&g711,decoded); if(rc>=0&&aac.encoder)rc=convert_audio(&aac,decoded); }
                 av_frame_unref(decoded);

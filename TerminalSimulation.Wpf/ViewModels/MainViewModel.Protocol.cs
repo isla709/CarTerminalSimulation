@@ -437,13 +437,16 @@ namespace TerminalSimulation.Wpf.ViewModels
                                 MsgNum = 1,
                             };
 
+                            var iccid = string.IsNullOrWhiteSpace(SimNumber) ? "" : SimNumber.Trim();
+                            if (iccid.Length > 20) iccid = iccid[..20];
+
                             var body = new JT808_0x0107
                             {
                                 TerminalType = 0,
                                 MakerId = ManufacturerId,
                                 TerminalModel = TerminalModel,
                                 TerminalId = TerminalId,
-                                Terminal_SIM_ICCID = SimNumber,
+                                Terminal_SIM_ICCID = iccid.PadLeft(20, '0'),
                                 Terminal_Hardware_Version_Num = HardwareVersion,
                                 Terminal_Firmware_Version_Num = UseAppVersionAsFirmwareVersion ? AppVersionInfo.FullVersion : FirmwareVersion,
                                 GNSSModule = 1,

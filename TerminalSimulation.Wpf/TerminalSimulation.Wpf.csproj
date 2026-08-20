@@ -4,6 +4,8 @@
     <ProjectReference Include="..\TerminalSimulation.Protocol\TerminalSimulation.Protocol.csproj" />
     <ProjectReference Include="..\TerminalSimulation.Network\TerminalSimulation.Network.csproj" />
     <ProjectReference Include="..\TerminalSimulation.PluginBase\TerminalSimulation.PluginBase.csproj" />
+    <ProjectReference Include="..\TerminalSimulation.Plugins.XunjieCloud\TerminalSimulation.Plugins.XunjieCloud.csproj"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <ItemGroup>
@@ -39,6 +41,8 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Themes\**\*" />
+    <!-- Keep the generated version source visible to WPF's temporary markup project. -->
+    <Compile Include="$(IntermediateOutputPath)AppVersionInfo.g.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -61,7 +65,25 @@
     <MakeDir Directories="$(TargetDir)ffmpeg-native" />
     <Copy SourceFiles="@(NativeFfmpegRuntime)" DestinationFolder="$(TargetDir)ffmpeg-native" SkipUnchangedFiles="true" />
   </Target>
-  <Target Name="GenerateBuildVersion" BeforeTargets="BeforeCompile">
+  <Target Name="AddExternalRuntimeFilesToPublish"
+          BeforeTargets="ComputeFilesToPublish"
+          DependsOnTargets="BuildNativeFfmpegBridge">
+    <ItemGroup>
+      <PublishNativeFfmpegRuntime Include="$(MSBuildProjectDirectory)\..\FFmpeg.Native\artifacts\win-x64\*.dll" />
+      <PublishNativeFfmpegRuntime Include="$(MSBuildProjectDirectory)\..\FFmpeg.Native\artifacts\win-x64\FFmpeg-GPL-LICENSE.txt" />
+      <ResolvedFileToPublish Include="@(PublishNativeFfmpegRuntime)">
+        <RelativePath>ffmpeg-native\%(Filename)%(Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+      <ResolvedFileToPublish Include="$(MSBuildProjectDirectory)\..\TerminalSimulation.Plugins.XunjieCloud\bin\$(Configuration)\net8.0-windows\TerminalSimulation.Plugins.XunjieCloud.dll">
+        <RelativePath>Plugins\TerminalSimulation.Plugins.XunjieCloud.Plugin</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+  <Target Name="GenerateBuildVersion" BeforeTargets="PrepareForBuild">
     <PropertyGroup>
       <BuildDate>$([System.DateTime]::Now.ToString("yyyyMMdd"))</BuildDate>
       <RandomNum>$([System.Guid]::NewGuid().ToString().Substring(0, 4))</RandomNum>
@@ -78,9 +100,6 @@ public static class AppVersionInfo
       </VersionFileContent>
     </PropertyGroup>
     <WriteLinesToFile File="$(IntermediateOutputPath)AppVersionInfo.g.cs" Lines="$(VersionFileContent)" Overwrite="true" WriteOnlyWhenDifferent="false" />
-    <ItemGroup>
-      <Compile Include="$(IntermediateOutputPath)AppVersionInfo.g.cs" />
-    </ItemGroup>
   </Target>
 
   <ItemGroup>

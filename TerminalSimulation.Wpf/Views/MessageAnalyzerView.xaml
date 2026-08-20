@@ -17,14 +17,14 @@
                     <TextBox materialDesign:HintAssist.Hint="输入 JT808 16进制原始报文" Style="{StaticResource MaterialDesignOutlinedTextBox}"
                              Text="{Binding AnalyzerInputHex}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
                              MinHeight="72" MaxHeight="140" Margin="0,0,12,0" FontFamily="Consolas" />
-                    <WrapPanel Grid.Column="1" VerticalAlignment="Center" MaxWidth="260">
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" MaxWidth="260" HorizontalAlignment="Stretch">
                         <Button Command="{Binding AnalyzeMessageCommand}" Content="解析报文" MinWidth="96" Height="40"
-                                Style="{StaticResource MaterialDesignRaisedButton}" Foreground="White" Margin="0,0,8,8" />
-                        <ComboBox SelectedIndex="{Binding AnalyzerMode}" materialDesign:HintAssist.Hint="解析模式" MinWidth="130" Margin="0,0,0,8">
+                                Style="{StaticResource MaterialDesignRaisedButton}" Foreground="White" Margin="0,0,0,8" />
+                        <ComboBox SelectedIndex="{Binding AnalyzerMode}" materialDesign:HintAssist.Hint="解析模式" MinWidth="130">
                             <ComboBoxItem Content="表格解析模式" />
                             <ComboBoxItem Content="树状解析模式" />
                         </ComboBox>
-                    </WrapPanel>
+                    </StackPanel>
                 </Grid>
             </materialDesign:Card>
             <Grid Grid.Row="1">

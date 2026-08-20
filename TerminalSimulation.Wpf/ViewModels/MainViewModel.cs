@@ -439,7 +439,8 @@ namespace TerminalSimulation.Wpf.ViewModels
             }
         }
 
-        public string AppTitle => $"车载定位终端模拟系统 (JT808) {AppVersionInfo.FullVersion}";
+        public string AppTitle => "车载定位终端模拟系统 (JT808)";
+        public string AppVersionText => AppVersionInfo.FullVersion;
         public MainViewModel()
         {
             _appLogger = new AppLogger();

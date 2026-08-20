@@ -21,18 +21,16 @@
             <ComboBoxItem Content="JT808-2013" />
             <ComboBoxItem Content="JT808-2019" />
         </ComboBox>
-      </WrapPanel>
-      <WrapPanel Orientation="Horizontal">
-        <Button Content="连接" Command="{Binding ConnectCommand}" Margin="0,0,8,4"
+        <Button Content="连接" Command="{Binding ConnectCommand}" Margin="0,0,8,10"
                 IsEnabled="{Binding IsConnected, Converter={StaticResource InvertBooleanConverter}}" Foreground="White" />
         <Button Content="断开" Command="{Binding DisconnectCommand}"
-                Style="{StaticResource MaterialDesignOutlinedButton}" IsEnabled="{Binding IsConnected}" Margin="0,0,16,4" />
-        <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="0,4,16,8" />
+                Style="{StaticResource MaterialDesignOutlinedButton}" IsEnabled="{Binding IsConnected}" Margin="0,0,16,10" />
+        <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="0,4,16,10" />
         <Button Content="导出" Command="{Binding ExportConfigCommand}"
-                Style="{StaticResource MaterialDesignFlatButton}" Margin="0,0,8,4"
+                Style="{StaticResource MaterialDesignFlatButton}" Margin="0,0,8,10"
                 ToolTip="导出当前所有配置到 JSON 文件" />
         <Button Content="导入" Command="{Binding ImportConfigCommand}"
-                Style="{StaticResource MaterialDesignFlatButton}" Margin="0,0,0,4"
+                Style="{StaticResource MaterialDesignFlatButton}" Margin="0,0,0,10"
                 ToolTip="从 JSON 文件导入配置" />
       </WrapPanel>
     </StackPanel>

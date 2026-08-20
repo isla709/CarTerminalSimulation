@@ -209,6 +209,7 @@
                     <materialDesign:PackIcon Kind="CarConnected" Foreground="White" Width="24" Height="24" VerticalAlignment="Center" Margin="0,0,8,0" />
                     <TextBlock Text="{Binding AppTitle}" Foreground="White" VerticalAlignment="Center" FontWeight="Bold" FontSize="16"
                                MaxWidth="360" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding AppVersionText}" Foreground="#B3FFFFFF" VerticalAlignment="Center" FontSize="11" Margin="8,0,0,0" />
                 </StackPanel>
 
                 <!-- Status and Window Controls -->

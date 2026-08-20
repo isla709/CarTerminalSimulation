@@ -30,9 +30,8 @@
                         <TextBlock Grid.Column="1" Text="{Binding DirectionStr}" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" FontFamily="Consolas" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Top" />
                         <Button Grid.Column="2" Content="复制" Command="{Binding CopyRawCommand}" Visibility="{Binding HasRaw, Converter={StaticResource BooleanToVisibilityConverter}}"
                                 Style="{StaticResource MaterialDesignOutlinedButton}" Height="20" Padding="4,0" Margin="0,0,8,0" FontSize="10" VerticalAlignment="Top" />
-                        <TextBox Grid.Column="3" Text="{Binding Message}" IsReadOnly="True" BorderThickness="0" Background="Transparent" Foreground="#D4D4D4"
-                                 FontFamily="Consolas" FontSize="13" VerticalAlignment="Top" ContextMenu="{x:Null}" TextWrapping="Wrap"
-                                 materialDesign:TextFieldAssist.DecorationVisibility="Hidden" materialDesign:TextFieldAssist.UnderlineBrush="Transparent" />
+                        <TextBlock Grid.Column="3" Text="{Binding Message}" Foreground="#D4D4D4"
+                                   FontFamily="Consolas" FontSize="13" VerticalAlignment="Top" ContextMenu="{x:Null}" TextWrapping="Wrap" />
                     </Grid>
                 </DataTemplate>
             </ListBox.ItemTemplate>
