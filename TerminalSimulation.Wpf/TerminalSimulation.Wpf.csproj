@@ -4,11 +4,14 @@
     <ProjectReference Include="..\TerminalSimulation.Protocol\TerminalSimulation.Protocol.csproj" />
     <ProjectReference Include="..\TerminalSimulation.Network\TerminalSimulation.Network.csproj" />
     <ProjectReference Include="..\TerminalSimulation.PluginBase\TerminalSimulation.PluginBase.csproj" />
+    <ProjectReference Include="..\TerminalSimulation.Updater\TerminalSimulation.Updater.csproj"
+                      ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\TerminalSimulation.Plugins.XunjieCloud\TerminalSimulation.Plugins.XunjieCloud.csproj"
                       ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="AvalonEdit" Version="6.3.1.120" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="LibVLCSharp.WPF" Version="3.9.7.1" />
     <PackageReference Include="MaterialDesignThemes" Version="5.3.2" />
@@ -24,11 +27,18 @@
     <Resource Include="splash_1.jpg" />
     <Resource Include="splash_2.jpg" />
     <Resource Include="splash_3.jpg" />
+    <Resource Include="splash_dream_pool.png" />
+    <Resource Include="splash_pool_sunlight.png" />
+    <Resource Include="splash_pool_tyndall.png" />
+    <Resource Include="splash_liminal_office.png" />
+    <Resource Include="splash_flooded_concourse.png" />
+    <Resource Include="splash_weirdcore_playhall.png" />
+    <Resource Include="splash_starlit_hotel.png" />
   </ItemGroup>
 
   <PropertyGroup>
     <!-- 手动修改程序版本号 -->
-    <AppVersion>preview4</AppVersion>
+    <AppVersion>preview5</AppVersion>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
@@ -37,6 +47,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <DebugType>embedded</DebugType>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <!-- The application currently ships a single neutral UI and does not load satellite localizations. -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
 
   <ItemGroup>
@@ -50,6 +62,10 @@
     <None Remove="Regions.json" />
     <Content Include="Regions.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\update-sources.example.json" Link="update-sources.example.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
   </ItemGroup>
   <Target Name="BuildNativeFfmpegBridge" BeforeTargets="PrepareForBuild"
@@ -65,6 +81,23 @@
     <MakeDir Directories="$(TargetDir)ffmpeg-native" />
     <Copy SourceFiles="@(NativeFfmpegRuntime)" DestinationFolder="$(TargetDir)ffmpeg-native" SkipUnchangedFiles="true" />
   </Target>
+  <Target Name="CopyUpdaterRuntime" AfterTargets="Build">
+    <ItemGroup>
+      <UpdaterRuntime Include="$(MSBuildProjectDirectory)\..\TerminalSimulation.Updater\bin\$(Configuration)\net8.0-windows\update.exe" />
+      <UpdaterRuntime Include="$(MSBuildProjectDirectory)\..\TerminalSimulation.Updater\bin\$(Configuration)\net8.0-windows\update.dll" />
+      <UpdaterRuntime Include="$(MSBuildProjectDirectory)\..\TerminalSimulation.Updater\bin\$(Configuration)\net8.0-windows\update.deps.json" />
+      <UpdaterRuntime Include="$(MSBuildProjectDirectory)\..\TerminalSimulation.Updater\bin\$(Configuration)\net8.0-windows\update.runtimeconfig.json" />
+    </ItemGroup>
+    <Error Condition="!Exists('$(MSBuildProjectDirectory)\..\TerminalSimulation.Updater\bin\$(Configuration)\net8.0-windows\update.exe')"
+           Text="更新程序未生成：update.exe" />
+    <Copy SourceFiles="@(UpdaterRuntime)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="RemoveUnusedCultureDirectories" AfterTargets="CopyFilesToOutputDirectory">
+    <ItemGroup>
+      <UnusedCultureDirectory Include="$(TargetDir)cs;$(TargetDir)de;$(TargetDir)es;$(TargetDir)fr;$(TargetDir)it;$(TargetDir)ja;$(TargetDir)ko;$(TargetDir)pl;$(TargetDir)pt-BR;$(TargetDir)ru;$(TargetDir)tr;$(TargetDir)zh-Hans;$(TargetDir)zh-Hant" />
+    </ItemGroup>
+    <RemoveDir Directories="@(UnusedCultureDirectory)" />
+  </Target>
   <Target Name="AddExternalRuntimeFilesToPublish"
           BeforeTargets="ComputeFilesToPublish"
           DependsOnTargets="BuildNativeFfmpegBridge">
@@ -78,6 +111,26 @@
       </ResolvedFileToPublish>
       <ResolvedFileToPublish Include="$(MSBuildProjectDirectory)\..\TerminalSimulation.Plugins.XunjieCloud\bin\$(Configuration)\net8.0-windows\TerminalSimulation.Plugins.XunjieCloud.dll">
         <RelativePath>Plugins\TerminalSimulation.Plugins.XunjieCloud.Plugin</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+      <ResolvedFileToPublish Include="$(MSBuildProjectDirectory)\..\TerminalSimulation.Updater\bin\$(Configuration)\net8.0-windows\update.exe">
+        <RelativePath>update.exe</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+      <ResolvedFileToPublish Include="$(MSBuildProjectDirectory)\..\TerminalSimulation.Updater\bin\$(Configuration)\net8.0-windows\update.dll">
+        <RelativePath>update.dll</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+      <ResolvedFileToPublish Include="$(MSBuildProjectDirectory)\..\TerminalSimulation.Updater\bin\$(Configuration)\net8.0-windows\update.deps.json">
+        <RelativePath>update.deps.json</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+      <ResolvedFileToPublish Include="$(MSBuildProjectDirectory)\..\TerminalSimulation.Updater\bin\$(Configuration)\net8.0-windows\update.runtimeconfig.json">
+        <RelativePath>update.runtimeconfig.json</RelativePath>
         <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
         <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
       </ResolvedFileToPublish>

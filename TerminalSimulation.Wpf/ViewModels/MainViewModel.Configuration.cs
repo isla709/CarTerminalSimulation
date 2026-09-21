@@ -130,9 +130,10 @@ namespace TerminalSimulation.Wpf.ViewModels
 
                             if (!string.IsNullOrEmpty(bgPath))
                             {
-                                if (bgPath.StartsWith("pack://embedded/"))
+                                if (bgPath.StartsWith("pack://embedded/") ||
+                                    bgPath.StartsWith("pack://application:,,,/", StringComparison.OrdinalIgnoreCase))
                                 {
-                                    // Embedded resource
+                                    // Built-in resource
                                 }
                                 else
                                 {

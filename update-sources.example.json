@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "autoCheck": true,
+  "checkIntervalHours": 12,
+  "channel": "preview",
+  "sources": [
+    {
+      "type": "github",
+      "name": "GitHub Releases",
+      "enabled": true,
+      "priority": 100,
+      "owner": "isla709",
+      "repository": "CarTerminalSimulation",
+      "manifestAssetName": "update-manifest.json"
+    },
+    {
+      "type": "manifest",
+      "name": "备用托管平台",
+      "enabled": false,
+      "priority": 50,
+      "manifestUrl": "https://downloads.example.com/terminal-simulation/update-manifest.json",
+      "allowInsecureHttp": false
+    }
+  ]
+}

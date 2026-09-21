@@ -3,27 +3,28 @@ using System.Windows;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using TerminalSimulation.PluginBase;
+using TerminalSimulation.Wpf.ViewModels.Utilities;
 
 namespace TerminalSimulation.Wpf.ViewModels.Plugins
 {
     /// <summary>
     /// 表示一个在“实用工具”栏中动态打开的插件页签
     /// </summary>
-    public partial class OpenedPluginTab : ObservableObject
+    public partial class OpenedPluginTab : ObservableObject, IDisposable
     {
         public string Title { get; }
         public string IconKind { get; }
         public FrameworkElement Content { get; }
-        public IPlugin Plugin { get; }
+        public UtilityToolDefinition Tool { get; }
 
         private readonly Action<OpenedPluginTab> _closeAction;
+        private bool _isDisposed;
 
-        public OpenedPluginTab(IPlugin plugin, FrameworkElement content, Action<OpenedPluginTab> closeAction)
+        public OpenedPluginTab(UtilityToolDefinition tool, FrameworkElement content, Action<OpenedPluginTab> closeAction)
         {
-            Plugin = plugin;
-            Title = plugin.Name;
-            IconKind = plugin.IconKind;
+            Tool = tool;
+            Title = tool.Name;
+            IconKind = tool.IconKind;
             Content = content;
             _closeAction = closeAction;
         }
@@ -32,8 +33,16 @@ namespace TerminalSimulation.Wpf.ViewModels.Plugins
         private void Close()
         {
             _closeAction(this);
-            
-            // 如果内容继承了IDisposable，尝试释放
+        }
+
+        public void Dispose()
+        {
+            if (_isDisposed)
+            {
+                return;
+            }
+
+            _isDisposed = true;
             if (Content.DataContext is IDisposable disposableVm)
             {
                 disposableVm.Dispose();

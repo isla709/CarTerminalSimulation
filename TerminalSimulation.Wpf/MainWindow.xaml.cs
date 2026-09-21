@@ -5,6 +5,7 @@ using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
@@ -490,6 +491,7 @@ public partial class MainWindow : Window
         if (DataContext is ViewModels.MainViewModel vm)
         {
             vm.PropertyChanged += Vm_PropertyChanged;
+            _ = vm.CheckForUpdatesSilentlyAsync();
         }
 
     }
@@ -517,6 +519,13 @@ public partial class MainWindow : Window
 
     private void Vm_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(ViewModels.MainViewModel.IsUtilityPickerClosing) &&
+            sender is ViewModels.MainViewModel { IsUtilityPickerClosing: true })
+        {
+            AnimateUtilityPickerClose();
+            return;
+        }
+
         if (e.PropertyName == nameof(TerminalSimulation.Wpf.ViewModels.MainViewModel.IsSettingsOpen))
         {
             if (DataContext is TerminalSimulation.Wpf.ViewModels.MainViewModel vm)
@@ -658,6 +667,290 @@ public partial class MainWindow : Window
             }
             RequestVideoViewsUpdate();
         }
+    }
+
+    private void UtilityTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.Source != UtilityTabControl)
+        {
+            return;
+        }
+
+        Dispatcher.BeginInvoke(
+            System.Windows.Threading.DispatcherPriority.Loaded,
+            new Action(() =>
+            {
+                var selectedHeader = UtilityTabControl.ItemContainerGenerator.ContainerFromItem(
+                    UtilityTabControl.SelectedItem) as FrameworkElement
+                    ?? UtilityTabControl.SelectedItem as FrameworkElement;
+
+                selectedHeader?.BringIntoView();
+                UpdateUtilityTabScrollButtons(FindUtilityTemplatePart<ScrollViewer>("UtilityTabHeaderScroller"));
+            }));
+    }
+
+    private void UtilityPickerOverlay_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (sender is not UIElement overlay)
+        {
+            return;
+        }
+
+        if (!overlay.IsVisible)
+        {
+            ResetUtilityPickerVisuals();
+            return;
+        }
+
+        Dispatcher.BeginInvoke(
+            System.Windows.Threading.DispatcherPriority.Render,
+            new Action(() =>
+            {
+                AnimateUtilityPickerOpen();
+                AnimateUtilityPickerItems();
+            }));
+    }
+
+    private void AnimateUtilityPickerOpen()
+    {
+        ResetUtilityPickerAnimationClocks();
+        UtilityPickerBackdrop.Opacity = 0.46;
+        UtilityPickerCard.Opacity = 1;
+        UtilityPickerScaleTransform.ScaleX = 1;
+        UtilityPickerScaleTransform.ScaleY = 1;
+        UtilityPickerTranslateTransform.Y = 0;
+
+        if (!SystemParameters.ClientAreaAnimation)
+        {
+            return;
+        }
+
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        UtilityPickerBackdrop.BeginAnimation(
+            UIElement.OpacityProperty,
+            new DoubleAnimation(0, 0.46, TimeSpan.FromMilliseconds(180))
+            {
+                FillBehavior = FillBehavior.Stop,
+                EasingFunction = ease
+            });
+        UtilityPickerCard.BeginAnimation(
+            UIElement.OpacityProperty,
+            new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(220))
+            {
+                FillBehavior = FillBehavior.Stop,
+                EasingFunction = ease
+            });
+        UtilityPickerScaleTransform.BeginAnimation(
+            ScaleTransform.ScaleXProperty,
+            new DoubleAnimation(0.94, 1, TimeSpan.FromMilliseconds(260))
+            {
+                FillBehavior = FillBehavior.Stop,
+                EasingFunction = ease
+            });
+        UtilityPickerScaleTransform.BeginAnimation(
+            ScaleTransform.ScaleYProperty,
+            new DoubleAnimation(0.94, 1, TimeSpan.FromMilliseconds(260))
+            {
+                FillBehavior = FillBehavior.Stop,
+                EasingFunction = ease
+            });
+        UtilityPickerTranslateTransform.BeginAnimation(
+            TranslateTransform.YProperty,
+            new DoubleAnimation(18, 0, TimeSpan.FromMilliseconds(260))
+            {
+                FillBehavior = FillBehavior.Stop,
+                EasingFunction = ease
+            });
+    }
+
+    private void AnimateUtilityPickerClose()
+    {
+        if (!UtilityPickerOverlay.IsVisible)
+        {
+            return;
+        }
+
+        var backdropOpacity = UtilityPickerBackdrop.Opacity;
+        var cardOpacity = UtilityPickerCard.Opacity;
+        var scaleX = UtilityPickerScaleTransform.ScaleX;
+        var scaleY = UtilityPickerScaleTransform.ScaleY;
+        var translateY = UtilityPickerTranslateTransform.Y;
+
+        ResetUtilityPickerAnimationClocks();
+        UtilityPickerBackdrop.Opacity = 0;
+        UtilityPickerCard.Opacity = 0;
+        UtilityPickerScaleTransform.ScaleX = 0.97;
+        UtilityPickerScaleTransform.ScaleY = 0.97;
+        UtilityPickerTranslateTransform.Y = 8;
+
+        if (!SystemParameters.ClientAreaAnimation)
+        {
+            return;
+        }
+
+        var ease = new CubicEase { EasingMode = EasingMode.EaseIn };
+        UtilityPickerBackdrop.BeginAnimation(
+            UIElement.OpacityProperty,
+            new DoubleAnimation(backdropOpacity, 0, TimeSpan.FromMilliseconds(160))
+            {
+                FillBehavior = FillBehavior.Stop,
+                EasingFunction = ease
+            });
+        UtilityPickerCard.BeginAnimation(
+            UIElement.OpacityProperty,
+            new DoubleAnimation(cardOpacity, 0, TimeSpan.FromMilliseconds(160))
+            {
+                FillBehavior = FillBehavior.Stop,
+                EasingFunction = ease
+            });
+        UtilityPickerScaleTransform.BeginAnimation(
+            ScaleTransform.ScaleXProperty,
+            new DoubleAnimation(scaleX, 0.97, TimeSpan.FromMilliseconds(160))
+            {
+                FillBehavior = FillBehavior.Stop,
+                EasingFunction = ease
+            });
+        UtilityPickerScaleTransform.BeginAnimation(
+            ScaleTransform.ScaleYProperty,
+            new DoubleAnimation(scaleY, 0.97, TimeSpan.FromMilliseconds(160))
+            {
+                FillBehavior = FillBehavior.Stop,
+                EasingFunction = ease
+            });
+        UtilityPickerTranslateTransform.BeginAnimation(
+            TranslateTransform.YProperty,
+            new DoubleAnimation(translateY, 8, TimeSpan.FromMilliseconds(160))
+            {
+                FillBehavior = FillBehavior.Stop,
+                EasingFunction = ease
+            });
+    }
+
+    private void ResetUtilityPickerVisuals()
+    {
+        ResetUtilityPickerAnimationClocks();
+        UtilityPickerBackdrop.Opacity = 0;
+        UtilityPickerCard.Opacity = 0;
+        UtilityPickerScaleTransform.ScaleX = 0.94;
+        UtilityPickerScaleTransform.ScaleY = 0.94;
+        UtilityPickerTranslateTransform.Y = 18;
+    }
+
+    private void ResetUtilityPickerAnimationClocks()
+    {
+        UtilityPickerBackdrop.BeginAnimation(UIElement.OpacityProperty, null);
+        UtilityPickerCard.BeginAnimation(UIElement.OpacityProperty, null);
+        UtilityPickerScaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        UtilityPickerScaleTransform.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        UtilityPickerTranslateTransform.BeginAnimation(TranslateTransform.YProperty, null);
+    }
+
+    private void AnimateUtilityPickerItems()
+    {
+        UtilityPluginPickerItems.UpdateLayout();
+
+        for (var index = 0; index < UtilityPluginPickerItems.Items.Count; index++)
+        {
+            if (UtilityPluginPickerItems.ItemContainerGenerator.ContainerFromIndex(index) is not UIElement container)
+            {
+                continue;
+            }
+
+            container.BeginAnimation(UIElement.OpacityProperty, null);
+            container.Opacity = 1;
+
+            if (!SystemParameters.ClientAreaAnimation)
+            {
+                container.RenderTransform = Transform.Identity;
+                continue;
+            }
+
+            var translate = new TranslateTransform(0, 0);
+            container.RenderTransform = translate;
+            container.RenderTransformOrigin = new Point(0.5, 0.5);
+
+            var delay = TimeSpan.FromMilliseconds(70 + (Math.Min(index, 8) * 36));
+            var opacityAnimation = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(210))
+            {
+                BeginTime = delay,
+                FillBehavior = FillBehavior.Stop,
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            var translateAnimation = new DoubleAnimation(14, 0, TimeSpan.FromMilliseconds(250))
+            {
+                BeginTime = delay,
+                FillBehavior = FillBehavior.Stop,
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+
+            container.BeginAnimation(UIElement.OpacityProperty, opacityAnimation);
+            translate.BeginAnimation(TranslateTransform.YProperty, translateAnimation);
+        }
+    }
+
+    private void UtilityTabHeaderScroller_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        UpdateUtilityTabScrollButtons(sender as ScrollViewer);
+    }
+
+    private void UtilityTabHeaderScroller_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (sender is not ScrollViewer scroller || scroller.ScrollableWidth <= 0)
+        {
+            return;
+        }
+
+        scroller.ScrollToHorizontalOffset(scroller.HorizontalOffset - e.Delta);
+        e.Handled = true;
+    }
+
+    private void UtilityTabScrollLeftButton_Click(object sender, RoutedEventArgs e)
+    {
+        var scroller = FindUtilityTemplatePart<ScrollViewer>("UtilityTabHeaderScroller");
+        scroller?.ScrollToHorizontalOffset(Math.Max(0, scroller.HorizontalOffset - 180));
+    }
+
+    private void UtilityTabScrollRightButton_Click(object sender, RoutedEventArgs e)
+    {
+        var scroller = FindUtilityTemplatePart<ScrollViewer>("UtilityTabHeaderScroller");
+        scroller?.ScrollToHorizontalOffset(
+            Math.Min(scroller.ScrollableWidth, scroller.HorizontalOffset + 180));
+    }
+
+    private T? FindUtilityTemplatePart<T>(string name) where T : FrameworkElement
+    {
+        return UtilityTabControl.Template.FindName(name, UtilityTabControl) as T;
+    }
+
+    private void UpdateUtilityTabScrollButtons(ScrollViewer? scroller)
+    {
+        var leftButton = FindUtilityTemplatePart<Button>("UtilityTabScrollLeftButton");
+        var rightButton = FindUtilityTemplatePart<Button>("UtilityTabScrollRightButton");
+        var inlineAddButton = FindUtilityTemplatePart<Button>("UtilityInlineAddButton");
+        var pinnedAddButton = FindUtilityTemplatePart<Button>("UtilityPinnedAddButton");
+        var headerPanel = FindUtilityTemplatePart<FrameworkElement>("HeaderPanel");
+        var headerRow = scroller?.Parent as FrameworkElement;
+        if (scroller == null || leftButton == null || rightButton == null ||
+            inlineAddButton == null || pinnedAddButton == null ||
+            headerPanel == null || headerRow == null)
+        {
+            return;
+        }
+
+        // Determine overflow against the whole header row, independent of the space
+        // currently occupied by the overflow controls. This avoids a layout feedback
+        // loop where visible arrow buttons prevent the header from returning inline.
+        const double inlineAddButtonFootprint = 42;
+        var tabHeadersWidth = Math.Max(headerPanel.ActualWidth, headerPanel.DesiredSize.Width);
+        var hasOverflow = tabHeadersWidth + inlineAddButtonFootprint > headerRow.ActualWidth + 0.5;
+        var visibility = hasOverflow ? Visibility.Visible : Visibility.Collapsed;
+        leftButton.Visibility = visibility;
+        rightButton.Visibility = visibility;
+        pinnedAddButton.Visibility = visibility;
+        inlineAddButton.Visibility = hasOverflow ? Visibility.Collapsed : Visibility.Visible;
+        leftButton.IsEnabled = hasOverflow && scroller.HorizontalOffset > 0.5;
+        rightButton.IsEnabled = hasOverflow &&
+                                scroller.HorizontalOffset < scroller.ScrollableWidth - 0.5;
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)

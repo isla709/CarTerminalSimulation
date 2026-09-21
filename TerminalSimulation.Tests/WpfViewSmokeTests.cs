@@ -1,6 +1,7 @@
 using TerminalSimulation.Plugins.XunjieCloud.Views;
 using TerminalSimulation.Wpf;
 using TerminalSimulation.Wpf.Views;
+using System.Windows;
 using Xunit;
 
 namespace TerminalSimulation.Tests;
@@ -19,6 +20,9 @@ public sealed class WpfViewSmokeTests
                 app.InitializeComponent();
                 _ = new MainWindow();
                 _ = new XunjieCloudStreamView();
+                // Opening the utility picker again can create a second plugin tab.
+                // Keep this as a regression guard for duplicate native-video views.
+                _ = new XunjieCloudStreamView();
                 _ = new ConnectionBar();
                 _ = new CommunicationLogView();
                 _ = new DataPassthroughView();
@@ -26,6 +30,15 @@ public sealed class WpfViewSmokeTests
                 _ = new DevicePropertiesView();
                 _ = new PluginGalleryView();
                 _ = new MessageAnalyzerView();
+                var compactHttpView = new HttpRequestToolView();
+                compactHttpView.Measure(new Size(660, 460));
+                compactHttpView.Arrange(new Rect(0, 0, 660, 460));
+                compactHttpView.UpdateLayout();
+
+                var wideHttpView = new HttpRequestToolView();
+                wideHttpView.Measure(new Size(1600, 900));
+                wideHttpView.Arrange(new Rect(0, 0, 1600, 900));
+                wideHttpView.UpdateLayout();
             }
             catch (Exception exception)
             {

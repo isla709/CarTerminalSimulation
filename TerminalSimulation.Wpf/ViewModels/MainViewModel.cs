@@ -312,6 +312,24 @@ namespace TerminalSimulation.Wpf.ViewModels
                     BackgroundImageSource = bmp;
                 }
             }
+            else if (value.StartsWith("pack://application:,,,/", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var bmp = new System.Windows.Media.Imaging.BitmapImage();
+                    bmp.BeginInit();
+                    bmp.UriSource = new Uri(value, UriKind.Absolute);
+                    bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                    bmp.EndInit();
+                    bmp.Freeze();
+                    BackgroundImageSource = bmp;
+                }
+                catch (Exception ex)
+                {
+                    BackgroundImageSource = null;
+                    _appLogger.Error("主题", $"读取内置背景失败: {value}", ex);
+                }
+            }
             else
             {
                 try
@@ -1472,6 +1490,32 @@ namespace TerminalSimulation.Wpf.ViewModels
                 ThemeImages.Clear();
                 ThemeImages.Add(new ThemeImageItem { FileName = "无背景", ImagePath = "", IsSelected = string.IsNullOrEmpty(BackgroundImagePath), IsUserAdded = false });
 
+                // Reuse the splash artwork as built-in backgrounds without duplicating image bytes.
+                var splashBackgrounds = new[]
+                {
+                    (Name: "雨后虹光", Path: "pack://application:,,,/splash_1.jpg"),
+                    (Name: "晴境", Path: "pack://application:,,,/splash_2.jpg"),
+                    (Name: "星雨夜", Path: "pack://application:,,,/splash_3.jpg")
+                };
+                foreach (var background in splashBackgrounds)
+                {
+                    var thumbnail = new System.Windows.Media.Imaging.BitmapImage();
+                    thumbnail.BeginInit();
+                    thumbnail.UriSource = new Uri(background.Path, UriKind.Absolute);
+                    thumbnail.DecodePixelWidth = 200;
+                    thumbnail.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                    thumbnail.EndInit();
+                    thumbnail.Freeze();
+                    ThemeImages.Add(new ThemeImageItem
+                    {
+                        FileName = background.Name,
+                        ImagePath = background.Path,
+                        Thumbnail = thumbnail,
+                        IsUserAdded = false,
+                        IsSelected = BackgroundImagePath == background.Path
+                    });
+                }
+
                 // Load embedded resources
                 var assembly = System.Reflection.Assembly.GetExecutingAssembly();
                 var resourceNames = assembly.GetManifestResourceNames().Where(x => x.StartsWith("TerminalSimulation.Wpf.Themes.", StringComparison.OrdinalIgnoreCase));
@@ -1483,7 +1527,7 @@ namespace TerminalSimulation.Wpf.ViewModels
                         var fileName = resName.Substring("TerminalSimulation.Wpf.Themes.".Length);
                         var item = new ThemeImageItem
                         {
-                            FileName = fileName,
+                            FileName = System.IO.Path.GetFileNameWithoutExtension(fileName),
                             ImagePath = "pack://embedded/" + resName,
                             IsUserAdded = false,
                             IsSelected = BackgroundImagePath == "pack://embedded/" + resName
@@ -2032,10 +2076,11 @@ namespace TerminalSimulation.Wpf.ViewModels
             _autoReportCts?.Cancel();
             _heartbeatCts?.Cancel();
             _pathSimulationCts?.Cancel();
+            CancelUpdateOperations();
 
             foreach (var tab in OpenedUtilityTabs.ToArray())
             {
-                if (tab.Content.DataContext is IDisposable disposable) disposable.Dispose();
+                tab.Dispose();
             }
             OpenedUtilityTabs.Clear();
             Converters.PluginToContentConverter.DisposeCachedContent();
@@ -2044,6 +2089,7 @@ namespace TerminalSimulation.Wpf.ViewModels
                 .Where(task => task != null).Cast<Task>().ToArray();
             try { await Task.WhenAll(backgroundTasks); }
             catch (OperationCanceledException) { }
+            await WaitForUpdateOperationsAsync();
 
             await Task.WhenAll(VideoChannels.Select(channel => channel.DisposeAsync().AsTask()));
             await _networkClient.DisposeAsync();

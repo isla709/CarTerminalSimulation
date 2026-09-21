@@ -29,6 +29,10 @@
         <viewmodels:MainViewModel />
     </Window.DataContext>
 
+    <Window.InputBindings>
+        <KeyBinding Key="Escape" Command="{Binding CloseUtilityPickerCommand}" />
+    </Window.InputBindings>
+
     <Window.Resources>
         <converters:InvertBooleanConverter x:Key="InvertBooleanConverter" />
         <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
@@ -96,6 +100,181 @@
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter Property="Background" Value="#F1707A"/>
                             </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- The add-tab button has its own compact template. Reusing the generic
+             MaterialDesign tool-button template adds internal padding that can be
+             clipped by the horizontally scrolling tab header viewport. -->
+        <Style x:Key="UtilityAddTabButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid Width="32" Height="36" Background="Transparent">
+                            <Ellipse x:Name="Circle"
+                                     Width="28" Height="28"
+                                     Fill="{DynamicResource MaterialDesignPaper}"
+                                     Opacity="0.92"
+                                     HorizontalAlignment="Center"
+                                     VerticalAlignment="Center"
+                                     RenderTransformOrigin="0.5,0.5">
+                                <Ellipse.RenderTransform>
+                                    <ScaleTransform x:Name="AddCircleScale" />
+                                </Ellipse.RenderTransform>
+                            </Ellipse>
+                            <materialDesign:PackIcon x:Name="PlusIcon"
+                                                     Kind="Plus"
+                                                     Width="18" Height="18"
+                                                     Foreground="{DynamicResource MaterialDesignBody}"
+                                                     HorizontalAlignment="Center"
+                                                     VerticalAlignment="Center"
+                                                     RenderTransformOrigin="0.5,0.5">
+                                <materialDesign:PackIcon.RenderTransform>
+                                    <RotateTransform />
+                                </materialDesign:PackIcon.RenderTransform>
+                            </materialDesign:PackIcon>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Circle" Property="Fill" Value="{DynamicResource MaterialDesignSelection}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Circle" Property="Opacity" Value="0.72" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Circle" Property="Stroke" Value="{DynamicResource MaterialDesign.Brush.Primary}" />
+                                <Setter TargetName="Circle" Property="StrokeThickness" Value="2" />
+                            </Trigger>
+                            <EventTrigger RoutedEvent="Button.Click">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="AddCircleScale"
+                                                         Storyboard.TargetProperty="ScaleX"
+                                                         From="0.78" To="1" Duration="0:0:0.24"
+                                                         FillBehavior="Stop">
+                                            <DoubleAnimation.EasingFunction>
+                                                <BackEase EasingMode="EaseOut" Amplitude="0.25" />
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                        <DoubleAnimation Storyboard.TargetName="AddCircleScale"
+                                                         Storyboard.TargetProperty="ScaleY"
+                                                         From="0.78" To="1" Duration="0:0:0.24"
+                                                         FillBehavior="Stop">
+                                            <DoubleAnimation.EasingFunction>
+                                                <BackEase EasingMode="EaseOut" Amplitude="0.25" />
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                        <DoubleAnimation Storyboard.TargetName="PlusIcon"
+                                                         Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
+                                                         From="0" To="90" Duration="0:0:0.2"
+                                                         FillBehavior="Stop">
+                                            <DoubleAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseOut" />
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Picker cards intentionally animate only transforms and opacity. Keeping
+             blur and drop-shadow effects out of the motion path avoids expensive
+             software rendering on high-DPI displays. -->
+        <Style x:Key="UtilityPickerItemButtonStyle"
+               TargetType="Button"
+               BasedOn="{StaticResource MaterialDesignFlatButton}">
+            <Setter Property="Width" Value="136" />
+            <Setter Property="Height" Value="134" />
+            <Setter Property="Margin" Value="8" />
+            <Setter Property="Padding" Value="10" />
+            <Setter Property="Background" Value="{DynamicResource MaterialDesignCardBackground}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesignDivider}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+            <Setter Property="RenderTransform">
+                <Setter.Value>
+                    <TransformGroup>
+                        <ScaleTransform />
+                        <TranslateTransform />
+                    </TransformGroup>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="CardBorder"
+                                Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="18"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="CardBorder" Property="Background" Value="{DynamicResource MaterialDesignSelection}" />
+                                <Setter TargetName="CardBorder" Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Primary}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="CardBorder" Property="Opacity" Value="0.86" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="CardBorder" Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Primary}" />
+                                <Setter TargetName="CardBorder" Property="BorderThickness" Value="2" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="CardBorder" Property="Opacity" Value="0.62" />
+                            </Trigger>
+                            <EventTrigger RoutedEvent="MouseEnter">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)"
+                                                         To="1.025" Duration="0:0:0.15">
+                                            <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)"
+                                                         To="1.025" Duration="0:0:0.15">
+                                            <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[1].(TranslateTransform.Y)"
+                                                         To="-3" Duration="0:0:0.15">
+                                            <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut" /></DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                            <EventTrigger RoutedEvent="MouseLeave">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)"
+                                                         To="1" Duration="0:0:0.18" />
+                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)"
+                                                         To="1" Duration="0:0:0.18" />
+                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[1].(TranslateTransform.Y)"
+                                                         To="0" Duration="0:0:0.18" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -232,6 +411,17 @@
                             <materialDesign:PackIcon Kind="KeyboardReturn" Width="18" Height="18" />
                         </materialDesign:ToggleButtonAssist.OnContent>
                     </ToggleButton>
+
+                    <!-- Update Button -->
+                    <Button Command="{Binding CheckForUpdatesCommand}" Style="{StaticResource TitleBarButtonStyle}"
+                            ToolTip="{Binding UpdateToolTip}" IsEnabled="{Binding IsCheckingForUpdates, Converter={StaticResource InvertBooleanConverter}}">
+                        <Grid>
+                            <materialDesign:PackIcon Kind="Update" Width="17" Height="17" />
+                            <Ellipse Width="7" Height="7" Fill="#69F0AE" Stroke="White" StrokeThickness="1"
+                                     HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-4,-5,0"
+                                     Visibility="{Binding IsUpdateAvailable, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        </Grid>
+                    </Button>
 
                     <!-- Settings Button -->
                     <Button Click="BtnSettings_Click" Style="{StaticResource TitleBarButtonStyle}" ToolTip="个性化设置">
@@ -765,7 +955,12 @@
                 </Style>
             </Grid.Style>
             
-            <TabControl Background="Transparent" BorderThickness="0" Padding="0">
+            <TabControl x:Name="UtilityTabControl"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Padding="0"
+                        SelectedIndex="{Binding SelectedUtilityTabIndex, Mode=TwoWay}"
+                        SelectionChanged="UtilityTabControl_SelectionChanged">
                 <TabControl.Template>
                     <ControlTemplate TargetType="TabControl">
                         <Grid>
@@ -776,28 +971,83 @@
                             <Grid Grid.Row="0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TabPanel x:Name="HeaderPanel" Grid.Column="0" Panel.ZIndex="1" IsItemsHost="True" KeyboardNavigation.TabIndex="1" VerticalAlignment="Bottom"/>
-                                <materialDesign:PopupBox Grid.Column="1" Width="28" Height="28" Margin="4,0,0,4" VerticalAlignment="Bottom" ToolTip="添加工具" PlacementMode="BottomAndAlignLeftEdges">
-                                    <materialDesign:PopupBox.ToggleContent>
-                                        <Border Background="{DynamicResource MaterialDesignPaper}" CornerRadius="14" Opacity="0.8" Width="28" Height="28">
-                                            <materialDesign:PackIcon Kind="Plus" Foreground="{DynamicResource MaterialDesignBodyLight}" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                        </Border>
-                                    </materialDesign:PopupBox.ToggleContent>
-                                    <StackPanel Margin="8">
-                                        <ItemsControl ItemsSource="{Binding UtilityPlugins}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Button Content="{Binding Name}" Command="{Binding DataContext.OpenUtilityPluginCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" Style="{StaticResource MaterialDesignFlatButton}" HorizontalAlignment="Left" />
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </StackPanel>
-                                </materialDesign:PopupBox>
-                                
+
+                                <Button x:Name="UtilityTabScrollLeftButton"
+                                        Grid.Column="0"
+                                        Width="28" Height="28" Margin="0,0,2,4"
+                                        VerticalAlignment="Bottom"
+                                        Visibility="Collapsed"
+                                        IsEnabled="False"
+                                        Style="{StaticResource MaterialDesignToolButton}"
+                                        ToolTip="向左滚动标签"
+                                        AutomationProperties.Name="向左滚动标签"
+                                        Click="UtilityTabScrollLeftButton_Click">
+                                    <materialDesign:PackIcon Kind="ChevronLeft" Width="18" Height="18" />
+                                </Button>
+
+                                <ScrollViewer x:Name="UtilityTabHeaderScroller"
+                                              Grid.Column="1"
+                                              HorizontalScrollBarVisibility="Hidden"
+                                              VerticalScrollBarVisibility="Disabled"
+                                              HorizontalContentAlignment="Left"
+                                              CanContentScroll="False"
+                                              PanningMode="HorizontalOnly"
+                                              PreviewMouseWheel="UtilityTabHeaderScroller_PreviewMouseWheel"
+                                              ScrollChanged="UtilityTabHeaderScroller_ScrollChanged">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TabPanel x:Name="HeaderPanel"
+                                                  Grid.Column="0"
+                                                  Panel.ZIndex="1"
+                                                  IsItemsHost="True"
+                                                  KeyboardNavigation.TabIndex="1"
+                                                  VerticalAlignment="Bottom" />
+                                        <Button x:Name="UtilityInlineAddButton"
+                                                Grid.Column="1"
+                                                Margin="4,0,6,0"
+                                                VerticalAlignment="Center"
+                                                Command="{Binding ShowUtilityPickerCommand}"
+                                                Style="{StaticResource UtilityAddTabButtonStyle}"
+                                                ToolTip="添加工具"
+                                                AutomationProperties.Name="添加工具" />
+                                    </Grid>
+                                </ScrollViewer>
+
+                                <Button x:Name="UtilityTabScrollRightButton"
+                                        Grid.Column="2"
+                                        Width="28" Height="28" Margin="2,0,2,4"
+                                        VerticalAlignment="Bottom"
+                                        Visibility="Collapsed"
+                                        IsEnabled="False"
+                                        Style="{StaticResource MaterialDesignToolButton}"
+                                        ToolTip="向右滚动标签"
+                                        AutomationProperties.Name="向右滚动标签"
+                                        Click="UtilityTabScrollRightButton_Click">
+                                    <materialDesign:PackIcon Kind="ChevronRight" Width="18" Height="18" />
+                                </Button>
+
+                                <Button x:Name="UtilityPinnedAddButton"
+                                        Grid.Column="3"
+                                        Margin="2,0,8,0"
+                                        VerticalAlignment="Center"
+                                        Visibility="Collapsed"
+                                        Command="{Binding ShowUtilityPickerCommand}"
+                                        Style="{StaticResource UtilityAddTabButtonStyle}"
+                                        ToolTip="添加工具"
+                                        AutomationProperties.Name="添加工具" />
                             </Grid>
-                            <Border Grid.Row="1" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                            <Border Grid.Row="1"
+                                    Background="{DynamicResource MaterialDesignCardBackground}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="0,0,8,8">
                                 <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent" Margin="{TemplateBinding Padding}"/>
                             </Border>
                         </Grid>
@@ -810,17 +1060,28 @@
                     <Style TargetType="TabItem">
                         <Setter Property="Background" Value="{DynamicResource MaterialDesignPaper}" />
                         <Setter Property="Foreground" Value="{DynamicResource MaterialDesignBody}" />
-                        <Setter Property="Height" Value="36" />
-                        <Setter Property="MaxWidth" Value="200" />
+                        <Setter Property="Opacity" Value="0" />
+                        <Setter Property="Height" Value="40" />
+                        <Setter Property="MaxWidth" Value="220" />
                         <Setter Property="MinWidth" Value="120" />
-                        <Setter Property="Padding" Value="16,0,16,0" />
+                        <Setter Property="Padding" Value="14,0" />
                         <Setter Property="Margin" Value="2,0,2,0" />
+                        <Setter Property="RenderTransform">
+                            <Setter.Value>
+                                <TranslateTransform X="12" />
+                            </Setter.Value>
+                        </Setter>
                         <Setter Property="Template">
                             <Setter.Value>
                                 <ControlTemplate TargetType="TabItem">
                                     <Grid x:Name="RootGrid">
-                                        <Border x:Name="BgBorder" Background="{TemplateBinding Background}" CornerRadius="8,8,0,0" Opacity="0.8" Margin="{TemplateBinding Margin}"/>
-                                        <Border x:Name="Border" CornerRadius="8,8,0,0" Padding="{TemplateBinding Padding}" Margin="{TemplateBinding Margin}">
+                                        <Border x:Name="BgBorder"
+                                                Background="{TemplateBinding Background}"
+                                                BorderBrush="{DynamicResource MaterialDesignDivider}"
+                                                BorderThickness="1,1,1,0"
+                                                CornerRadius="9,9,0,0"
+                                                Opacity="0.82" />
+                                        <Border x:Name="Border" CornerRadius="9,9,0,0" Padding="{TemplateBinding Padding}">
                                             <ContentPresenter ContentSource="Header" HorizontalAlignment="Left" VerticalAlignment="Center" />
                                         </Border>
                                     </Grid>
@@ -838,6 +1099,26 @@
                                 </ControlTemplate>
                             </Setter.Value>
                         </Setter>
+                        <Style.Triggers>
+                            <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                         From="0" To="1" Duration="0:0:0.2">
+                                            <DoubleAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseOut" />
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                                         From="12" To="0" Duration="0:0:0.24">
+                                            <DoubleAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseOut" />
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                        </Style.Triggers>
                     </Style>
                 </TabControl.Resources>
                 
@@ -845,8 +1126,8 @@
                     <DataTemplate>
                         <StackPanel Orientation="Horizontal">
                             <materialDesign:PackIcon Kind="{Binding IconKind}" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                            <TextBlock Text="{Binding Title}" VerticalAlignment="Center"/>
-                            <Button Command="{Binding CloseCommand}" Style="{StaticResource MaterialDesignToolButton}" Width="20" Height="20" Margin="8,0,-8,0">
+                            <TextBlock Text="{Binding Title}" MaxWidth="132" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                            <Button Command="{Binding CloseCommand}" Style="{StaticResource MaterialDesignToolButton}" Width="22" Height="22" Margin="8,0,0,0" Padding="0" ToolTip="关闭标签" AutomationProperties.Name="关闭标签">
                                 <materialDesign:PackIcon Kind="Close" Width="12" Height="12" />
                             </Button>
                         </StackPanel>
@@ -871,8 +1152,161 @@
         </Grid>
         
         <FrameworkElement x:Name="DummyDynamicTabs" Visibility="Collapsed" />
-
-
                 </Grid>
+
+        <!-- Centered utility picker. It is hosted in the main visual tree so it keeps
+             the current glass/theme resources and remains centered at every window size. -->
+        <Grid x:Name="UtilityPickerOverlay"
+              Panel.ZIndex="2000"
+              Background="Transparent"
+              Visibility="{Binding IsUtilityPickerOpen, Converter={StaticResource BooleanToVisibilityConverter}}"
+              IsVisibleChanged="UtilityPickerOverlay_IsVisibleChanged">
+            <Border x:Name="UtilityPickerBackdrop"
+                    Background="#FF000000"
+                    Opacity="0"
+                    IsHitTestVisible="False" />
+
+            <Button Panel.ZIndex="1"
+                    Command="{Binding CloseUtilityPickerCommand}"
+                    Focusable="False"
+                    Background="Transparent"
+                    BorderThickness="0">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" />
+                    </ControlTemplate>
+                </Button.Template>
+            </Button>
+
+            <materialDesign:Card x:Name="UtilityPickerCard"
+                                 Panel.ZIndex="2"
+                                 Width="760"
+                                 MaxHeight="620"
+                                 Margin="32,64,32,32"
+                                 Padding="0"
+                                 HorizontalAlignment="Center"
+                                 VerticalAlignment="Center"
+                                 KeyboardNavigation.TabNavigation="Cycle"
+                                 WindowChrome.IsHitTestVisibleInChrome="True"
+                                 Opacity="0"
+                                 RenderTransformOrigin="0.5,0.5">
+                <materialDesign:Card.RenderTransform>
+                    <TransformGroup>
+                        <ScaleTransform x:Name="UtilityPickerScaleTransform" ScaleX="0.94" ScaleY="0.94" />
+                        <TranslateTransform x:Name="UtilityPickerTranslateTransform" Y="18" />
+                    </TransformGroup>
+                </materialDesign:Card.RenderTransform>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Margin="28,24,20,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="添加实用工具" FontSize="22" FontWeight="SemiBold" />
+                            <TextBlock Text="选择一个工具，它会在顶部作为新标签打开"
+                                       Margin="0,6,0,0"
+                                       Foreground="{DynamicResource MaterialDesignBodyLight}" />
+                        </StackPanel>
+                        <Button Grid.Column="1"
+                                Width="36" Height="36"
+                                Command="{Binding CloseUtilityPickerCommand}"
+                                Style="{StaticResource MaterialDesignToolButton}"
+                                ToolTip="关闭"
+                                AutomationProperties.Name="关闭工具选择器">
+                            <materialDesign:PackIcon Kind="Close" Width="20" Height="20" />
+                        </Button>
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="1"
+                                  MaxHeight="450"
+                                  Margin="20,0"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <Grid>
+                            <ItemsControl x:Name="UtilityPluginPickerItems" ItemsSource="{Binding UtilityTools}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel HorizontalAlignment="Center" ItemWidth="152" ItemHeight="150" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Style="{StaticResource UtilityPickerItemButtonStyle}"
+                                                Command="{Binding DataContext.OpenUtilityToolCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}"
+                                                IsEnabled="{Binding DataContext.IsUtilityPickerBusy, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource InvertBooleanConverter}}"
+                                                ToolTip="{Binding Description}"
+                                                AutomationProperties.Name="{Binding Name}">
+                                            <StackPanel VerticalAlignment="Center">
+                                                <Border Width="64" Height="64"
+                                                        CornerRadius="18"
+                                                        Background="{DynamicResource MaterialDesignSelection}"
+                                                        BorderBrush="{DynamicResource MaterialDesignDivider}"
+                                                        BorderThickness="1">
+                                                    <materialDesign:PackIcon Kind="{Binding IconKind}"
+                                                                             Width="34" Height="34"
+                                                                             Foreground="{DynamicResource MaterialDesign.Brush.Primary}"
+                                                                             HorizontalAlignment="Center"
+                                                                             VerticalAlignment="Center" />
+                                                </Border>
+                                                <TextBlock Text="{Binding Name}"
+                                                           Margin="0,12,0,0"
+                                                           MaxWidth="112"
+                                                           TextAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           FontWeight="SemiBold" />
+                                            </StackPanel>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24">
+                                <StackPanel.Style>
+                                    <Style TargetType="StackPanel">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ElementName=UtilityPluginPickerItems, Path=HasItems}" Value="False">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </StackPanel.Style>
+                                <materialDesign:PackIcon Kind="ToolboxOutline" Width="48" Height="48"
+                                                         Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                                         HorizontalAlignment="Center" />
+                                <TextBlock Text="暂无可添加的实用工具"
+                                           Margin="0,12,0,0"
+                                           Foreground="{DynamicResource MaterialDesignBodyLight}" />
+                            </StackPanel>
+                        </Grid>
+                    </ScrollViewer>
+
+                    <Border Grid.Row="2" BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="0,1,0,0" Padding="28,12">
+                        <Grid>
+                            <TextBlock Text="{Binding UtilityTools.Count, StringFormat=已加载 {0} 个可用工具}"
+                                       Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                       FontSize="12"
+                                       VerticalAlignment="Center" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <materialDesign:PackIcon Kind="KeyboardEsc" Width="15" Height="15"
+                                                         Margin="0,0,6,0"
+                                                         Foreground="{DynamicResource MaterialDesignBodyLight}" />
+                                <TextBlock Text="关闭"
+                                           Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                           FontSize="12" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </materialDesign:Card>
+        </Grid>
     </Grid>
 </Window>

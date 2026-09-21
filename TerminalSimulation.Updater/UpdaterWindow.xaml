@@ -1,0 +1,27 @@
+<Window x:Class="TerminalSimulation.Updater.UpdaterWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="车载定位终端模拟系统更新" Width="520" Height="260"
+        MinWidth="460" MinHeight="230" WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize" Background="#F5F7FA" FontFamily="Microsoft YaHei UI">
+    <Grid Margin="32">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="正在更新应用" FontSize="24" FontWeight="SemiBold" Foreground="#20242A" />
+        <TextBlock x:Name="VersionText" Grid.Row="1" Margin="0,8,0,0" FontSize="13" Foreground="#69717D" />
+        <ProgressBar x:Name="ProgressBar" Grid.Row="2" Height="8" Margin="0,28,0,0"
+                     Minimum="0" Maximum="100" IsIndeterminate="True" />
+        <TextBlock x:Name="StatusText" Grid.Row="3" Margin="0,18,0,0" Text="正在准备更新…"
+                   TextWrapping="Wrap" FontSize="14" Foreground="#3A414B" />
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="CloseButton" Content="关闭" Width="96" Height="36" IsEnabled="False"
+                    Click="CloseButton_Click" />
+        </StackPanel>
+    </Grid>
+</Window>
