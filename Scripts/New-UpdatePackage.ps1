@@ -4,6 +4,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$Version,
     [string]$Channel = "preview",
+    [string]$Line = "main",
+    [ValidateRange(1, 2147483647)]
+    [int]$CompatibilityEpoch = 1,
     [string]$ReleaseNotes = "",
     [string]$OutputDirectory = "artifacts/update",
     [string]$PackageBaseUrl = ""
@@ -36,13 +39,15 @@ if (-not [string]::IsNullOrWhiteSpace($PackageBaseUrl)) {
 }
 
 $manifest = [ordered]@{
-    schemaVersion = 1
+    schemaVersion = 2
     product = "TerminalSimulation"
     version = $Version
     channel = $Channel
+    line = $Line
+    compatibilityEpoch = $CompatibilityEpoch
     publishedAt = [DateTimeOffset]::Now.ToString("o")
     releaseNotes = $ReleaseNotes
-    minimumUpdaterVersion = "1.0.0"
+    minimumUpdaterVersion = "2.0.0"
     package = [ordered]@{
         fileName = $packageName
         url = $packageUrl

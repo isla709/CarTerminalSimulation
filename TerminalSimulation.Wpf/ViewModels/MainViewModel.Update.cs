@@ -22,10 +22,10 @@ public partial class MainViewModel
     private bool _isUpdateAvailable;
 
     [ObservableProperty]
-    private string _updateToolTip = "检查更新";
+    private string _updateToolTip = "查看可用版本";
 
     [RelayCommand]
-    private Task CheckForUpdatesAsync() => TrackUpdateCheck(CheckForUpdatesCoreAsync(showNoUpdateMessage: true, _updateCancellation.Token));
+    private Task CheckForUpdatesAsync() => TrackUpdateCheck(CheckForUpdatesCoreAsync(interactive: true, _updateCancellation.Token));
 
     internal Task CheckForUpdatesSilentlyAsync() => TrackUpdateCheck(CheckForUpdatesSilentlyCoreAsync());
 
@@ -36,7 +36,7 @@ public partial class MainViewModel
             var service = GetUpdateService();
             var configuration = await service.LoadConfigurationAsync(_updateCancellation.Token);
             if (!configuration.AutoCheck || !IsAutoCheckDue(configuration.CheckIntervalHours)) return;
-            await CheckForUpdatesCoreAsync(showNoUpdateMessage: false, _updateCancellation.Token);
+            await CheckForUpdatesCoreAsync(interactive: false, _updateCancellation.Token);
         }
         catch (OperationCanceledException) when (_updateCancellation.IsCancellationRequested) { }
         catch (Exception ex)
@@ -45,44 +45,66 @@ public partial class MainViewModel
         }
     }
 
-    private async Task CheckForUpdatesCoreAsync(bool showNoUpdateMessage, CancellationToken cancellationToken)
+    private async Task CheckForUpdatesCoreAsync(bool interactive, CancellationToken cancellationToken)
     {
         if (Interlocked.CompareExchange(ref _updateCheckActive, 1, 0) != 0) return;
         IsCheckingForUpdates = true;
         UpdateToolTip = "正在检查更新…";
         try
         {
-            var result = await GetUpdateService().CheckForUpdatesAsync(AppVersionInfo.FullVersion, cancellationToken);
+            var result = await GetUpdateService().CheckForUpdatesAsync(
+                AppVersionInfo.FullVersion,
+                AppVersionInfo.UpdateLine,
+                AppVersionInfo.CompatibilityEpoch,
+                cancellationToken);
             WriteLastUpdateCheck();
-            if (result.Candidate is null)
+
+            IsUpdateAvailable = result.Candidate is not null;
+            UpdateToolTip = result.Candidate is not null
+                ? "有可选更新"
+                : result.Candidates.Count > 0
+                    ? $"可选择 {result.Candidates.Count} 个历史版本"
+                    : result.HasEnabledSources
+                        ? "当前版本线暂无其他版本"
+                        : "未配置可用更新源";
+
+            // Automatic checks are informational only. Never interrupt startup
+            // or pressure the user with an update dialog.
+            if (!interactive) return;
+
+            if (result.Candidates.Count == 0)
             {
-                IsUpdateAvailable = false;
-                UpdateToolTip = result.HasEnabledSources ? "已是最新版本" : "未配置可用更新源";
-                if (showNoUpdateMessage)
-                {
-                    var detail = result.HasEnabledSources
-                        ? result.Diagnostics.Count == 0
-                            ? "当前已经是最新版本。"
-                            : $"未发现可用更新。\n\n部分更新源不可用：\n{string.Join("\n", result.Diagnostics)}"
-                        : $"没有启用更新源。请编辑：\n{Path.Combine(AppContext.BaseDirectory, "update-sources.json")}";
-                    MessageBox.Show(detail, "检查更新", MessageBoxButton.OK, MessageBoxImage.Information);
-                }
+                var detail = result.HasEnabledSources
+                    ? result.Diagnostics.Count == 0
+                        ? $"版本线 {AppVersionInfo.UpdateLine} 暂无其他可用版本。"
+                        : $"未发现可用版本。\n\n部分更新源不可用：\n{string.Join("\n", result.Diagnostics)}"
+                    : $"没有启用更新源。请编辑：\n{Path.Combine(AppContext.BaseDirectory, "update-sources.json")}";
+                MessageBox.Show(detail, "版本管理", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
-            IsUpdateAvailable = true;
-            UpdateToolTip = $"发现新版本 {result.Candidate.Version}";
-            var owner = Application.Current.MainWindow;
-            var dialog = new UpdateAvailableWindow(AppVersionInfo.FullVersion, result.Candidate)
+            var mainWindow = Application.Current.MainWindow;
+            var dialogOwner = Application.Current.Windows
+                .OfType<Window>()
+                .FirstOrDefault(window => window.IsActive) ?? mainWindow;
+            var dialog = new UpdateAvailableWindow(
+                AppVersionInfo.FullVersion,
+                AppVersionInfo.UpdateLine,
+                AppVersionInfo.CompatibilityEpoch,
+                result.Candidates,
+                result.Candidate)
             {
-                Owner = owner
+                Owner = dialogOwner
             };
-            if (dialog.ShowDialog() != true) return;
+            if (dialog.ShowDialog() != true || dialog.SelectedCandidate is not { } selectedCandidate) return;
 
             try
             {
-                UpdateLauncher.Start(result.Candidate);
-                owner?.Close();
+                UpdateLauncher.Start(
+                    selectedCandidate,
+                    AppVersionInfo.UpdateLine,
+                    AppVersionInfo.CompatibilityEpoch);
+                mainWindow?.Close();
             }
             catch (Exception ex)
             {
@@ -92,13 +114,13 @@ public partial class MainViewModel
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            UpdateToolTip = "检查更新";
+            UpdateToolTip = "查看可用版本";
         }
         catch (Exception ex)
         {
             UpdateToolTip = "检查更新失败";
             _appLogger.Error("自动更新", "检查更新失败", ex);
-            if (showNoUpdateMessage)
+            if (interactive)
                 MessageBox.Show($"检查更新失败：{ex.Message}", "检查更新", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         finally

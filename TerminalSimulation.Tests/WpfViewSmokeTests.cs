@@ -19,6 +19,8 @@ public sealed class WpfViewSmokeTests
                 var app = new App();
                 app.InitializeComponent();
                 _ = new MainWindow();
+                _ = new ThemeSettingsWindow();
+                _ = new AboutSettingsControl();
                 _ = new XunjieCloudStreamView();
                 // Opening the utility picker again can create a second plugin tab.
                 // Keep this as a regression guard for duplicate native-video views.

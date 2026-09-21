@@ -4,8 +4,12 @@ namespace TerminalSimulation.Updater;
 
 public sealed class UpdatePlan
 {
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = 2;
     public string Version { get; set; } = string.Empty;
+    public string CurrentLine { get; set; } = string.Empty;
+    public string TargetLine { get; set; } = string.Empty;
+    public int CurrentCompatibilityEpoch { get; set; }
+    public int TargetCompatibilityEpoch { get; set; }
     public string PackageUrl { get; set; } = string.Empty;
     public string Sha256 { get; set; } = string.Empty;
     public long? PackageSize { get; set; }

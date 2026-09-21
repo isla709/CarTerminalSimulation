@@ -3,6 +3,7 @@
   "autoCheck": true,
   "checkIntervalHours": 12,
   "channel": "preview",
+  "line": "main",
   "sources": [
     {
       "type": "github",

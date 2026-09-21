@@ -8,6 +8,7 @@ internal sealed class UpdateSourceConfiguration
     public bool AutoCheck { get; set; } = true;
     public double CheckIntervalHours { get; set; } = 12;
     public string Channel { get; set; } = "preview";
+    public string Line { get; set; } = "main";
     public List<UpdateSourceDefinition> Sources { get; set; } = [];
 }
 
@@ -27,15 +28,25 @@ internal sealed class UpdateSourceDefinition
 
 internal sealed class UpdateManifest
 {
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = 2;
     public string Product { get; set; } = string.Empty;
     public string Version { get; set; } = string.Empty;
     public string Channel { get; set; } = "preview";
+    public string Line { get; set; } = string.Empty;
+    public int CompatibilityEpoch { get; set; } = 1;
     public DateTimeOffset? PublishedAt { get; set; }
     public string? ReleaseNotes { get; set; }
     public string? MinimumUpdaterVersion { get; set; }
     public UpdatePackage Package { get; set; } = new();
     public List<string> Delete { get; set; } = [];
+}
+
+internal sealed class UpdateCatalog
+{
+    public int SchemaVersion { get; set; } = 2;
+    public string Product { get; set; } = string.Empty;
+    public string Line { get; set; } = string.Empty;
+    public List<UpdateManifest> Versions { get; set; } = [];
 }
 
 internal sealed class UpdatePackage
@@ -49,6 +60,8 @@ internal sealed class UpdatePackage
 internal sealed record UpdateCandidate(
     string Version,
     string Channel,
+    string Line,
+    int CompatibilityEpoch,
     DateTimeOffset? PublishedAt,
     string ReleaseNotes,
     string SourceName,
@@ -60,6 +73,7 @@ internal sealed record UpdateCandidate(
 
 internal sealed record UpdateCheckResult(
     UpdateCandidate? Candidate,
+    IReadOnlyList<UpdateCandidate> Candidates,
     bool HasEnabledSources,
     IReadOnlyList<string> Diagnostics);
 

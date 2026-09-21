@@ -6,8 +6,17 @@ namespace TerminalSimulation.Wpf.Services.Updates;
 
 internal static class UpdateLauncher
 {
-    public static string Start(UpdateCandidate candidate)
+    public static string Start(
+        UpdateCandidate candidate,
+        string currentLine,
+        int currentCompatibilityEpoch)
     {
+        if (!string.Equals(candidate.Line, currentLine, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"不能从版本线 {currentLine} 切换到 {candidate.Line}。");
+        if (candidate.CompatibilityEpoch < currentCompatibilityEpoch)
+            throw new InvalidOperationException(
+                $"目标版本兼容级别 {candidate.CompatibilityEpoch} 低于当前级别 {currentCompatibilityEpoch}，不允许回退。");
+
         var executablePath = Environment.ProcessPath
                              ?? throw new InvalidOperationException("无法确定当前主程序路径。");
         var updaterPath = Path.Combine(AppContext.BaseDirectory, "update.exe");
@@ -27,7 +36,12 @@ internal static class UpdateLauncher
         var planPath = Path.Combine(planDirectory, "update-plan.json");
         var plan = new UpdatePlanDocument
         {
+            SchemaVersion = 2,
             Version = candidate.Version,
+            CurrentLine = currentLine,
+            TargetLine = candidate.Line,
+            CurrentCompatibilityEpoch = currentCompatibilityEpoch,
+            TargetCompatibilityEpoch = candidate.CompatibilityEpoch,
             PackageUrl = candidate.PackageUri.AbsoluteUri,
             Sha256 = candidate.Sha256,
             PackageSize = candidate.PackageSize,
@@ -55,8 +69,12 @@ internal static class UpdateLauncher
 
     private sealed class UpdatePlanDocument
     {
-        public int SchemaVersion { get; set; } = 1;
+        public int SchemaVersion { get; set; } = 2;
         public string Version { get; set; } = string.Empty;
+        public string CurrentLine { get; set; } = string.Empty;
+        public string TargetLine { get; set; } = string.Empty;
+        public int CurrentCompatibilityEpoch { get; set; }
+        public int TargetCompatibilityEpoch { get; set; }
         public string PackageUrl { get; set; } = string.Empty;
         public string Sha256 { get; set; } = string.Empty;
         public long? PackageSize { get; set; }

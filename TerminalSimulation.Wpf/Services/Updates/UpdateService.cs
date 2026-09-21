@@ -8,6 +8,7 @@ namespace TerminalSimulation.Wpf.Services.Updates;
 internal sealed class UpdateService
 {
     private const int MaximumManifestBytes = 1024 * 1024;
+    private static readonly Version SupportedUpdaterVersion = new(2, 0, 0);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true,
@@ -46,7 +47,11 @@ internal sealed class UpdateService
         return configuration;
     }
 
-    public async Task<UpdateCheckResult> CheckForUpdatesAsync(string currentVersion, CancellationToken cancellationToken)
+    public async Task<UpdateCheckResult> CheckForUpdatesAsync(
+        string currentVersion,
+        string currentLine,
+        int currentCompatibilityEpoch,
+        CancellationToken cancellationToken)
     {
         var configuration = await LoadConfigurationAsync(cancellationToken);
         var sources = configuration.Sources
@@ -56,17 +61,35 @@ internal sealed class UpdateService
         var diagnostics = new List<string>();
         var candidates = new List<UpdateCandidate>();
 
+        if (!string.IsNullOrWhiteSpace(configuration.Line) &&
+            !string.Equals(configuration.Line, currentLine, StringComparison.OrdinalIgnoreCase))
+        {
+            diagnostics.Add($"更新源配置的版本线 {configuration.Line} 与当前版本线 {currentLine} 不一致，已按当前版本线检查。");
+        }
+
         foreach (var source in sources)
         {
             try
             {
-                var candidate = source.Type.ToLowerInvariant() switch
+                var sourceCandidates = source.Type.ToLowerInvariant() switch
                 {
-                    "github" => await CheckGitHubAsync(source, configuration.Channel, cancellationToken),
-                    "manifest" => await CheckManifestAsync(source, configuration.Channel, cancellationToken),
+                    "github" => await CheckGitHubAsync(
+                        source,
+                        configuration.Channel,
+                        currentLine,
+                        currentCompatibilityEpoch,
+                        diagnostics,
+                        cancellationToken),
+                    "manifest" => await CheckManifestAsync(
+                        source,
+                        configuration.Channel,
+                        currentLine,
+                        currentCompatibilityEpoch,
+                        diagnostics,
+                        cancellationToken),
                     _ => throw new InvalidDataException($"未知更新源类型：{source.Type}")
                 };
-                if (candidate is not null) candidates.Add(candidate);
+                candidates.AddRange(sourceCandidates);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -80,17 +103,27 @@ internal sealed class UpdateService
             }
         }
 
-        var newest = candidates
+        var available = candidates
+            .GroupBy(candidate => $"{candidate.Line}\n{candidate.Version}", StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .Where(candidate => UpdateVersionComparer.Compare(candidate.Version, currentVersion) != 0)
+            .OrderByDescending(candidate => candidate.PublishedAt)
+            .ThenByDescending(candidate => candidate.Version, Comparer<string>.Create(UpdateVersionComparer.Compare))
+            .ToList();
+        var newest = available
             .Where(candidate => UpdateVersionComparer.Compare(candidate.Version, currentVersion) > 0)
             .OrderByDescending(candidate => candidate.Version, Comparer<string>.Create(UpdateVersionComparer.Compare))
             .ThenByDescending(candidate => candidate.PublishedAt)
             .FirstOrDefault();
-        return new UpdateCheckResult(newest, sources.Count > 0, diagnostics);
+        return new UpdateCheckResult(newest, available, sources.Count > 0, diagnostics);
     }
 
-    private async Task<UpdateCandidate?> CheckGitHubAsync(
+    private async Task<IReadOnlyList<UpdateCandidate>> CheckGitHubAsync(
         UpdateSourceDefinition source,
         string channel,
+        string line,
+        int currentCompatibilityEpoch,
+        List<string> diagnostics,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(source.Owner) || string.IsNullOrWhiteSpace(source.Repository))
@@ -108,6 +141,7 @@ internal sealed class UpdateService
             ? "update-manifest.json"
             : source.ManifestAssetName;
 
+        var candidates = new List<UpdateCandidate>();
         foreach (var release in releases.Where(item => !item.Draft))
         {
             if (string.Equals(channel, "stable", StringComparison.OrdinalIgnoreCase) && release.Prerelease) continue;
@@ -115,47 +149,101 @@ internal sealed class UpdateService
                 string.Equals(asset.Name, manifestName, StringComparison.OrdinalIgnoreCase));
             if (manifestAsset is null) continue;
 
-            var manifestUri = RequireRemoteUri(manifestAsset.BrowserDownloadUrl, allowInsecureHttp: false);
-            var manifest = await DownloadManifestAsync(manifestUri, cancellationToken);
-            if (!ChannelMatches(channel, manifest.Channel)) continue;
-            var packageAsset = release.Assets.FirstOrDefault(asset =>
-                string.Equals(asset.Name, manifest.Package.FileName, StringComparison.OrdinalIgnoreCase));
-            if (packageAsset is null)
-                throw new InvalidDataException($"Release 缺少清单指定的资产 {manifest.Package.FileName}。");
+            try
+            {
+                var manifestUri = RequireRemoteUri(manifestAsset.BrowserDownloadUrl, allowInsecureHttp: false);
+                var manifests = await DownloadManifestSetAsync(manifestUri, cancellationToken);
+                foreach (var manifest in manifests)
+                {
+                    if (!IsSelectable(manifest, channel, line, currentCompatibilityEpoch)) continue;
+                    var packageAsset = release.Assets.FirstOrDefault(asset =>
+                        string.Equals(asset.Name, manifest.Package.FileName, StringComparison.OrdinalIgnoreCase));
+                    if (packageAsset is null)
+                        throw new InvalidDataException($"Release 缺少清单指定的资产 {manifest.Package.FileName}。");
 
-            var sha256 = manifest.Package.Sha256;
-            if (string.IsNullOrWhiteSpace(sha256) && packageAsset.Digest?.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase) == true)
-                sha256 = packageAsset.Digest[7..];
-            manifest.Package.Sha256 = sha256;
-            manifest.Package.Url = packageAsset.BrowserDownloadUrl;
-            manifest.Package.Size ??= packageAsset.Size;
-            manifest.PublishedAt ??= release.PublishedAt;
-            manifest.ReleaseNotes ??= release.Body;
-            return CreateCandidate(manifest, DisplayName(source), allowInsecureHttp: false, manifestUri);
+                    var sha256 = manifest.Package.Sha256;
+                    if (string.IsNullOrWhiteSpace(sha256) && packageAsset.Digest?.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase) == true)
+                        sha256 = packageAsset.Digest[7..];
+                    manifest.Package.Sha256 = sha256;
+                    manifest.Package.Url = packageAsset.BrowserDownloadUrl;
+                    manifest.Package.Size ??= packageAsset.Size;
+                    manifest.PublishedAt ??= release.PublishedAt;
+                    manifest.ReleaseNotes ??= release.Body;
+                    candidates.Add(CreateCandidate(manifest, DisplayName(source), allowInsecureHttp: false, manifestUri));
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                diagnostics.Add($"{DisplayName(source)}: 跳过一个无效 Release（{ex.Message}）");
+                _logger.Error("自动更新", $"跳过无效 GitHub Release：{DisplayName(source)}", ex);
+            }
         }
 
-        return null;
+        return candidates;
     }
 
-    private async Task<UpdateCandidate?> CheckManifestAsync(
+    private async Task<IReadOnlyList<UpdateCandidate>> CheckManifestAsync(
         UpdateSourceDefinition source,
         string channel,
+        string line,
+        int currentCompatibilityEpoch,
+        List<string> diagnostics,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(source.ManifestUrl))
             throw new InvalidDataException("托管平台更新源缺少 manifestUrl。");
         var manifestUri = RequireRemoteUri(source.ManifestUrl, source.AllowInsecureHttp);
-        var manifest = await DownloadManifestAsync(manifestUri, cancellationToken);
-        if (!ChannelMatches(channel, manifest.Channel)) return null;
-        return CreateCandidate(manifest, DisplayName(source), source.AllowInsecureHttp, manifestUri);
+        var manifests = await DownloadManifestSetAsync(manifestUri, cancellationToken);
+        var candidates = new List<UpdateCandidate>();
+        foreach (var manifest in manifests)
+        {
+            if (!IsSelectable(manifest, channel, line, currentCompatibilityEpoch)) continue;
+            try
+            {
+                candidates.Add(CreateCandidate(manifest, DisplayName(source), source.AllowInsecureHttp, manifestUri));
+            }
+            catch (Exception ex)
+            {
+                diagnostics.Add($"{DisplayName(source)}: 跳过版本 {manifest.Version}（{ex.Message}）");
+                _logger.Error("自动更新", $"跳过无效托管版本：{manifest.Version}", ex);
+            }
+        }
+        return candidates;
     }
 
-    private async Task<UpdateManifest> DownloadManifestAsync(Uri uri, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<UpdateManifest>> DownloadManifestSetAsync(Uri uri, CancellationToken cancellationToken)
     {
         using var response = await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
-        return await ReadJsonAsync<UpdateManifest>(response, cancellationToken)
-               ?? throw new InvalidDataException("更新清单为空。");
+        if (response.Content.Headers.ContentLength is > MaximumManifestBytes)
+            throw new InvalidDataException("更新服务返回的 JSON 内容过大。");
+        await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
+        await using var limited = new LimitedReadStream(source, MaximumManifestBytes);
+        using var document = await JsonDocument.ParseAsync(limited, cancellationToken: cancellationToken);
+
+        if (document.RootElement.TryGetProperty("versions", out _))
+        {
+            var catalog = document.RootElement.Deserialize<UpdateCatalog>(JsonOptions)
+                          ?? throw new InvalidDataException("版本目录为空。");
+            if (catalog.SchemaVersion != 2)
+                throw new InvalidDataException($"不支持的版本目录格式：{catalog.SchemaVersion}。");
+            if (!string.Equals(catalog.Product, "TerminalSimulation", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException($"更新产品标识不匹配：{catalog.Product}。");
+            foreach (var manifest in catalog.Versions)
+            {
+                if (string.IsNullOrWhiteSpace(manifest.Product)) manifest.Product = catalog.Product;
+                if (string.IsNullOrWhiteSpace(manifest.Line)) manifest.Line = catalog.Line;
+            }
+            return catalog.Versions;
+        }
+
+        var single = document.RootElement.Deserialize<UpdateManifest>(JsonOptions)
+                     ?? throw new InvalidDataException("更新清单为空。");
+        return [single];
     }
 
     private static async Task<T?> ReadJsonAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken)
@@ -173,13 +261,15 @@ internal sealed class UpdateService
         bool allowInsecureHttp,
         Uri manifestUri)
     {
-        if (manifest.SchemaVersion != 1) throw new InvalidDataException($"不支持的更新清单版本：{manifest.SchemaVersion}。");
+        if (manifest.SchemaVersion != 2) throw new InvalidDataException($"不支持的更新清单版本：{manifest.SchemaVersion}。");
         if (!string.Equals(manifest.Product, "TerminalSimulation", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException($"更新产品标识不匹配：{manifest.Product}。");
         if (string.IsNullOrWhiteSpace(manifest.Version)) throw new InvalidDataException("更新清单缺少版本号。");
+        if (string.IsNullOrWhiteSpace(manifest.Line)) throw new InvalidDataException("更新清单缺少版本线。");
+        if (manifest.CompatibilityEpoch <= 0) throw new InvalidDataException("更新清单的兼容级别无效。");
         if (!string.IsNullOrWhiteSpace(manifest.MinimumUpdaterVersion) &&
             Version.TryParse(manifest.MinimumUpdaterVersion, out var minimumUpdater) &&
-            minimumUpdater > new Version(1, 0, 0))
+            minimumUpdater > SupportedUpdaterVersion)
             throw new InvalidDataException($"此更新需要 update.exe {minimumUpdater} 或更高版本，请先安装完整升级包。");
         if (string.IsNullOrWhiteSpace(manifest.Package.FileName)) throw new InvalidDataException("更新清单缺少包文件名。");
         if (manifest.Package.Sha256.Length != 64 || !manifest.Package.Sha256.All(Uri.IsHexDigit))
@@ -194,6 +284,8 @@ internal sealed class UpdateService
         return new UpdateCandidate(
             manifest.Version,
             manifest.Channel,
+            manifest.Line,
+            manifest.CompatibilityEpoch,
             manifest.PublishedAt,
             manifest.ReleaseNotes ?? "此版本未提供更新说明。",
             sourceName,
@@ -203,6 +295,15 @@ internal sealed class UpdateService
             allowInsecureHttp,
             manifest.Delete);
     }
+
+    private static bool IsSelectable(
+        UpdateManifest manifest,
+        string channel,
+        string line,
+        int currentCompatibilityEpoch) =>
+        ChannelMatches(channel, manifest.Channel) &&
+        string.Equals(line, manifest.Line, StringComparison.OrdinalIgnoreCase) &&
+        manifest.CompatibilityEpoch >= currentCompatibilityEpoch;
 
     private static Uri RequireRemoteUri(string value, bool allowInsecureHttp)
     {
@@ -224,6 +325,7 @@ internal sealed class UpdateService
         AutoCheck = true,
         CheckIntervalHours = 12,
         Channel = "preview",
+        Line = "main",
         Sources =
         [
             new UpdateSourceDefinition

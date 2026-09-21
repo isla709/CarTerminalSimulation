@@ -10,6 +10,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 using TerminalSimulation.PluginBase;
+using TerminalSimulation.Wpf.Helpers;
 
 namespace TerminalSimulation.Wpf;
 
@@ -20,10 +21,13 @@ public partial class MainWindow : Window
 {
     private readonly System.Windows.Threading.DispatcherTimer _videoLayoutTimer;
     private readonly HashSet<LibVLCSharp.WPF.VideoView> _loadedVideoViews = new();
+    private int _lastMainTabIndex;
+    private long _mapTabTransitionVersion;
 
     public MainWindow()
     {
         InitializeComponent();
+        _lastMainTabIndex = MainTabControl.SelectedIndex;
         _videoLayoutTimer = new System.Windows.Threading.DispatcherTimer(
             TimeSpan.FromMilliseconds(32),
             System.Windows.Threading.DispatcherPriority.Render,
@@ -661,12 +665,53 @@ public partial class MainWindow : Window
     {
         if (e.Source == MainTabControl)
         {
+            var selectedIndex = MainTabControl.SelectedIndex;
+            if (selectedIndex >= 0 && selectedIndex != _lastMainTabIndex)
+            {
+                var direction = selectedIndex > _lastMainTabIndex ? 1d : -1d;
+                _lastMainTabIndex = selectedIndex;
+
+                var mapTransitionVersion = ++_mapTabTransitionVersion;
+                MapWebView.Visibility = Visibility.Hidden;
+                MapTransitionMask.Visibility = Visibility.Visible;
+
+                if (MainTabControl.SelectedItem is TabItem selectedTab &&
+                    selectedTab.Content is FrameworkElement content)
+                {
+                    if (selectedIndex == 1)
+                    {
+                        TabTransitionAnimator.Animate(
+                            content,
+                            direction,
+                            () => CompleteMapTabTransition(mapTransitionVersion));
+                    }
+                    else
+                    {
+                        TabTransitionAnimator.Animate(content, direction);
+                    }
+                }
+            }
+
             if (MainTabControl.SelectedIndex == 1)
             {
                 _ = InitializeMapAsync();
             }
             RequestVideoViewsUpdate();
         }
+    }
+
+    private void CompleteMapTabTransition(long transitionVersion)
+    {
+        if (transitionVersion != _mapTabTransitionVersion ||
+            MainTabControl.SelectedIndex != 1)
+        {
+            return;
+        }
+
+        // Perform both visibility changes in the same render cycle so the HWND
+        // WebView never appears above a still-running WPF transition.
+        MapWebView.Visibility = Visibility.Visible;
+        MapTransitionMask.Visibility = Visibility.Collapsed;
     }
 
     private void UtilityTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)

@@ -67,8 +67,9 @@ public sealed class UpdateEngine
         var plan = await JsonSerializer.DeserializeAsync(stream, UpdaterJsonContext.Default.UpdatePlan, cancellationToken)
                    ?? throw new InvalidDataException("更新计划内容无效。");
 
-        if (plan.SchemaVersion != 1) throw new InvalidDataException($"不支持的更新计划版本：{plan.SchemaVersion}。");
+        if (plan.SchemaVersion != 2) throw new InvalidDataException($"不支持的更新计划版本：{plan.SchemaVersion}。");
         if (string.IsNullOrWhiteSpace(plan.Version)) throw new InvalidDataException("更新计划缺少版本号。");
+        ValidateCompatibility(plan);
         if (!Uri.TryCreate(plan.PackageUrl, UriKind.Absolute, out var packageUri))
             throw new InvalidDataException("更新包地址无效。");
         if (packageUri.Scheme != Uri.UriSchemeHttps && !(plan.AllowInsecureHttp && packageUri.Scheme == Uri.UriSchemeHttp))
@@ -86,6 +87,19 @@ public sealed class UpdateEngine
             throw new InvalidDataException("主程序路径不在目标安装目录内。");
         if (!Directory.Exists(plan.TargetDirectory)) throw new DirectoryNotFoundException("目标安装目录不存在。");
         return plan;
+    }
+
+    public static void ValidateCompatibility(UpdatePlan plan)
+    {
+        if (string.IsNullOrWhiteSpace(plan.CurrentLine) || string.IsNullOrWhiteSpace(plan.TargetLine))
+            throw new InvalidDataException("更新计划缺少版本线信息。");
+        if (!string.Equals(plan.CurrentLine, plan.TargetLine, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException($"禁止跨版本线更新：{plan.CurrentLine} -> {plan.TargetLine}。");
+        if (plan.CurrentCompatibilityEpoch <= 0 || plan.TargetCompatibilityEpoch <= 0)
+            throw new InvalidDataException("更新计划的兼容级别无效。");
+        if (plan.TargetCompatibilityEpoch < plan.CurrentCompatibilityEpoch)
+            throw new InvalidDataException(
+                $"目标版本兼容级别 {plan.TargetCompatibilityEpoch} 低于当前级别 {plan.CurrentCompatibilityEpoch}，禁止回退。");
     }
 
     private static async Task DownloadPackageAsync(

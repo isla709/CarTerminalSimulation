@@ -1,6 +1,7 @@
-using System;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media.Animation;
+using TerminalSimulation.Wpf.Helpers;
 
 namespace TerminalSimulation.Wpf
 {
@@ -10,10 +11,38 @@ namespace TerminalSimulation.Wpf
     public partial class ThemeSettingsWindow : Window
     {
         private bool _isClosingAnimated = false;
+        private int _lastSelectedTabIndex;
 
         public ThemeSettingsWindow()
         {
             InitializeComponent();
+            _lastSelectedTabIndex = SettingsTabControl.SelectedIndex;
+        }
+
+        private void SettingsTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (e.Source != SettingsTabControl)
+            {
+                return;
+            }
+
+            var selectedIndex = SettingsTabControl.SelectedIndex;
+            if (selectedIndex < 0 || selectedIndex == _lastSelectedTabIndex)
+            {
+                return;
+            }
+
+            var direction = selectedIndex > _lastSelectedTabIndex ? 1d : -1d;
+            _lastSelectedTabIndex = selectedIndex;
+
+            // Apply the animated value in the selection event itself. Deferring this
+            // until Loaded allows one frame at the settled position to be rendered,
+            // which looks like the page briefly pulls backwards before sliding in.
+            if (SettingsTabControl.SelectedItem is TabItem selectedTab &&
+                selectedTab.Content is FrameworkElement content)
+            {
+                TabTransitionAnimator.Animate(content, direction);
+            }
         }
 
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
