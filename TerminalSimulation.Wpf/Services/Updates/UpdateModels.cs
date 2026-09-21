@@ -12,6 +12,40 @@ internal sealed class UpdateSourceConfiguration
     public List<UpdateSourceDefinition> Sources { get; set; } = [];
 }
 
+internal static class UpdateChannelPolicy
+{
+    public static string Normalize(string? channel) =>
+        string.IsNullOrWhiteSpace(channel) ? "stable" : channel.Trim().ToLowerInvariant();
+
+    public static string FromVersion(string? version)
+    {
+        var value = version?.Trim() ?? string.Empty;
+        if (value.StartsWith("preview", StringComparison.OrdinalIgnoreCase)) return "preview";
+        if (value.StartsWith("beta", StringComparison.OrdinalIgnoreCase)) return "beta";
+        if (value.StartsWith("test", StringComparison.OrdinalIgnoreCase)) return "test";
+        return "stable";
+    }
+
+    public static bool IsPrerelease(string channel) =>
+        !string.Equals(Normalize(channel), "stable", StringComparison.OrdinalIgnoreCase);
+
+    public static bool IsAllowed(string currentChannel, string targetChannel, bool includePrerelease)
+    {
+        currentChannel = Normalize(currentChannel);
+        targetChannel = Normalize(targetChannel);
+
+        // A test-series installation stays within its own series. This keeps
+        // Preview, Beta and Test builds from silently crossing channels.
+        if (!string.Equals(currentChannel, "stable", StringComparison.OrdinalIgnoreCase))
+            return string.Equals(currentChannel, targetChannel, StringComparison.OrdinalIgnoreCase);
+
+        // Stable builds stay on stable unless the user explicitly enables
+        // prerelease channels in Settings.
+        return string.Equals(targetChannel, "stable", StringComparison.OrdinalIgnoreCase) ||
+               (includePrerelease && IsPrerelease(targetChannel));
+    }
+}
+
 internal sealed class UpdateSourceDefinition
 {
     public string Type { get; set; } = string.Empty;

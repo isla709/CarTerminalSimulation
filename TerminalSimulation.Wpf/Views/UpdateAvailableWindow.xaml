@@ -34,9 +34,13 @@
                     <TextBlock Text="更新不是强制操作，你可以选择同一版本线中的任意兼容版本"
                                Margin="0,4,0,0" Foreground="{DynamicResource MaterialDesignBodyLight}" FontSize="12" />
                 </StackPanel>
-                <Button Grid.Column="2" Click="Later_Click" Width="38" Height="38"
-                        Background="Transparent" BorderThickness="0" ToolTip="关闭">
-                    <materialDesign:PackIcon Kind="Close" Width="20" Height="20" />
+                <Button Grid.Column="2" Click="Later_Click" Width="42" Height="42" Margin="8,0,0,0"
+                        Padding="0" Background="Transparent" BorderThickness="0" ToolTip="关闭"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                        ClipToBounds="False" Focusable="True">
+                    <TextBlock Text="×" FontFamily="Segoe UI Symbol" FontSize="28" FontWeight="Light"
+                               Foreground="#59636E" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Margin="0,-2,0,0" />
                 </Button>
             </Grid>
 
@@ -147,10 +151,14 @@
                                Foreground="{DynamicResource MaterialDesignBodyLight}" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <Button Content="取消" Click="Later_Click" Width="92" Height="40" Margin="0,0,12,0" />
+                    <Button Content="取消" Click="Later_Click" Width="92" Height="40" Margin="0,0,12,0"
+                            Padding="12,0" Background="#F3F6F9" Foreground="#455A64"
+                            BorderBrush="#B0BEC5" BorderThickness="1" FontWeight="SemiBold" />
                     <Button x:Name="InstallButton" Content="安装所选版本" Click="Install_Click"
                             MinWidth="142" Height="40" Padding="16,0"
-                            Style="{StaticResource MaterialDesignRaisedButton}" />
+                            Background="#2196F3" Foreground="White"
+                            BorderBrush="#2196F3" BorderThickness="1"
+                            FontWeight="SemiBold" Style="{StaticResource MaterialDesignRaisedButton}" />
                 </StackPanel>
             </Grid>
         </Grid>

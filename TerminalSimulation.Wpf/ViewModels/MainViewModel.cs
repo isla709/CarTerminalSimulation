@@ -212,6 +212,7 @@ namespace TerminalSimulation.Wpf.ViewModels
         public bool EnableTTSPlayback { get; set; } = true;
         public string SelectedTTSVoice { get; set; } = "";
         public int TextDownlinkEncodingIndex { get; set; } = 0;
+        public bool IncludePrereleaseUpdates { get; set; } = false;
 
         // Standard Attachments
         public bool Enable0x01 { get; set; } = true;

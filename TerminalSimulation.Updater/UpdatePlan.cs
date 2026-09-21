@@ -23,5 +23,9 @@ public sealed class UpdatePlan
 public sealed record UpdateProgress(string Message, double? Percent = null, string? Version = null);
 public sealed record UpdateResult(bool Success, string Message);
 
+[JsonSourceGenerationOptions(
+    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+    PropertyNameCaseInsensitive = true,
+    WriteIndented = true)]
 [JsonSerializable(typeof(UpdatePlan))]
 internal partial class UpdaterJsonContext : JsonSerializerContext;

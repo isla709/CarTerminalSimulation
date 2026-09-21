@@ -124,6 +124,7 @@ namespace TerminalSimulation.Wpf.ViewModels
                             EnableTTSPlayback = config.EnableTTSPlayback;
                             SelectedTTSVoice = config.SelectedTTSVoice ?? "";
                             TextDownlinkEncodingIndex = config.TextDownlinkEncodingIndex;
+                            IncludePrereleaseUpdates = config.IncludePrereleaseUpdates;
 
                             var bgPath = config.BackgroundImagePath;
                             var bgEffect = config.BackgroundEffectMode;
@@ -360,6 +361,7 @@ namespace TerminalSimulation.Wpf.ViewModels
                 EnableTTSPlayback = EnableTTSPlayback,
                 SelectedTTSVoice = SelectedTTSVoice,
                 TextDownlinkEncodingIndex = TextDownlinkEncodingIndex
+                ,IncludePrereleaseUpdates = IncludePrereleaseUpdates
             };
         }
 

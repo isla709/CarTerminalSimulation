@@ -2,7 +2,7 @@
 
 [![Dotnet Version](https://img.shields.io/badge/.NET-8.0--windows-blue.svg)](https://dotnet.microsoft.com/)
 [![UI Library](https://img.shields.io/badge/UI-Material--Design--3-purple.svg)](https://github.com/MaterialDesignInXAML/MaterialDesignInXamlToolkit)
-[![Version](https://img.shields.io/badge/version-preview6-orange.svg)](#)
+[![Version](https://img.shields.io/badge/version-preview7-orange.svg)](#)
 
 欢迎使用**车载定位终端模拟系统**。这是一个基于 Windows Presentation Foundation (WPF) 与 .NET 8.0 构建的现代化、高性能车载终端模拟软件。系统深度实现了 **JT808 (道路运输车辆卫星定位系统终端通讯协议及数据格式)** 及 **JT1078 (道路运输车辆卫星定位系统视频通信协议)** 标准规范，旨在帮助车联网平台开发人员、硬件工程师以及测试人员在没有实体车载终端设备的情况下，轻松模拟各种高并发连接、复杂位置轨迹、音频/视频流推送及平台控制交互。
 

@@ -8,7 +8,8 @@
 
 - `github`：读取指定仓库的 Releases。公开仓库不需要令牌。
 - `manifest`：直接读取任意 HTTPS 托管平台、对象存储或 CDN 上的清单。
-- `channel`：目前支持自定义字符串；默认使用 `preview`。配置和清单的通道必须一致。
+- `channel`：清单通道建议使用 `stable`、`preview`、`beta` 或 `test`。Preview/Beta/Test 程序只在同一测试序列内显示版本；正式版默认只显示 stable。
+- 正式版可在“设置 → 关于 → 测试版本通道”开启测试版本开关，开启后才会显示 Preview、Beta、Test 等预发布序列。该开关不改变版本线和兼容级别限制。
 - `line`：独立于版本号和 channel 的版本线标识，默认 `main`。运行中的程序只接受与编译时版本线相同的包，修改配置不能绕过此限制。
 - `allowInsecureHttp`：默认必须为 `false`。只有明确受信任的内网镜像才可打开。
 
@@ -19,7 +20,7 @@
 1. 名为 `update-manifest.json` 的清单资产。
 2. 清单 `package.fileName` 指定的 ZIP 更新包。
 
-GitHub 源不信任清单中自带的下载地址，而是按文件名匹配同一个 Release 的资产并使用其 `browser_download_url`。草稿 Release 会被忽略；`stable` 通道也会忽略 prerelease。
+GitHub 源不信任清单中自带的下载地址，而是按文件名匹配同一个 Release 的资产并使用其 `browser_download_url`。草稿 Release 会被忽略；正式版未开启测试版本时会忽略 prerelease Release。
 
 ## 清单格式
 
@@ -50,7 +51,7 @@ GitHub Release 中 `package.url` 可以省略；通用托管源必须提供绝�
 
 通用托管平台也可以返回版本目录，顶层使用同样的 `schemaVersion`、`product` 和 `line`，并在 `versions` 数组中放置多个上述版本清单。目录中的版本可以省略重复的 `product` 和 `line`。
 
-版本推荐使用 `previewN-build.YYYYMMDD.递增数字`。同一天的随机构建后缀无法稳定排序，会被视为相同版本，避免重复提示。
+版本推荐使用 `previewN-build.YYYYMMDD.递增数字`。同一天的随机构建后缀无法稳定排序，会被视为同序列切换候选，避免重复升级提示。
 
 ## 生成发布资产
 

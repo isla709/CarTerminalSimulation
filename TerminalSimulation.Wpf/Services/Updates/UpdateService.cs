@@ -51,9 +51,14 @@ internal sealed class UpdateService
         string currentVersion,
         string currentLine,
         int currentCompatibilityEpoch,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? currentChannel = null,
+        bool includePrerelease = false)
     {
         var configuration = await LoadConfigurationAsync(cancellationToken);
+        var strictChannelPolicy = !string.IsNullOrWhiteSpace(currentChannel);
+        var effectiveChannel = UpdateChannelPolicy.Normalize(
+            currentChannel ?? configuration.Channel);
         var sources = configuration.Sources
             .Where(source => source.Enabled)
             .OrderByDescending(source => source.Priority)
@@ -75,14 +80,18 @@ internal sealed class UpdateService
                 {
                     "github" => await CheckGitHubAsync(
                         source,
-                        configuration.Channel,
+                        effectiveChannel,
+                        strictChannelPolicy,
+                        includePrerelease,
                         currentLine,
                         currentCompatibilityEpoch,
                         diagnostics,
                         cancellationToken),
                     "manifest" => await CheckManifestAsync(
                         source,
-                        configuration.Channel,
+                        effectiveChannel,
+                        strictChannelPolicy,
+                        includePrerelease,
                         currentLine,
                         currentCompatibilityEpoch,
                         diagnostics,
@@ -106,7 +115,14 @@ internal sealed class UpdateService
         var available = candidates
             .GroupBy(candidate => $"{candidate.Line}\n{candidate.Version}", StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
-            .Where(candidate => UpdateVersionComparer.Compare(candidate.Version, currentVersion) != 0)
+            // Version ordering deliberately treats locally generated alpha-numeric build
+            // suffixes as equivalent to a numbered release from the same day.  That rule
+            // prevents automatic update loops, but it must not hide a real Release from
+            // the version manager.  Only the exact installed version is the same package.
+            .Where(candidate => !string.Equals(
+                candidate.Version.Trim(),
+                currentVersion.Trim(),
+                StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(candidate => candidate.PublishedAt)
             .ThenByDescending(candidate => candidate.Version, Comparer<string>.Create(UpdateVersionComparer.Compare))
             .ToList();
@@ -121,6 +137,8 @@ internal sealed class UpdateService
     private async Task<IReadOnlyList<UpdateCandidate>> CheckGitHubAsync(
         UpdateSourceDefinition source,
         string channel,
+        bool strictChannelPolicy,
+        bool includePrerelease,
         string line,
         int currentCompatibilityEpoch,
         List<string> diagnostics,
@@ -144,7 +162,8 @@ internal sealed class UpdateService
         var candidates = new List<UpdateCandidate>();
         foreach (var release in releases.Where(item => !item.Draft))
         {
-            if (string.Equals(channel, "stable", StringComparison.OrdinalIgnoreCase) && release.Prerelease) continue;
+            if (string.Equals(channel, "stable", StringComparison.OrdinalIgnoreCase) &&
+                !includePrerelease && release.Prerelease) continue;
             var manifestAsset = release.Assets.FirstOrDefault(asset =>
                 string.Equals(asset.Name, manifestName, StringComparison.OrdinalIgnoreCase));
             if (manifestAsset is null) continue;
@@ -155,7 +174,7 @@ internal sealed class UpdateService
                 var manifests = await DownloadManifestSetAsync(manifestUri, cancellationToken);
                 foreach (var manifest in manifests)
                 {
-                    if (!IsSelectable(manifest, channel, line, currentCompatibilityEpoch)) continue;
+                    if (!IsSelectable(manifest, channel, strictChannelPolicy, includePrerelease, line, currentCompatibilityEpoch)) continue;
                     var packageAsset = release.Assets.FirstOrDefault(asset =>
                         string.Equals(asset.Name, manifest.Package.FileName, StringComparison.OrdinalIgnoreCase));
                     if (packageAsset is null)
@@ -189,6 +208,8 @@ internal sealed class UpdateService
     private async Task<IReadOnlyList<UpdateCandidate>> CheckManifestAsync(
         UpdateSourceDefinition source,
         string channel,
+        bool strictChannelPolicy,
+        bool includePrerelease,
         string line,
         int currentCompatibilityEpoch,
         List<string> diagnostics,
@@ -201,7 +222,7 @@ internal sealed class UpdateService
         var candidates = new List<UpdateCandidate>();
         foreach (var manifest in manifests)
         {
-            if (!IsSelectable(manifest, channel, line, currentCompatibilityEpoch)) continue;
+            if (!IsSelectable(manifest, channel, strictChannelPolicy, includePrerelease, line, currentCompatibilityEpoch)) continue;
             try
             {
                 candidates.Add(CreateCandidate(manifest, DisplayName(source), source.AllowInsecureHttp, manifestUri));
@@ -299,9 +320,13 @@ internal sealed class UpdateService
     private static bool IsSelectable(
         UpdateManifest manifest,
         string channel,
+        bool strictChannelPolicy,
+        bool includePrerelease,
         string line,
         int currentCompatibilityEpoch) =>
-        ChannelMatches(channel, manifest.Channel) &&
+        (strictChannelPolicy
+            ? UpdateChannelPolicy.IsAllowed(channel, manifest.Channel, includePrerelease)
+            : ChannelMatches(channel, manifest.Channel)) &&
         string.Equals(line, manifest.Line, StringComparison.OrdinalIgnoreCase) &&
         manifest.CompatibilityEpoch >= currentCompatibilityEpoch;
 

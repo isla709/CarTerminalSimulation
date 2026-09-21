@@ -51,7 +51,10 @@ internal static class UpdateLauncher
             AllowInsecureHttp = candidate.AllowInsecureHttp,
             Delete = candidate.Delete.ToList()
         };
-        File.WriteAllText(planPath, JsonSerializer.Serialize(plan, new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        // Keep PascalCase property names for compatibility with Preview6's updater.
+        // New updaters accept both naming styles, allowing an already-installed
+        // Preview6 build to update successfully as well.
+        File.WriteAllText(planPath, JsonSerializer.Serialize(plan, new JsonSerializerOptions
         {
             WriteIndented = true
         }));

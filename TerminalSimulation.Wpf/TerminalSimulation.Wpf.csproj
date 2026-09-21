@@ -40,7 +40,8 @@
 
   <PropertyGroup>
     <!-- 手动修改程序版本号 -->
-    <AppVersion>preview6</AppVersion>
+    <AppVersion>preview7</AppVersion>
+    <UpdateChannel>preview</UpdateChannel>
     <!-- 更新版本线和不可逆兼容级别。不同版本线之间禁止互相更新。 -->
     <UpdateLine>main</UpdateLine>
     <CompatibilityEpoch>1</CompatibilityEpoch>
@@ -156,6 +157,7 @@ public static class AppVersionInfo
     public const string BuildVersion = "$(RandomBuildString)"%3B
     public const string FullVersion = AppVersion + "-" + BuildVersion%3B
     public const string UpdateLine = "$(UpdateLine)"%3B
+    public const string UpdateChannel = "$(UpdateChannel)"%3B
     public const int CompatibilityEpoch = $(CompatibilityEpoch)%3B
 }
       </VersionFileContent>

@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using TerminalSimulation.Updater;
 using TerminalSimulation.Wpf.Services;
 using TerminalSimulation.Wpf.Services.Updates;
@@ -10,6 +11,37 @@ namespace TerminalSimulation.Tests;
 
 public sealed class AutomaticUpdateTests
 {
+    [Theory]
+    [InlineData("preview", "preview", false, true)]
+    [InlineData("preview", "stable", false, false)]
+    [InlineData("preview", "beta", false, false)]
+    [InlineData("stable", "stable", false, true)]
+    [InlineData("stable", "preview", false, false)]
+    [InlineData("stable", "preview", true, true)]
+    [InlineData("stable", "beta", true, true)]
+    [InlineData("stable", "test", true, true)]
+    public void UpdateChannels_RespectStablePrereleaseOptIn(
+        string currentChannel,
+        string targetChannel,
+        bool includePrerelease,
+        bool expected)
+    {
+        Assert.Equal(expected,
+            UpdateChannelPolicy.IsAllowed(currentChannel, targetChannel, includePrerelease));
+    }
+
+    [Theory]
+    [InlineData("{\"Version\":\"preview7-build.20260921.1\",\"SchemaVersion\":2}")]
+    [InlineData("{\"version\":\"preview7-build.20260921.1\",\"schemaVersion\":2}")]
+    public void UpdaterPlan_ReadsLegacyAndWebJsonPropertyCasing(string json)
+    {
+        var plan = JsonSerializer.Deserialize(json, UpdaterJsonContext.Default.UpdatePlan);
+
+        Assert.NotNull(plan);
+        Assert.Equal(2, plan!.SchemaVersion);
+        Assert.Equal("preview7-build.20260921.1", plan.Version);
+    }
+
     [Theory]
     [InlineData("preview6", "preview5-build.20260921.abcd", 1)]
     [InlineData("preview5-build.20260922.1", "preview5-build.20260921.abcd", 1)]
@@ -71,6 +103,102 @@ public sealed class AutomaticUpdateTests
             Assert.NotNull(result.Candidate);
             Assert.Equal("https://updates.example/app.zip", result.Candidate!.PackageUri.AbsoluteUri);
             Assert.Equal("test mirror", result.Candidate.SourceName);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ReleasedBuild_IsListedWhenCurrentLocalBuildHasEquivalentRandomSuffix()
+    {
+        var root = CreateTemporaryDirectory();
+        try
+        {
+            var configPath = Path.Combine(root, "update-sources.json");
+            await File.WriteAllTextAsync(configPath, """
+                {
+                  "schemaVersion": 1,
+                  "channel": "preview",
+                  "line": "main",
+                  "sources": [{
+                    "type": "manifest",
+                    "name": "test mirror",
+                    "manifestUrl": "https://updates.example/update-manifest.json"
+                  }]
+                }
+                """);
+            using var client = new HttpClient(new StubHandler(_ => JsonResponse("""
+                {
+                  "schemaVersion": 2,
+                  "product": "TerminalSimulation",
+                  "version": "preview6-build.20260921.1",
+                  "channel": "preview",
+                  "line": "main",
+                  "compatibilityEpoch": 1,
+                  "package": {
+                    "fileName": "app.zip",
+                    "url": "app.zip",
+                    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "size": 42
+                  }
+                }
+                """)));
+            var service = new UpdateService(new TestLogger(), client, configPath);
+
+            var result = await service.CheckForUpdatesAsync(
+                "preview6-build.20260921.220d", "main", 1, CancellationToken.None);
+
+            Assert.Null(result.Candidate);
+            var candidate = Assert.Single(result.Candidates);
+            Assert.Equal("preview6-build.20260921.1", candidate.Version);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ExactInstalledRelease_IsNotListedAgain()
+    {
+        var root = CreateTemporaryDirectory();
+        try
+        {
+            var configPath = Path.Combine(root, "update-sources.json");
+            await File.WriteAllTextAsync(configPath, """
+                {
+                  "schemaVersion": 1,
+                  "channel": "preview",
+                  "line": "main",
+                  "sources": [{
+                    "type": "manifest",
+                    "manifestUrl": "https://updates.example/update-manifest.json"
+                  }]
+                }
+                """);
+            using var client = new HttpClient(new StubHandler(_ => JsonResponse("""
+                {
+                  "schemaVersion": 2,
+                  "product": "TerminalSimulation",
+                  "version": "preview6-build.20260921.1",
+                  "channel": "preview",
+                  "line": "main",
+                  "compatibilityEpoch": 1,
+                  "package": {
+                    "fileName": "app.zip",
+                    "url": "app.zip",
+                    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                  }
+                }
+                """)));
+            var service = new UpdateService(new TestLogger(), client, configPath);
+
+            var result = await service.CheckForUpdatesAsync(
+                "PREVIEW6-BUILD.20260921.1", "main", 1, CancellationToken.None);
+
+            Assert.Empty(result.Candidates);
         }
         finally
         {

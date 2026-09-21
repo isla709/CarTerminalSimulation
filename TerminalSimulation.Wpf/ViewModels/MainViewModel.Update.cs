@@ -24,6 +24,20 @@ public partial class MainViewModel
     [ObservableProperty]
     private string _updateToolTip = "查看可用版本";
 
+    [ObservableProperty]
+    private bool _includePrereleaseUpdates;
+
+    public bool IsStableRelease => string.Equals(
+        AppVersionInfo.UpdateChannel,
+        "stable",
+        StringComparison.OrdinalIgnoreCase);
+
+    partial void OnIncludePrereleaseUpdatesChanged(bool value)
+    {
+        if (!_isLoadingConfig)
+            SaveConfigDebounced();
+    }
+
     [RelayCommand]
     private Task CheckForUpdatesAsync() => TrackUpdateCheck(CheckForUpdatesCoreAsync(interactive: true, _updateCancellation.Token));
 
@@ -56,7 +70,9 @@ public partial class MainViewModel
                 AppVersionInfo.FullVersion,
                 AppVersionInfo.UpdateLine,
                 AppVersionInfo.CompatibilityEpoch,
-                cancellationToken);
+                cancellationToken,
+                AppVersionInfo.UpdateChannel,
+                IncludePrereleaseUpdates);
             WriteLastUpdateCheck();
 
             IsUpdateAvailable = result.Candidate is not null;
