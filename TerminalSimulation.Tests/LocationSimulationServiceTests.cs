@@ -26,4 +26,17 @@ public sealed class LocationSimulationServiceTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             service.RunAsync(path, () => 1, (_, _) => { }, cts.Token));
     }
+
+    [Theory]
+    [InlineData(1, 0, 0)]
+    [InlineData(0, 1, 90)]
+    [InlineData(-1, 0, 180)]
+    [InlineData(0, -1, 270)]
+    public void Bearing_UsesClockwiseDegreesFromNorth(double latitude, double longitude, int expected)
+    {
+        var from = new GeoPoint { Lat = 0, Lng = 0 };
+        var to = new GeoPoint { Lat = latitude, Lng = longitude };
+
+        Assert.Equal(expected, LocationSimulationService.Bearing(from, to));
+    }
 }

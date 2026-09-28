@@ -40,7 +40,7 @@
 
   <PropertyGroup>
     <!-- 手动修改程序版本号 -->
-    <AppVersion>preview7</AppVersion>
+    <AppVersion>preview9</AppVersion>
     <UpdateChannel>preview</UpdateChannel>
     <!-- 更新版本线和不可逆兼容级别。不同版本线之间禁止互相更新。 -->
     <UpdateLine>main</UpdateLine>
@@ -55,12 +55,18 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <!-- The application currently ships a single neutral UI and does not load satellite localizations. -->
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <TencentMapKeyFile>$(MSBuildProjectDirectory)\..\docs\KEY.txt</TencentMapKeyFile>
   </PropertyGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="Themes\**\*" />
     <!-- Keep the generated version source visible to WPF's temporary markup project. -->
     <Compile Include="$(IntermediateOutputPath)AppVersionInfo.g.cs" />
+    <Compile Include="$(IntermediateOutputPath)EmbeddedTencentMapCredential.g.cs" />
+    <Content Include="MapApp\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
@@ -88,13 +94,17 @@
     <Copy SourceFiles="@(NativeFfmpegRuntime)" DestinationFolder="$(TargetDir)ffmpeg-native" SkipUnchangedFiles="true" />
   </Target>
   <Target Name="CopyUpdaterRuntime" AfterTargets="Build">
+    <PropertyGroup>
+      <UpdaterRuntimeDirectory>$(MSBuildProjectDirectory)\..\TerminalSimulation.Updater\bin\$(Configuration)\net8.0-windows</UpdaterRuntimeDirectory>
+      <UpdaterRuntimeDirectory Condition="Exists('$(UpdaterRuntimeDirectory)\$(RuntimeIdentifier)\update.exe')">$(UpdaterRuntimeDirectory)\$(RuntimeIdentifier)</UpdaterRuntimeDirectory>
+    </PropertyGroup>
     <ItemGroup>
-      <UpdaterRuntime Include="$(MSBuildProjectDirectory)\..\TerminalSimulation.Updater\bin\$(Configuration)\net8.0-windows\update.exe" />
-      <UpdaterRuntime Include="$(MSBuildProjectDirectory)\..\TerminalSimulation.Updater\bin\$(Configuration)\net8.0-windows\update.dll" />
-      <UpdaterRuntime Include="$(MSBuildProjectDirectory)\..\TerminalSimulation.Updater\bin\$(Configuration)\net8.0-windows\update.deps.json" />
-      <UpdaterRuntime Include="$(MSBuildProjectDirectory)\..\TerminalSimulation.Updater\bin\$(Configuration)\net8.0-windows\update.runtimeconfig.json" />
+      <UpdaterRuntime Include="$(UpdaterRuntimeDirectory)\update.exe" />
+      <UpdaterRuntime Include="$(UpdaterRuntimeDirectory)\update.dll" />
+      <UpdaterRuntime Include="$(UpdaterRuntimeDirectory)\update.deps.json" />
+      <UpdaterRuntime Include="$(UpdaterRuntimeDirectory)\update.runtimeconfig.json" />
     </ItemGroup>
-    <Error Condition="!Exists('$(MSBuildProjectDirectory)\..\TerminalSimulation.Updater\bin\$(Configuration)\net8.0-windows\update.exe')"
+    <Error Condition="!Exists('$(UpdaterRuntimeDirectory)\update.exe')"
            Text="更新程序未生成：update.exe" />
     <Copy SourceFiles="@(UpdaterRuntime)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
   </Target>
@@ -107,6 +117,10 @@
   <Target Name="AddExternalRuntimeFilesToPublish"
           BeforeTargets="ComputeFilesToPublish"
           DependsOnTargets="BuildNativeFfmpegBridge">
+    <PropertyGroup>
+      <PublishUpdaterRuntimeDirectory>$(MSBuildProjectDirectory)\..\TerminalSimulation.Updater\bin\$(Configuration)\net8.0-windows</PublishUpdaterRuntimeDirectory>
+      <PublishUpdaterRuntimeDirectory Condition="Exists('$(PublishUpdaterRuntimeDirectory)\$(RuntimeIdentifier)\update.exe')">$(PublishUpdaterRuntimeDirectory)\$(RuntimeIdentifier)</PublishUpdaterRuntimeDirectory>
+    </PropertyGroup>
     <ItemGroup>
       <PublishNativeFfmpegRuntime Include="$(MSBuildProjectDirectory)\..\FFmpeg.Native\artifacts\win-x64\*.dll" />
       <PublishNativeFfmpegRuntime Include="$(MSBuildProjectDirectory)\..\FFmpeg.Native\artifacts\win-x64\FFmpeg-GPL-LICENSE.txt" />
@@ -120,22 +134,22 @@
         <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
         <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
       </ResolvedFileToPublish>
-      <ResolvedFileToPublish Include="$(MSBuildProjectDirectory)\..\TerminalSimulation.Updater\bin\$(Configuration)\net8.0-windows\update.exe">
+      <ResolvedFileToPublish Include="$(PublishUpdaterRuntimeDirectory)\update.exe">
         <RelativePath>update.exe</RelativePath>
         <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
         <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
       </ResolvedFileToPublish>
-      <ResolvedFileToPublish Include="$(MSBuildProjectDirectory)\..\TerminalSimulation.Updater\bin\$(Configuration)\net8.0-windows\update.dll">
+      <ResolvedFileToPublish Include="$(PublishUpdaterRuntimeDirectory)\update.dll">
         <RelativePath>update.dll</RelativePath>
         <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
         <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
       </ResolvedFileToPublish>
-      <ResolvedFileToPublish Include="$(MSBuildProjectDirectory)\..\TerminalSimulation.Updater\bin\$(Configuration)\net8.0-windows\update.deps.json">
+      <ResolvedFileToPublish Include="$(PublishUpdaterRuntimeDirectory)\update.deps.json">
         <RelativePath>update.deps.json</RelativePath>
         <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
         <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
       </ResolvedFileToPublish>
-      <ResolvedFileToPublish Include="$(MSBuildProjectDirectory)\..\TerminalSimulation.Updater\bin\$(Configuration)\net8.0-windows\update.runtimeconfig.json">
+      <ResolvedFileToPublish Include="$(PublishUpdaterRuntimeDirectory)\update.runtimeconfig.json">
         <RelativePath>update.runtimeconfig.json</RelativePath>
         <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
         <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
@@ -163,6 +177,10 @@ public static class AppVersionInfo
       </VersionFileContent>
     </PropertyGroup>
     <WriteLinesToFile File="$(IntermediateOutputPath)AppVersionInfo.g.cs" Lines="$(VersionFileContent)" Overwrite="true" WriteOnlyWhenDifferent="false" />
+  </Target>
+
+  <Target Name="GenerateTencentMapCredential" BeforeTargets="PrepareForBuild">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\Scripts\Generate-TencentMapCredential.ps1&quot; -InputPath &quot;$(TencentMapKeyFile)&quot; -OutputPath &quot;$(MSBuildProjectDirectory)\$(IntermediateOutputPath)EmbeddedTencentMapCredential.g.cs&quot;" />
   </Target>
 
   <ItemGroup>

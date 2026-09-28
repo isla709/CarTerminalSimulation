@@ -48,7 +48,7 @@ internal sealed class LocationSimulationService : ILocationSimulationService
         return earthRadius * 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
     }
 
-    private static int Bearing(ViewModels.GeoPoint from, ViewModels.GeoPoint to)
+    internal static int Bearing(ViewModels.GeoPoint from, ViewModels.GeoPoint to)
     {
         var phi1 = from.Lat * Math.PI / 180;
         var phi2 = to.Lat * Math.PI / 180;

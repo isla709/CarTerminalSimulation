@@ -1,10 +1,20 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 3,
   "autoCheck": true,
   "checkIntervalHours": 12,
   "channel": "preview",
   "line": "main",
   "sources": [
+    {
+      "type": "gitcode",
+      "name": "GitCode Releases",
+      "enabled": true,
+      "priority": 200,
+      "owner": "Neruya",
+      "repository": "CarTerminalSimulation",
+      "apiBaseUrl": "https://api.gitcode.com/api/v5",
+      "manifestAssetName": "update-manifest.json"
+    },
     {
       "type": "github",
       "name": "GitHub Releases",

@@ -2,7 +2,7 @@
 
 [![Dotnet Version](https://img.shields.io/badge/.NET-8.0--windows-blue.svg)](https://dotnet.microsoft.com/)
 [![UI Library](https://img.shields.io/badge/UI-Material--Design--3-purple.svg)](https://github.com/MaterialDesignInXAML/MaterialDesignInXamlToolkit)
-[![Version](https://img.shields.io/badge/version-preview7-orange.svg)](#)
+[![Version](https://img.shields.io/badge/version-preview9-orange.svg)](#)
 
 欢迎使用**车载定位终端模拟系统**。这是一个基于 Windows Presentation Foundation (WPF) 与 .NET 8.0 构建的现代化、高性能车载终端模拟软件。系统深度实现了 **JT808 (道路运输车辆卫星定位系统终端通讯协议及数据格式)** 及 **JT1078 (道路运输车辆卫星定位系统视频通信协议)** 标准规范，旨在帮助车联网平台开发人员、硬件工程师以及测试人员在没有实体车载终端设备的情况下，轻松模拟各种高并发连接、复杂位置轨迹、音频/视频流推送及平台控制交互。
 
@@ -49,8 +49,18 @@
 
 ### 5. 嵌入式 GIS 地图与轨迹动效
 *   **双向通信桥接**：基于 `WebView2` 高速内核，桥接 WPF 后端与 JavaScript 前端环境。
-*   **多图源切换**：内置 Leaflet.js 地图框架，无缝支持高德地图与多种高科技感地图滤镜（如深蓝夜色、科技灰等）。
+*   **双地图方案**：完整保留腾讯地图 JavaScript API GL 与 Leaflet 两套相互独立的地图选点实现，可通过 `config.json` 手动选择。
 *   **位置动态联动**：在地图上双击即可将坐标自动同步回 0x0200 坐标编辑栏。车辆移动时，地图小车图标不仅会根据 `Direction` 航向角参数实时平滑旋转，还具有动态小车跑动效果。
+
+地图方案暂不在设置页面中公开。关闭程序后编辑主程序目录中的 `config.json`：
+
+```json
+{
+  "MapProvider": "new"
+}
+```
+
+`MapProvider` 支持 `new`（默认，当前地图方案）和 `old`（原地图方案）。修改后重新启动程序生效；未知值会安全回退为 `new`。
 
 ### 6. JT808 报文即时结构化分析仪
 *   **一键解析**：支持直接输入十六进制原始报文（可包含或省略首尾 7E），瞬间完成拆解。

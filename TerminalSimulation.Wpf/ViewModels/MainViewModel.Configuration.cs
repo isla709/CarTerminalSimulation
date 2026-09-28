@@ -125,6 +125,24 @@ namespace TerminalSimulation.Wpf.ViewModels
                             SelectedTTSVoice = config.SelectedTTSVoice ?? "";
                             TextDownlinkEncodingIndex = config.TextDownlinkEncodingIndex;
                             IncludePrereleaseUpdates = config.IncludePrereleaseUpdates;
+                            MapProvider = config.MapProvider?.Trim().ToLowerInvariant() switch
+                            {
+                                "old" => "old",
+                                _ => "new"
+                            };
+                            MapDefaultLocation = string.IsNullOrWhiteSpace(config.MapDefaultLocation) ? "auto" : config.MapDefaultLocation;
+                            MapStyle = config.MapStyle is "default" or "style1"
+                                ? config.MapStyle
+                                : "default";
+                            LeafletMapStyle = config.LeafletMapStyle is
+                                "map-style-default" or
+                                "map-style-dark" or
+                                "map-style-navy" or
+                                "map-style-emerald" or
+                                "map-style-grayscale"
+                                    ? config.LeafletMapStyle
+                                    : "map-style-default";
+                            MapRouteStyle = string.IsNullOrWhiteSpace(config.MapRouteStyle) ? "theme-neon-blue" : config.MapRouteStyle;
 
                             var bgPath = config.BackgroundImagePath;
                             var bgEffect = config.BackgroundEffectMode;
@@ -361,7 +379,12 @@ namespace TerminalSimulation.Wpf.ViewModels
                 EnableTTSPlayback = EnableTTSPlayback,
                 SelectedTTSVoice = SelectedTTSVoice,
                 TextDownlinkEncodingIndex = TextDownlinkEncodingIndex
-                ,IncludePrereleaseUpdates = IncludePrereleaseUpdates
+                ,IncludePrereleaseUpdates = IncludePrereleaseUpdates,
+                MapProvider = MapProvider,
+                MapDefaultLocation = MapDefaultLocation,
+                MapStyle = MapStyle,
+                LeafletMapStyle = LeafletMapStyle,
+                MapRouteStyle = MapRouteStyle
             };
         }
 

@@ -7,6 +7,7 @@
 首次启动会在程序目录创建 `update-sources.json`。仓库中的 `update-sources.example.json` 是完整示例。更新源按 `priority` 从高到低检查，并汇总当前版本线内的全部兼容版本供用户选择。自动检查只更新“关于”页状态，不弹出安装窗口。
 
 - `github`：读取指定仓库的 Releases。公开仓库不需要令牌。
+- `gitcode`：读取 GitCode 公开仓库的 Releases，使用 `/api/v5/repos/{owner}/{repo}/releases`，公开发布不需要登录。
 - `manifest`：直接读取任意 HTTPS 托管平台、对象存储或 CDN 上的清单。
 - `channel`：清单通道建议使用 `stable`、`preview`、`beta` 或 `test`。Preview/Beta/Test 程序只在同一测试序列内显示版本；正式版默认只显示 stable。
 - 正式版可在“设置 → 关于 → 测试版本通道”开启测试版本开关，开启后才会显示 Preview、Beta、Test 等预发布序列。该开关不改变版本线和兼容级别限制。
@@ -21,6 +22,18 @@
 2. 清单 `package.fileName` 指定的 ZIP 更新包。
 
 GitHub 源不信任清单中自带的下载地址，而是按文件名匹配同一个 Release 的资产并使用其 `browser_download_url`。草稿 Release 会被忽略；正式版未开启测试版本时会忽略 prerelease Release。
+
+## GitCode Release 格式
+
+GitCode Release 与 GitHub 使用相同的两个发布资产：`update-manifest.json` 和清单指定的 ZIP。程序通过 GitCode v5 Release API 获取附件，并按附件名称绑定下载地址；无需在清单中硬编码 GitCode 地址。
+
+默认配置使用 `Neruya/CarTerminalSimulation`。如果 GitCode 仓库的空间地址或仓库路径不同，请修改 `update-sources.json` 中 GitCode 源的 `owner` 和 `repository`。旧版 schema 1、2 配置会自动迁移为 schema 3：schema 1 会补充默认 GitCode 源，旧版自动生成的 `isla709/CarTerminalSimulation` 会迁移到 `Neruya/CarTerminalSimulation`；迁移完成后可以单独启停或移除任一来源，程序不会覆盖用户已配置的其他镜像。
+
+## 多源聚合与下载选择
+
+同一 `line + version` 在多个更新源出现时会合并成一个版本，版本管理页会列出该版本的所有来源。仅当来源之间的 channel、兼容级别、SHA-256、包大小和删除清单一致时才会合并；存在冲突的来源会被排除并写入诊断日志。
+
+点击升级、切换或回退后，程序会并行对该版本的所有下载地址执行小范围 Range 请求，显示可用性、首包延迟和试读速度。可用源按速度、延迟和配置优先级综合排序，默认选中推荐源；用户仍可手动选择任何检测通过的来源。真正安装时 `update.exe` 仍会对完整发布包执行 SHA-256 校验。
 
 ## 清单格式
 

@@ -94,12 +94,20 @@
                                         <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                                             <TextBlock Text="{Binding PublishedAt, StringFormat={}{0:yyyy-MM-dd}}"
                                                        FontSize="11" Foreground="{DynamicResource MaterialDesignBodyLight}" />
-                                            <TextBlock Text="  ·  " FontSize="11"
-                                                       Foreground="{DynamicResource MaterialDesignBodyLight}" />
-                                            <TextBlock Text="{Binding SourceName}" FontSize="11"
-                                                       Foreground="{DynamicResource MaterialDesignBodyLight}"
-                                                       TextTrimming="CharacterEllipsis" />
                                         </StackPanel>
+                                        <ItemsControl ItemsSource="{Binding Sources}" Margin="0,5,0,0">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Margin="0,0,5,3" Padding="6,2" CornerRadius="7"
+                                                            Background="#142196F3">
+                                                        <TextBlock Text="{Binding Name}" FontSize="9.5" Foreground="#1976D2" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
                                     </StackPanel>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>

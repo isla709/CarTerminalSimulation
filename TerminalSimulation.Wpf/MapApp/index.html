@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>腾讯地图选点</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <div id="map"></div>
+  <div class="map-vignette"></div>
+
+  <section id="planner" class="planner glass">
+    <header class="planner-header">
+      <div class="brand-mark">➤</div>
+      <div class="brand-copy"><strong>地图选点与轨迹模拟</strong><span>腾讯地图 · 实时路线规划</span></div>
+      <button class="icon-button" id="locateButton" title="定位到当前城市">◎</button>
+      <button class="icon-button" id="settingsButton" title="地图设置">⚙</button>
+      <button class="icon-button" id="collapseButton" title="收起">−</button>
+    </header>
+
+    <div id="plannerBody" class="planner-body">
+      <div class="search-box">
+        <span class="search-icon">⌕</span>
+        <input id="searchInput" autocomplete="off" placeholder="搜索地点、道路、园区或商场">
+        <button id="searchButton" class="primary compact">搜索</button>
+      </div>
+      <div id="searchStatus" class="subtle-status"></div>
+      <div id="searchResults" class="search-results"></div>
+
+      <nav class="mode-tabs" aria-label="路线模式">
+        <button id="modeNavigation" class="mode-tab active">导航路线</button>
+        <button id="modeDraw" class="mode-tab">自由绘制</button>
+      </nav>
+
+      <section id="navigationSection" class="route-editor">
+        <div class="route-point"><i class="point start"></i><div><small>起点</small><strong id="startPointName">点击地图或搜索地点</strong></div><button id="clearStart">×</button></div>
+        <div class="connector"></div>
+        <div class="route-point"><i class="point end"></i><div><small>终点</small><strong id="endPointName">点击地图或搜索地点</strong></div><button id="clearEnd">×</button></div>
+        <div class="route-actions"><button id="swapButton" class="secondary">⇅ 交换</button><button id="planButton" class="primary" disabled>规划路线</button></div>
+        <div id="routeAlternatives" class="route-alternatives"></div>
+      </section>
+
+      <section id="drawSection" class="route-editor hidden">
+        <div class="draw-help"><div><small>自由绘制</small><strong>在地图上依次点击添加轨迹点</strong></div><b id="drawPointCount">0 个点</b></div>
+        <div class="route-actions"><button id="undoButton" class="secondary" disabled>撤销</button><button id="clearDrawButton" class="secondary">重新绘制</button></div>
+      </section>
+
+      <section class="simulation-card">
+        <div class="field-row">
+          <label><span>模拟速度</span><div class="input-suffix"><input id="speedInput" type="number" min="0" max="999" step="1" value="60"><em>km/h</em></div></label>
+          <label><span>坐标系</span><select id="coordinateSystem"><option value="gcj02">GCJ-02</option><option value="wgs84">WGS-84</option><option value="bd09">BD-09</option></select></label>
+        </div>
+        <div class="simulation-actions"><button id="clearButton" class="secondary">清除路线</button><button id="startButton" class="success" disabled>开始模拟</button><button id="stopButton" class="danger hidden">停止模拟</button></div>
+        <div class="file-actions"><button id="openRouteButton" class="text-button">打开路线</button><button id="saveRouteButton" class="text-button" disabled>保存路线</button></div>
+      </section>
+    </div>
+  </section>
+
+  <div class="map-tools glass">
+    <button id="view2dButton" class="tool active" title="二维视图">2D</button>
+    <button id="view3dButton" class="tool" title="三维视图">3D</button>
+  </div>
+
+  <div id="routeStatus" class="route-status glass">在地图上选择起点</div>
+  <div id="toast" class="toast"></div>
+
+  <div id="settingsOverlay" class="overlay">
+    <div class="dialog glass">
+      <header><div><strong>地图选点设置</strong><span>调整默认位置和轨迹外观</span></div><button id="closeSettings" class="icon-button">×</button></header>
+      <div class="dialog-body">
+        <label class="setting"><div><strong>默认位置</strong><span>自动模式使用腾讯地图 IP 定位</span></div><select id="defaultLocation"><option value="auto">自动（网络位置）</option><option value="beijing">北京</option><option value="shanghai">上海</option><option value="guangzhou">广州</option><option value="shenzhen">深圳</option><option value="chengdu">成都</option><option value="chongqing">重庆</option><option value="hangzhou">杭州</option><option value="wuhan">武汉</option><option value="xian">西安</option><option value="nanjing">南京</option></select></label>
+        <label class="setting"><div><strong>地图风格</strong><span>当前 Key 可用的地图样式</span></div><select id="mapStyle"><option value="default">腾讯默认</option><option value="style1">墨渊</option></select></label>
+        <label class="setting"><div><strong>路线样式</strong><span>路线、车辆与进度使用的强调色</span></div><select id="pathStyle"><option value="theme-neon-blue">导航蓝</option><option value="theme-neon-purple">霓虹紫</option><option value="theme-solid-red">警示红</option><option value="theme-solid-orange">活力橙</option></select></label>
+      </div>
+      <footer><button id="resetSettings" class="secondary">恢复默认</button><span></span><button id="cancelSettings" class="secondary">取消</button><button id="saveSettings" class="primary">保存并应用</button></footer>
+    </div>
+  </div>
+
+  <div id="coordinateOverlay" class="overlay">
+    <div class="dialog coordinate-dialog glass">
+      <header><div><strong>切换路线坐标系</strong><span>请选择已有点位的处理方式</span></div></header>
+      <div class="coordinate-flow"><b id="coordinateFrom">GCJ-02</b><span>→</span><b id="coordinateTo">WGS-84</b></div>
+      <div class="coordinate-options">
+        <button id="directCoordinate" class="choice"><b>直接切换</b><span>保留坐标数值，仅改变坐标系解释，地图位置可能移动</span></button>
+        <button id="convertCoordinate" class="choice recommended"><b>转换并保持地图位置</b><span>转换已有坐标值，使路线在地图中的实际位置不变</span></button>
+      </div>
+      <footer><span></span><button id="cancelCoordinate" class="secondary">取消</button></footer>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

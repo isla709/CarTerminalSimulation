@@ -114,10 +114,17 @@ public partial class MainViewModel
             };
             if (dialog.ShowDialog() != true || dialog.SelectedCandidate is not { } selectedCandidate) return;
 
+            var sourceDialog = new UpdateSourceSelectionWindow(selectedCandidate)
+            {
+                Owner = dialogOwner
+            };
+            if (sourceDialog.ShowDialog() != true || sourceDialog.SelectedSource is not { } selectedSource) return;
+
             try
             {
                 UpdateLauncher.Start(
                     selectedCandidate,
+                    selectedSource,
                     AppVersionInfo.UpdateLine,
                     AppVersionInfo.CompatibilityEpoch);
                 mainWindow?.Close();

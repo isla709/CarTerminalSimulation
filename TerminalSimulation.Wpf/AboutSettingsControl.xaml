@@ -39,7 +39,7 @@
                     <materialDesign:PackIcon Kind="RocketLaunchOutline" Width="23" Height="23"
                                              Foreground="{DynamicResource MaterialDesign.Brush.Primary}" />
                     <StackPanel Grid.Column="1" Margin="14,0,0,0">
-                        <TextBlock Text="Preview7 版本简介" FontSize="15" FontWeight="SemiBold" />
+                        <TextBlock Text="Preview9 版本简介" FontSize="15" FontWeight="SemiBold" />
                         <TextBlock Margin="0,7,0,0" TextWrapping="Wrap" LineHeight="21"
                                    Foreground="{DynamicResource MaterialDesignBodyLight}"
                                    Text="本版本完善了实用工具工作区，新增 HTTP 请求调试与结构化代码编辑，扩充主题和启动封面，并加入由独立 update.exe 执行的多源安全更新能力。" />

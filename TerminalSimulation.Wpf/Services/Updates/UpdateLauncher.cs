@@ -8,6 +8,7 @@ internal static class UpdateLauncher
 {
     public static string Start(
         UpdateCandidate candidate,
+        UpdateDownloadSource source,
         string currentLine,
         int currentCompatibilityEpoch)
     {
@@ -42,13 +43,13 @@ internal static class UpdateLauncher
             TargetLine = candidate.Line,
             CurrentCompatibilityEpoch = currentCompatibilityEpoch,
             TargetCompatibilityEpoch = candidate.CompatibilityEpoch,
-            PackageUrl = candidate.PackageUri.AbsoluteUri,
-            Sha256 = candidate.Sha256,
-            PackageSize = candidate.PackageSize,
+            PackageUrl = source.PackageUri.AbsoluteUri,
+            Sha256 = source.Sha256,
+            PackageSize = source.PackageSize,
             TargetDirectory = Path.GetFullPath(AppContext.BaseDirectory),
             MainExecutablePath = Path.GetFullPath(executablePath),
             ParentProcessId = Environment.ProcessId,
-            AllowInsecureHttp = candidate.AllowInsecureHttp,
+            AllowInsecureHttp = source.AllowInsecureHttp,
             Delete = candidate.Delete.ToList()
         };
         // Keep PascalCase property names for compatibility with Preview6's updater.

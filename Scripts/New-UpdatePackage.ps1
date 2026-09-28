@@ -9,10 +9,12 @@ param(
     [int]$CompatibilityEpoch = 1,
     [string]$ReleaseNotes = "",
     [string]$OutputDirectory = "artifacts/update",
-    [string]$PackageBaseUrl = ""
+    [string]$PackageBaseUrl = "",
+    [string[]]$PreviousManifestPath = @()
 )
 
 $ErrorActionPreference = "Stop"
+Add-Type -AssemblyName System.IO.Compression.FileSystem
 $source = [System.IO.Path]::GetFullPath($InputDirectory)
 $output = [System.IO.Path]::GetFullPath($OutputDirectory)
 if (-not [System.IO.Directory]::Exists($source)) {
@@ -57,12 +59,52 @@ $manifest = [ordered]@{
     delete = @()
 }
 
+$manifestDocument = $manifest
+if ($PreviousManifestPath.Count -gt 0) {
+    $versions = @()
+    foreach ($previousPathValue in $PreviousManifestPath) {
+        $previousPath = [System.IO.Path]::GetFullPath($previousPathValue)
+        if (-not [System.IO.File]::Exists($previousPath)) {
+            throw "Previous manifest does not exist: $previousPath"
+        }
+
+        $previous = Get-Content -LiteralPath $previousPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($null -ne $previous.product -and $previous.product -ne "TerminalSimulation") {
+            throw "Previous manifest product does not match TerminalSimulation: $previousPath"
+        }
+        if ($null -ne $previous.line -and -not [string]::IsNullOrWhiteSpace([string]$previous.line) -and $previous.line -ne $Line) {
+            throw "Previous manifest line '$($previous.line)' does not match '$Line': $previousPath"
+        }
+
+        if ($null -ne $previous.versions) {
+            $versions += @($previous.versions)
+        }
+        else {
+            $versions += $previous
+        }
+    }
+
+    if (@($versions | Where-Object { $_.version -eq $Version }).Count -gt 0) {
+        throw "The catalog already contains version $Version."
+    }
+    $versions += $manifest
+    $manifestDocument = [ordered]@{
+        schemaVersion = 2
+        product = "TerminalSimulation"
+        line = $Line
+        versions = $versions
+    }
+}
+
 $manifestPath = [System.IO.Path]::Combine($output, "update-manifest.json")
 [System.IO.File]::WriteAllText(
     $manifestPath,
-    ($manifest | ConvertTo-Json -Depth 8),
+    ($manifestDocument | ConvertTo-Json -Depth 12),
     [System.Text.UTF8Encoding]::new($false))
 
 Write-Output "Package:  $packagePath"
 Write-Output "Manifest: $manifestPath"
 Write-Output "SHA-256:  $hash"
+if ($PreviousManifestPath.Count -gt 0) {
+    Write-Output "Catalog:   $($versions.Count) versions"
+}

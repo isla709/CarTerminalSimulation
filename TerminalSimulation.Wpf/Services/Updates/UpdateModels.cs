@@ -4,7 +4,7 @@ namespace TerminalSimulation.Wpf.Services.Updates;
 
 internal sealed class UpdateSourceConfiguration
 {
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = 3;
     public bool AutoCheck { get; set; } = true;
     public double CheckIntervalHours { get; set; } = 12;
     public string Channel { get; set; } = "preview";
@@ -91,6 +91,17 @@ internal sealed class UpdatePackage
     public long? Size { get; set; }
 }
 
+internal sealed record UpdateDownloadSource(
+    string Name,
+    int Priority,
+    Uri PackageUri,
+    string Sha256,
+    long? PackageSize,
+    bool AllowInsecureHttp)
+{
+    public string Host => PackageUri.Host;
+}
+
 internal sealed record UpdateCandidate(
     string Version,
     string Channel,
@@ -98,11 +109,20 @@ internal sealed record UpdateCandidate(
     int CompatibilityEpoch,
     DateTimeOffset? PublishedAt,
     string ReleaseNotes,
-    string SourceName,
-    Uri PackageUri,
-    string Sha256,
-    long? PackageSize,
-    bool AllowInsecureHttp,
+    IReadOnlyList<UpdateDownloadSource> Sources,
+    IReadOnlyList<string> Delete)
+{
+    public string SourceSummary => string.Join("、", Sources.Select(source => source.Name));
+}
+
+internal sealed record UpdateSourceCandidate(
+    string Version,
+    string Channel,
+    string Line,
+    int CompatibilityEpoch,
+    DateTimeOffset? PublishedAt,
+    string ReleaseNotes,
+    UpdateDownloadSource Source,
     IReadOnlyList<string> Delete);
 
 internal sealed record UpdateCheckResult(
@@ -142,4 +162,34 @@ internal sealed class GitHubReleaseAsset
 
     [JsonPropertyName("digest")]
     public string? Digest { get; set; }
+}
+
+internal sealed class GitCodeRelease
+{
+    [JsonPropertyName("tag_name")]
+    public string TagName { get; set; } = string.Empty;
+
+    [JsonPropertyName("prerelease")]
+    public bool Prerelease { get; set; }
+
+    [JsonPropertyName("body")]
+    public string? Body { get; set; }
+
+    [JsonPropertyName("created_at")]
+    public DateTimeOffset? CreatedAt { get; set; }
+
+    [JsonPropertyName("release_status")]
+    public string? ReleaseStatus { get; set; }
+
+    [JsonPropertyName("assets")]
+    public List<GitCodeReleaseAsset> Assets { get; set; } = [];
+}
+
+internal sealed class GitCodeReleaseAsset
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("browser_download_url")]
+    public string BrowserDownloadUrl { get; set; } = string.Empty;
 }

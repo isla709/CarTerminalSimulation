@@ -213,6 +213,11 @@ namespace TerminalSimulation.Wpf.ViewModels
         public string SelectedTTSVoice { get; set; } = "";
         public int TextDownlinkEncodingIndex { get; set; } = 0;
         public bool IncludePrereleaseUpdates { get; set; } = false;
+        public string MapProvider { get; set; } = "new";
+        public string MapDefaultLocation { get; set; } = "auto";
+        public string MapStyle { get; set; } = "default";
+        public string LeafletMapStyle { get; set; } = "map-style-default";
+        public string MapRouteStyle { get; set; } = "theme-neon-blue";
 
         // Standard Attachments
         public bool Enable0x01 { get; set; } = true;
@@ -575,7 +580,12 @@ namespace TerminalSimulation.Wpf.ViewModels
                     e.PropertyName == nameof(EnableGNSSFluctuation) ||
                     e.PropertyName == nameof(EnableTTSPlayback) ||
                     e.PropertyName == nameof(SelectedTTSVoice) ||
-                    e.PropertyName == nameof(TextDownlinkEncodingIndex))
+                    e.PropertyName == nameof(TextDownlinkEncodingIndex) ||
+                    e.PropertyName == nameof(MapProvider) ||
+                    e.PropertyName == nameof(MapDefaultLocation) ||
+                    e.PropertyName == nameof(MapStyle) ||
+                    e.PropertyName == nameof(LeafletMapStyle) ||
+                    e.PropertyName == nameof(MapRouteStyle))
                 {
                     SaveConfigDebounced();
                 }
@@ -799,6 +809,11 @@ namespace TerminalSimulation.Wpf.ViewModels
         [ObservableProperty] private string _hardwareVersion = "V1.0.0";
         [ObservableProperty] private string _firmwareVersion = "V1.0.0";
         [ObservableProperty] private bool _useAppVersionAsFirmwareVersion = true;
+        [ObservableProperty] private string _mapProvider = "new";
+        [ObservableProperty] private string _mapDefaultLocation = "auto";
+        [ObservableProperty] private string _mapStyle = "default";
+        [ObservableProperty] private string _leafletMapStyle = "map-style-default";
+        [ObservableProperty] private string _mapRouteStyle = "theme-neon-blue";
 
         public ObservableCollection<PlateColorItem> PlateColorList { get; } = new ObservableCollection<PlateColorItem>
         {

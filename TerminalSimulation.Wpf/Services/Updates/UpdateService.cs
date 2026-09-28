@@ -38,12 +38,23 @@ internal sealed class UpdateService
             return defaults;
         }
 
-        await using var stream = File.OpenRead(_configurationPath);
-        var configuration = await JsonSerializer.DeserializeAsync<UpdateSourceConfiguration>(stream, JsonOptions, cancellationToken)
+        UpdateSourceConfiguration configuration;
+        await using (var stream = File.OpenRead(_configurationPath))
+        {
+            configuration = await JsonSerializer.DeserializeAsync<UpdateSourceConfiguration>(stream, JsonOptions, cancellationToken)
                             ?? throw new InvalidDataException("更新源配置为空。");
-        if (configuration.SchemaVersion != 1)
+        }
+        if (configuration.SchemaVersion is not (1 or 2 or 3))
             throw new InvalidDataException($"不支持的更新源配置版本：{configuration.SchemaVersion}。");
         configuration.CheckIntervalHours = Math.Clamp(configuration.CheckIntervalHours, 1, 168);
+        if (configuration.SchemaVersion is 1 or 2)
+        {
+            if (configuration.SchemaVersion == 1)
+                EnsureGitCodeSource(configuration);
+            MigrateLegacyGitCodeOwner(configuration);
+            configuration.SchemaVersion = 3;
+            await TryPersistMigratedConfigurationAsync(configuration, cancellationToken);
+        }
         return configuration;
     }
 
@@ -64,7 +75,7 @@ internal sealed class UpdateService
             .OrderByDescending(source => source.Priority)
             .ToList();
         var diagnostics = new List<string>();
-        var candidates = new List<UpdateCandidate>();
+        var sourceCandidates = new List<UpdateSourceCandidate>();
 
         if (!string.IsNullOrWhiteSpace(configuration.Line) &&
             !string.Equals(configuration.Line, currentLine, StringComparison.OrdinalIgnoreCase))
@@ -72,49 +83,54 @@ internal sealed class UpdateService
             diagnostics.Add($"更新源配置的版本线 {configuration.Line} 与当前版本线 {currentLine} 不一致，已按当前版本线检查。");
         }
 
-        foreach (var source in sources)
+        var sourceChecks = sources.Select(async source =>
         {
-            try
+            var sourceDiagnostics = new List<string>();
+            for (var attempt = 1; attempt <= 2; attempt++)
             {
-                var sourceCandidates = source.Type.ToLowerInvariant() switch
+                try
                 {
-                    "github" => await CheckGitHubAsync(
+                    var candidates = await CheckSourceAsync(
                         source,
                         effectiveChannel,
                         strictChannelPolicy,
                         includePrerelease,
                         currentLine,
                         currentCompatibilityEpoch,
-                        diagnostics,
-                        cancellationToken),
-                    "manifest" => await CheckManifestAsync(
-                        source,
-                        effectiveChannel,
-                        strictChannelPolicy,
-                        includePrerelease,
-                        currentLine,
-                        currentCompatibilityEpoch,
-                        diagnostics,
-                        cancellationToken),
-                    _ => throw new InvalidDataException($"未知更新源类型：{source.Type}")
-                };
-                candidates.AddRange(sourceCandidates);
+                        sourceDiagnostics,
+                        cancellationToken);
+                    return new SourceCheckOutcome(candidates, sourceDiagnostics);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex) when (attempt == 1 && IsTransientSourceFailure(ex))
+                {
+                    var sourceName = DisplayName(source);
+                    sourceDiagnostics.Add($"{sourceName}: 首次连接失败，已自动重试（{ex.Message}）");
+                    _logger.Info("自动更新", $"更新源首次连接失败，准备重试：{sourceName}");
+                    await Task.Delay(TimeSpan.FromMilliseconds(450), cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    var sourceName = DisplayName(source);
+                    sourceDiagnostics.Add($"{sourceName}: {ex.Message}");
+                    _logger.Error("自动更新", $"检查更新源失败：{sourceName}", ex);
+                    return new SourceCheckOutcome([], sourceDiagnostics);
+                }
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                var sourceName = DisplayName(source);
-                diagnostics.Add($"{sourceName}: {ex.Message}");
-                _logger.Error("自动更新", $"检查更新源失败：{sourceName}", ex);
-            }
+
+            return new SourceCheckOutcome([], sourceDiagnostics);
+        }).ToArray();
+
+        foreach (var outcome in await Task.WhenAll(sourceChecks))
+        {
+            sourceCandidates.AddRange(outcome.Candidates);
+            diagnostics.AddRange(outcome.Diagnostics);
         }
 
-        var available = candidates
-            .GroupBy(candidate => $"{candidate.Line}\n{candidate.Version}", StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.First())
+        var available = MergeCandidates(sourceCandidates, diagnostics)
             // Version ordering deliberately treats locally generated alpha-numeric build
             // suffixes as equivalent to a numbered release from the same day.  That rule
             // prevents automatic update loops, but it must not hide a real Release from
@@ -134,7 +150,40 @@ internal sealed class UpdateService
         return new UpdateCheckResult(newest, available, sources.Count > 0, diagnostics);
     }
 
-    private async Task<IReadOnlyList<UpdateCandidate>> CheckGitHubAsync(
+    private Task<IReadOnlyList<UpdateSourceCandidate>> CheckSourceAsync(
+        UpdateSourceDefinition source,
+        string channel,
+        bool strictChannelPolicy,
+        bool includePrerelease,
+        string line,
+        int currentCompatibilityEpoch,
+        List<string> diagnostics,
+        CancellationToken cancellationToken) => source.Type.ToLowerInvariant() switch
+    {
+        "github" => CheckGitHubAsync(
+            source, channel, strictChannelPolicy, includePrerelease, line,
+            currentCompatibilityEpoch, diagnostics, cancellationToken),
+        "gitcode" => CheckGitCodeAsync(
+            source, channel, strictChannelPolicy, includePrerelease, line,
+            currentCompatibilityEpoch, diagnostics, cancellationToken),
+        "manifest" => CheckManifestAsync(
+            source, channel, strictChannelPolicy, includePrerelease, line,
+            currentCompatibilityEpoch, diagnostics, cancellationToken),
+        _ => throw new InvalidDataException($"未知更新源类型：{source.Type}")
+    };
+
+    private static bool IsTransientSourceFailure(Exception exception) => exception switch
+    {
+        OperationCanceledException => true,
+        TimeoutException => true,
+        IOException => true,
+        HttpRequestException { StatusCode: null } => true,
+        HttpRequestException request when request.StatusCode is not null =>
+            (int)request.StatusCode is 403 or 408 or 429 or >= 500,
+        _ => false
+    };
+
+    private async Task<IReadOnlyList<UpdateSourceCandidate>> CheckGitHubAsync(
         UpdateSourceDefinition source,
         string channel,
         bool strictChannelPolicy,
@@ -159,7 +208,7 @@ internal sealed class UpdateService
             ? "update-manifest.json"
             : source.ManifestAssetName;
 
-        var candidates = new List<UpdateCandidate>();
+        var candidates = new List<UpdateSourceCandidate>();
         foreach (var release in releases.Where(item => !item.Draft))
         {
             if (string.Equals(channel, "stable", StringComparison.OrdinalIgnoreCase) &&
@@ -188,10 +237,14 @@ internal sealed class UpdateService
                     manifest.Package.Size ??= packageAsset.Size;
                     manifest.PublishedAt ??= release.PublishedAt;
                     manifest.ReleaseNotes ??= release.Body;
-                    candidates.Add(CreateCandidate(manifest, DisplayName(source), allowInsecureHttp: false, manifestUri));
+                    candidates.Add(CreateCandidate(manifest, source, allowInsecureHttp: false, manifestUri));
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex) when (IsTransientSourceFailure(ex))
             {
                 throw;
             }
@@ -205,7 +258,77 @@ internal sealed class UpdateService
         return candidates;
     }
 
-    private async Task<IReadOnlyList<UpdateCandidate>> CheckManifestAsync(
+    private async Task<IReadOnlyList<UpdateSourceCandidate>> CheckGitCodeAsync(
+        UpdateSourceDefinition source,
+        string channel,
+        bool strictChannelPolicy,
+        bool includePrerelease,
+        string line,
+        int currentCompatibilityEpoch,
+        List<string> diagnostics,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(source.Owner) || string.IsNullOrWhiteSpace(source.Repository))
+            throw new InvalidDataException("GitCode 更新源缺少 owner 或 repository。");
+
+        var apiBase = string.IsNullOrWhiteSpace(source.ApiBaseUrl)
+            ? "https://api.gitcode.com/api/v5"
+            : source.ApiBaseUrl.TrimEnd('/');
+        var releasesUri = new Uri($"{apiBase}/repos/{Uri.EscapeDataString(source.Owner)}/{Uri.EscapeDataString(source.Repository)}/releases?per_page=20&direction=desc");
+        using var response = await _httpClient.GetAsync(releasesUri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        var releases = await ReadJsonAsync<List<GitCodeRelease>>(response, cancellationToken) ?? [];
+        var manifestName = string.IsNullOrWhiteSpace(source.ManifestAssetName)
+            ? "update-manifest.json"
+            : source.ManifestAssetName;
+
+        var candidates = new List<UpdateSourceCandidate>();
+        foreach (var release in releases.Where(item =>
+                     !string.Equals(item.ReleaseStatus, "draft", StringComparison.OrdinalIgnoreCase)))
+        {
+            if (string.Equals(channel, "stable", StringComparison.OrdinalIgnoreCase) &&
+                !includePrerelease && release.Prerelease) continue;
+            var manifestAsset = release.Assets.FirstOrDefault(asset =>
+                string.Equals(asset.Name, manifestName, StringComparison.OrdinalIgnoreCase));
+            if (manifestAsset is null) continue;
+
+            try
+            {
+                var manifestUri = RequireRemoteUri(manifestAsset.BrowserDownloadUrl, allowInsecureHttp: false);
+                var manifests = await DownloadManifestSetAsync(manifestUri, cancellationToken);
+                foreach (var manifest in manifests)
+                {
+                    if (!IsSelectable(manifest, channel, strictChannelPolicy, includePrerelease, line, currentCompatibilityEpoch)) continue;
+                    var packageAsset = release.Assets.FirstOrDefault(asset =>
+                        string.Equals(asset.Name, manifest.Package.FileName, StringComparison.OrdinalIgnoreCase));
+                    if (packageAsset is null)
+                        throw new InvalidDataException($"Release 缺少清单指定的资产 {manifest.Package.FileName}。");
+
+                    manifest.Package.Url = packageAsset.BrowserDownloadUrl;
+                    manifest.PublishedAt ??= release.CreatedAt;
+                    manifest.ReleaseNotes ??= release.Body;
+                    candidates.Add(CreateCandidate(manifest, source, allowInsecureHttp: false, manifestUri));
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex) when (IsTransientSourceFailure(ex))
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                diagnostics.Add($"{DisplayName(source)}: 跳过一个无效 Release（{ex.Message}）");
+                _logger.Error("自动更新", $"跳过无效 GitCode Release：{DisplayName(source)}", ex);
+            }
+        }
+
+        return candidates;
+    }
+
+    private async Task<IReadOnlyList<UpdateSourceCandidate>> CheckManifestAsync(
         UpdateSourceDefinition source,
         string channel,
         bool strictChannelPolicy,
@@ -219,13 +342,13 @@ internal sealed class UpdateService
             throw new InvalidDataException("托管平台更新源缺少 manifestUrl。");
         var manifestUri = RequireRemoteUri(source.ManifestUrl, source.AllowInsecureHttp);
         var manifests = await DownloadManifestSetAsync(manifestUri, cancellationToken);
-        var candidates = new List<UpdateCandidate>();
+        var candidates = new List<UpdateSourceCandidate>();
         foreach (var manifest in manifests)
         {
             if (!IsSelectable(manifest, channel, strictChannelPolicy, includePrerelease, line, currentCompatibilityEpoch)) continue;
             try
             {
-                candidates.Add(CreateCandidate(manifest, DisplayName(source), source.AllowInsecureHttp, manifestUri));
+                candidates.Add(CreateCandidate(manifest, source, source.AllowInsecureHttp, manifestUri));
             }
             catch (Exception ex)
             {
@@ -276,9 +399,9 @@ internal sealed class UpdateService
         return await JsonSerializer.DeserializeAsync<T>(limited, JsonOptions, cancellationToken);
     }
 
-    private static UpdateCandidate CreateCandidate(
+    private static UpdateSourceCandidate CreateCandidate(
         UpdateManifest manifest,
-        string sourceName,
+        UpdateSourceDefinition source,
         bool allowInsecureHttp,
         Uri manifestUri)
     {
@@ -302,18 +425,20 @@ internal sealed class UpdateService
         else throw new InvalidDataException("更新清单缺少下载地址。");
         RequireRemoteUri(packageUri.AbsoluteUri, allowInsecureHttp);
 
-        return new UpdateCandidate(
+        return new UpdateSourceCandidate(
             manifest.Version,
             manifest.Channel,
             manifest.Line,
             manifest.CompatibilityEpoch,
             manifest.PublishedAt,
             manifest.ReleaseNotes ?? "此版本未提供更新说明。",
-            sourceName,
-            packageUri,
-            manifest.Package.Sha256,
-            manifest.Package.Size,
-            allowInsecureHttp,
+            new UpdateDownloadSource(
+                DisplayName(source),
+                source.Priority,
+                packageUri,
+                manifest.Package.Sha256,
+                manifest.Package.Size,
+                allowInsecureHttp),
             manifest.Delete);
     }
 
@@ -345,6 +470,124 @@ internal sealed class UpdateService
     private static string DisplayName(UpdateSourceDefinition source) =>
         string.IsNullOrWhiteSpace(source.Name) ? source.Type : source.Name;
 
+    private static IReadOnlyList<UpdateCandidate> MergeCandidates(
+        IEnumerable<UpdateSourceCandidate> sourceCandidates,
+        List<string> diagnostics)
+    {
+        var merged = new List<UpdateCandidate>();
+        foreach (var group in sourceCandidates.GroupBy(
+                     candidate => $"{candidate.Line}\n{candidate.Version}",
+                     StringComparer.OrdinalIgnoreCase))
+        {
+            var ordered = group
+                .OrderByDescending(candidate => candidate.Source.Priority)
+                .ThenBy(candidate => candidate.Source.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var baseline = ordered[0];
+            var acceptedSources = new List<UpdateDownloadSource>();
+            foreach (var candidate in ordered)
+            {
+                if (!HasEquivalentPayload(baseline, candidate))
+                {
+                    diagnostics.Add(
+                        $"{candidate.Source.Name}: 版本 {candidate.Version} 与其他来源的校验值或兼容信息不一致，已排除该下载源。");
+                    continue;
+                }
+
+                if (acceptedSources.Any(existing =>
+                        string.Equals(existing.Name, candidate.Source.Name, StringComparison.OrdinalIgnoreCase) &&
+                        existing.PackageUri == candidate.Source.PackageUri))
+                    continue;
+                acceptedSources.Add(candidate.Source);
+            }
+
+            if (acceptedSources.Count == 0) continue;
+            merged.Add(new UpdateCandidate(
+                baseline.Version,
+                baseline.Channel,
+                baseline.Line,
+                baseline.CompatibilityEpoch,
+                baseline.PublishedAt,
+                baseline.ReleaseNotes,
+                acceptedSources,
+                baseline.Delete));
+        }
+
+        return merged;
+    }
+
+    private static bool HasEquivalentPayload(UpdateSourceCandidate baseline, UpdateSourceCandidate candidate) =>
+        string.Equals(baseline.Channel, candidate.Channel, StringComparison.OrdinalIgnoreCase) &&
+        baseline.CompatibilityEpoch == candidate.CompatibilityEpoch &&
+        string.Equals(baseline.Source.Sha256, candidate.Source.Sha256, StringComparison.OrdinalIgnoreCase) &&
+        (baseline.Source.PackageSize is null || candidate.Source.PackageSize is null ||
+         baseline.Source.PackageSize == candidate.Source.PackageSize) &&
+        baseline.Delete.SequenceEqual(candidate.Delete, StringComparer.OrdinalIgnoreCase);
+
+    private static void EnsureGitCodeSource(UpdateSourceConfiguration configuration)
+    {
+        if (configuration.Sources.Any(source =>
+                string.Equals(source.Type, "gitcode", StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        var officialGitHub = configuration.Sources.FirstOrDefault(source =>
+            string.Equals(source.Type, "github", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(source.Owner, "isla709", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(source.Repository, "CarTerminalSimulation", StringComparison.OrdinalIgnoreCase));
+        if (officialGitHub is null) return;
+
+        configuration.Sources.Add(CreateDefaultGitCodeSource("Neruya", officialGitHub.Repository!));
+    }
+
+    private static void MigrateLegacyGitCodeOwner(UpdateSourceConfiguration configuration)
+    {
+        foreach (var source in configuration.Sources.Where(source =>
+                     string.Equals(source.Type, "gitcode", StringComparison.OrdinalIgnoreCase) &&
+                     string.Equals(source.Owner, "isla709", StringComparison.OrdinalIgnoreCase) &&
+                     string.Equals(source.Repository, "CarTerminalSimulation", StringComparison.OrdinalIgnoreCase)))
+        {
+            source.Owner = "Neruya";
+        }
+    }
+
+    private async Task TryPersistMigratedConfigurationAsync(
+        UpdateSourceConfiguration configuration,
+        CancellationToken cancellationToken)
+    {
+        var temporaryPath = _configurationPath + ".tmp";
+        try
+        {
+            await File.WriteAllTextAsync(
+                temporaryPath,
+                JsonSerializer.Serialize(configuration, JsonOptions),
+                cancellationToken);
+            File.Move(temporaryPath, _configurationPath, overwrite: true);
+            _logger.Info("自动更新", "已将更新源配置升级为多源格式。GitCode 源可在 update-sources.json 中单独启停。");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            try { if (File.Exists(temporaryPath)) File.Delete(temporaryPath); }
+            catch { }
+            _logger.Error("自动更新", "更新源配置迁移已在内存中生效，但无法写回文件", ex);
+        }
+    }
+
+    private static UpdateSourceDefinition CreateDefaultGitCodeSource(string owner, string repository) => new()
+    {
+        Type = "gitcode",
+        Name = "GitCode Releases",
+        Owner = owner,
+        Repository = repository,
+        ApiBaseUrl = "https://api.gitcode.com/api/v5",
+        ManifestAssetName = "update-manifest.json",
+        Priority = 200,
+        Enabled = true
+    };
+
     private static UpdateSourceConfiguration CreateDefaultConfiguration() => new()
     {
         AutoCheck = true,
@@ -353,6 +596,7 @@ internal sealed class UpdateService
         Line = "main",
         Sources =
         [
+            CreateDefaultGitCodeSource("Neruya", "CarTerminalSimulation"),
             new UpdateSourceDefinition
             {
                 Type = "github",
@@ -365,6 +609,10 @@ internal sealed class UpdateService
             }
         ]
     };
+
+    private sealed record SourceCheckOutcome(
+        IReadOnlyList<UpdateSourceCandidate> Candidates,
+        IReadOnlyList<string> Diagnostics);
 
     private sealed class LimitedReadStream(Stream inner, long maximumBytes) : Stream
     {

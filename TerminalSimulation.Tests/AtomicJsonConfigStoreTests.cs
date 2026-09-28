@@ -1,4 +1,5 @@
 using TerminalSimulation.Wpf.Services;
+using TerminalSimulation.Wpf.ViewModels;
 using Xunit;
 
 namespace TerminalSimulation.Tests;
@@ -38,6 +39,27 @@ public sealed class AtomicJsonConfigStoreTests : IDisposable
         Assert.Equal(0, store.Load().Value);
         Assert.Single(Directory.GetFiles(_directory, "config.json.corrupt-*"));
         Assert.NotEmpty(warnings);
+    }
+
+    [Fact]
+    public async Task SaveAsync_MapSettingsRoundTrip()
+    {
+        var store = new AtomicJsonConfigStore<AppConfig>(ConfigPath);
+        await store.SaveAsync(new AppConfig
+        {
+            MapProvider = "old",
+            MapDefaultLocation = "shanghai",
+            MapStyle = "style1",
+            LeafletMapStyle = "map-style-navy",
+            MapRouteStyle = "theme-neon-purple"
+        });
+
+        var loaded = store.Load();
+        Assert.Equal("old", loaded.MapProvider);
+        Assert.Equal("shanghai", loaded.MapDefaultLocation);
+        Assert.Equal("style1", loaded.MapStyle);
+        Assert.Equal("map-style-navy", loaded.LeafletMapStyle);
+        Assert.Equal("theme-neon-purple", loaded.MapRouteStyle);
     }
 
     public void Dispose()

@@ -63,7 +63,7 @@ public partial class UpdateAvailableWindow : Window
         InstallButton.BorderBrush = InstallButton.Background;
         InstallButton.Foreground = System.Windows.Media.Brushes.White;
         TargetVersionText.Text = candidate.Version;
-        TargetMetaText.Text = $"来源：{candidate.SourceName}  ·  版本线：{candidate.Line}  ·  兼容级别：{candidate.CompatibilityEpoch}";
+        TargetMetaText.Text = $"来源：{candidate.SourceSummary}  ·  版本线：{candidate.Line}  ·  兼容级别：{candidate.CompatibilityEpoch}";
         ReleaseNotesText.Text = candidate.ReleaseNotes;
     }
 
