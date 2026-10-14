@@ -8,6 +8,7 @@
                       ReferenceOutputAssembly="false"
                       Private="false" />
     <ProjectReference Include="..\TerminalSimulation.Plugins.XunjieCloud\TerminalSimulation.Plugins.XunjieCloud.csproj"
+                      Condition="'$(HasXunjieCloudPlugin)' == 'true'"
                       ReferenceOutputAssembly="false"
                       Private="false" />
   </ItemGroup>
@@ -129,7 +130,8 @@
         <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
         <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
       </ResolvedFileToPublish>
-      <ResolvedFileToPublish Include="$(MSBuildProjectDirectory)\..\TerminalSimulation.Plugins.XunjieCloud\bin\$(Configuration)\net8.0-windows\TerminalSimulation.Plugins.XunjieCloud.dll">
+      <ResolvedFileToPublish Include="$(MSBuildProjectDirectory)\..\TerminalSimulation.Plugins.XunjieCloud\bin\$(Configuration)\net8.0-windows\TerminalSimulation.Plugins.XunjieCloud.dll"
+                             Condition="'$(HasXunjieCloudPlugin)' == 'true'">
         <RelativePath>Plugins\TerminalSimulation.Plugins.XunjieCloud.Plugin</RelativePath>
         <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
         <ExcludeFromSingleFile>true</ExcludeFromSingleFile>

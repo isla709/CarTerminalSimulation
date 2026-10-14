@@ -1,4 +1,6 @@
+#if INTERNAL_XUNJIECLOUD
 using TerminalSimulation.Plugins.XunjieCloud.Views;
+#endif
 using TerminalSimulation.Wpf;
 using TerminalSimulation.Wpf.Views;
 using System.Windows;
@@ -21,10 +23,12 @@ public sealed class WpfViewSmokeTests
                 _ = new MainWindow();
                 _ = new ThemeSettingsWindow();
                 _ = new AboutSettingsControl();
+#if INTERNAL_XUNJIECLOUD
                 _ = new XunjieCloudStreamView();
                 // Opening the utility picker again can create a second plugin tab.
                 // Keep this as a regression guard for duplicate native-video views.
                 _ = new XunjieCloudStreamView();
+#endif
                 _ = new ConnectionBar();
                 _ = new CommunicationLogView();
                 _ = new DataPassthroughView();

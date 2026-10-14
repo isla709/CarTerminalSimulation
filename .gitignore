@@ -9,6 +9,9 @@
 # Local map provider credentials (never commit real keys)
 docs/KEY.txt
 
+# Internal plugin: local source only, never add it back to the public repository.
+/TerminalSimulation.Plugins.XunjieCloud/
+
 # User-specific files
 *.rsuser
 *.suo

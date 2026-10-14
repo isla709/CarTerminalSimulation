@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <InternalXunjieCloudProjectPath>$(MSBuildThisFileDirectory)TerminalSimulation.Plugins.XunjieCloud\TerminalSimulation.Plugins.XunjieCloud.csproj</InternalXunjieCloudProjectPath>
+    <IncludeXunjieCloudPlugin Condition="'$(IncludeXunjieCloudPlugin)' == '' and Exists('$(InternalXunjieCloudProjectPath)')">true</IncludeXunjieCloudPlugin>
+    <IncludeXunjieCloudPlugin Condition="'$(IncludeXunjieCloudPlugin)' == ''">false</IncludeXunjieCloudPlugin>
+    <HasXunjieCloudPlugin>false</HasXunjieCloudPlugin>
+    <HasXunjieCloudPlugin Condition="'$(IncludeXunjieCloudPlugin)' == 'true' and Exists('$(InternalXunjieCloudProjectPath)')">true</HasXunjieCloudPlugin>
+  </PropertyGroup>
+</Project>

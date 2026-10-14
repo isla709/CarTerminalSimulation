@@ -5,6 +5,7 @@
     <IsTestProject>true</IsTestProject>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <DefineConstants Condition="'$(HasXunjieCloudPlugin)' == 'true'">$(DefineConstants);INTERNAL_XUNJIECLOUD</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
@@ -16,6 +17,10 @@
     <ProjectReference Include="..\TerminalSimulation.PluginBase\TerminalSimulation.PluginBase.csproj" />
     <ProjectReference Include="..\TerminalSimulation.Wpf\TerminalSimulation.Wpf.csproj" />
     <ProjectReference Include="..\TerminalSimulation.Updater\TerminalSimulation.Updater.csproj" />
-    <ProjectReference Include="..\TerminalSimulation.Plugins.XunjieCloud\TerminalSimulation.Plugins.XunjieCloud.csproj" />
+    <ProjectReference Include="..\TerminalSimulation.Plugins.XunjieCloud\TerminalSimulation.Plugins.XunjieCloud.csproj"
+                      Condition="'$(HasXunjieCloudPlugin)' == 'true'" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(HasXunjieCloudPlugin)' != 'true'">
+    <Compile Remove="CredentialMigrationTests.cs;PlaybackSessionGuardTests.cs" />
   </ItemGroup>
 </Project>
