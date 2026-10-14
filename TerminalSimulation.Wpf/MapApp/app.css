@@ -17,3 +17,73 @@ body{position:relative;isolation:isolate}
 .overlay{z-index:10030}
 .toast{z-index:10040}
 @media(max-width:700px){.planner{left:12px;top:12px;width:calc(100vw - 24px);max-height:calc(100vh - 24px)}.planner-body{max-height:calc(100vh - 92px)}.map-tools{display:none}.setting{grid-template-columns:1fr}.route-status{display:none}}
+
+/* Application chrome uses one stroke-based icon family, independent of fonts. */
+.icon-definitions{position:absolute;width:0;height:0;overflow:hidden;pointer-events:none}
+.icon{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0;pointer-events:none}
+.icon-button{display:grid;place-items:center}
+.brand-mark .icon{width:24px;height:24px;fill:rgba(255,255,255,.16)}
+button{transition:background-color .18s ease,color .18s ease,box-shadow .22s ease,transform .2s ease,opacity .18s ease;touch-action:manipulation}
+button:not(:disabled):active{transform:scale(.96)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.icon-button:hover{color:var(--accent);box-shadow:0 4px 12px rgba(22,119,255,.12)}
+.planner-header .brand-copy strong{font-size:16px;letter-spacing:.3px}
+.planner-header .brand-copy span{font-size:10px;white-space:nowrap}
+.planner-body{transition:max-height .32s cubic-bezier(.22,1,.36,1),opacity .22s ease,padding .32s cubic-bezier(.22,1,.36,1)}
+.planner-body.collapsed{display:block;max-height:0;opacity:0;padding-top:0;padding-bottom:0;overflow:hidden;pointer-events:none}
+#collapseButton .icon{transition:transform .28s cubic-bezier(.22,1,.36,1)}
+#collapseButton[aria-expanded="false"] .icon{transform:rotate(180deg)}
+.search-box{transition:border-color .2s,box-shadow .2s}
+.search-box:focus-within{border-color:#79b2ff;box-shadow:0 0 0 3px rgba(22,119,255,.09)}
+.search-box input:focus,.search-box input:focus-visible{outline:none;box-shadow:none}
+.search-zone{position:relative;z-index:3}
+.search-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:31px}
+.quiet-button{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:5px 6px;border:0;border-radius:7px;color:#60748e;background:transparent;font-size:10px;white-space:nowrap}
+.quiet-button .icon{width:14px;height:14px}
+.quiet-button:hover{color:var(--accent);background:#eaf3ff}
+.search-suggestions{position:absolute;top:50px;left:0;right:0;max-height:min(280px,50vh);overflow:auto;border:1px solid #dce5f0;border-radius:14px;background:#fff;box-shadow:0 14px 30px rgba(26,48,77,.18);visibility:hidden;opacity:0;transform:translateY(-5px);transition:opacity .16s ease,transform .2s ease,visibility .2s}
+.search-suggestions.open{visibility:visible;opacity:1;transform:translateY(0)}
+.suggestion-heading{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;color:var(--muted);font-size:10px;background:#f7faff}
+.suggestion-row{display:flex;align-items:center;gap:9px;padding:2px 8px}
+.suggestion-select{display:flex;align-items:center;gap:9px;flex:1;min-width:0;padding:9px 4px;text-align:left;border:0;border-radius:8px;background:transparent;color:var(--text)}
+.suggestion-select .icon{width:16px;height:16px;color:#7a96b7}
+.suggestion-select div{min-width:0}.suggestion-select strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:550}
+.suggestion-select small{display:block;margin-top:3px;color:var(--muted);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.suggestion-row:hover,.suggestion-row.active{background:#edf5ff}
+.suggestion-row .quiet-button{padding:6px}
+.suggestion-message{padding:15px 12px;color:var(--muted);font-size:11px;line-height:1.6}
+.mode-tabs{position:relative;grid-template-columns:repeat(3,minmax(0,1fr));isolation:isolate}
+.mode-tabs:before{content:"";position:absolute;left:4px;top:4px;bottom:4px;width:calc((100% - 16px)/3);background:#fff;border-radius:10px;box-shadow:0 4px 13px rgba(28,48,74,.1);transform:translateX(calc(var(--mode-index)* (100% + 4px)));transition:transform .32s cubic-bezier(.22,1,.36,1);z-index:-1}
+.mode-tab.active{background:transparent;box-shadow:none}.mode-tab{padding:0 4px}
+.route-editor:not(.hidden),.search-result,.history-entry{animation:content-enter .25s cubic-bezier(.22,1,.36,1) both}
+@keyframes content-enter{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+.route-option{transition:border-color .18s ease,box-shadow .18s ease,background .18s ease}
+.route-option:hover{border-color:#94baff;background:#f7fbff}
+.single-heading{display:flex;gap:10px;align-items:center;font-size:12px}.point.single{background:var(--accent);flex-shrink:0}
+.single-heading strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.single-coordinates{margin:12px 0;color:var(--muted);font-size:11px;line-height:1.65;font-variant-numeric:tabular-nums}
+.full-width{width:100%}
+.text-button{display:flex;align-items:center;justify-content:center;gap:6px;padding:0 8px}.text-button .icon{width:15px;height:15px}
+.count-badge{padding:1px 5px;border-radius:5px;background:#e6effa;color:#497bb3;font-size:10px}
+.overlay{transition:opacity .2s ease,visibility .2s;backdrop-filter:blur(3px)}
+.dialog{max-height:calc(100vh - 36px);display:flex;flex-direction:column;transition:transform .3s cubic-bezier(.22,1,.36,1)}
+.dialog-body{overflow:auto}.dialog header,.dialog footer{flex-shrink:0}
+.history-dialog{width:min(550px,calc(100vw - 30px))}.history-tabs{display:flex;gap:4px;margin:12px 20px 0;padding:4px;border-radius:11px;background:#edf2f7}
+.history-tabs button{flex:1;height:35px;border:0;border-radius:8px;background:transparent;color:#728095;font-size:12px;font-weight:600}
+.history-tabs button.active{background:#fff;color:var(--accent);box-shadow:0 3px 8px rgba(30,50,80,.08)}
+.history-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:8px 20px;color:var(--muted);font-size:10px}
+.destructive{color:#ce4c51}.destructive:hover{color:#ce353d;background:#fff1f1}
+.history-list{min-height:140px;max-height:calc(100vh - 280px);overflow:auto;padding:0 20px 12px;scrollbar-width:thin}
+.history-entry{display:flex;align-items:center;gap:10px;margin-bottom:7px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#f8fbff}
+.history-entry>.icon{color:#7292b8}.history-copy{flex:1;min-width:0}.history-copy strong{display:block;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.history-copy p{margin:5px 0 0;color:var(--muted);font-size:10px;line-height:1.5}
+.history-entry .history-actions{display:flex;gap:3px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.history-actions button{font-size:10px}
+.empty-state{text-align:center;padding:32px 16px;color:var(--muted);font-size:12px;line-height:1.9}.empty-state .icon{display:block;width:32px;height:32px;margin:0 auto 10px;color:#a6bad2}
+.dialog .history-footer{display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:10px}
+.small-dialog{width:min(400px,calc(100vw - 30px))}.small-dialog footer{display:flex;justify-content:flex-end}.small-dialog header span{line-height:1.6}
+.record-label{display:block;margin:12px 0 7px;font-size:11px;color:var(--muted)}.record-input{width:100%;height:42px;padding:0 12px;border:1px solid #dce3eb;border-radius:10px;margin-bottom:18px;color:var(--text);background:#fff}
+#recordOverlay{z-index:10032}#confirmOverlay{z-index:10034}
+/* Native HTML image/text drag must never replace the map's pointer gesture. */
+#map,#map *{-webkit-user-drag:none;user-select:none;-webkit-user-select:none}
+#map{touch-action:none}#map canvas{outline:none}
+@media(max-width:420px){.planner-header{grid-template-columns:34px minmax(0,1fr) 30px 30px 30px;gap:5px;padding:10px}.brand-mark{width:34px;height:34px}.icon-button{width:30px;height:30px}.planner-header .brand-copy strong{font-size:14px}.planner-header .brand-copy span{font-size:8px}.planner-body{padding:10px}.history-entry{align-items:flex-start;flex-wrap:wrap}.history-actions{margin-left:auto}.simulation-card{padding:10px}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}

@@ -213,6 +213,7 @@ namespace TerminalSimulation.Wpf.ViewModels
         public string SelectedTTSVoice { get; set; } = "";
         public int TextDownlinkEncodingIndex { get; set; } = 0;
         public bool IncludePrereleaseUpdates { get; set; } = false;
+        public bool ShowUpdateNotifications { get; set; } = true;
         public string MapProvider { get; set; } = "new";
         public string MapDefaultLocation { get; set; } = "auto";
         public string MapStyle { get; set; } = "default";
@@ -1395,6 +1396,8 @@ namespace TerminalSimulation.Wpf.ViewModels
 
         private System.Threading.CancellationTokenSource? _pathSimulationCts;
         private Task? _pathSimulationTask;
+        private VehicleDriver? _activeVehicleDriver;
+        private long _pathSimulationVersion;
         [ObservableProperty] private bool _isPathSimulating = false;
         
         [ObservableProperty] private bool _isSettingsOpen = false;
@@ -1407,6 +1410,8 @@ namespace TerminalSimulation.Wpf.ViewModels
 
         public Action<double, double>? OnMapCarMoved { get; set; }
         public Action? OnSimulationFinished { get; set; }
+        public Action<VehicleTelemetry>? OnVehicleTelemetry { get; set; }
+        public void SetVehicleControls(VehicleControls controls) => Volatile.Read(ref _activeVehicleDriver)?.SetControls(controls);
 
         public ObservableCollection<BitFlagItem> AlarmFlags { get; } = new ObservableCollection<BitFlagItem>();
         public ObservableCollection<BitFlagItem> StatusFlags { get; } = new ObservableCollection<BitFlagItem>();
@@ -2022,65 +2027,95 @@ namespace TerminalSimulation.Wpf.ViewModels
             {
                 _pathSimulationCts?.Cancel();
                 IsPathSimulating = false;
+                Speed = 0;
                 Log("系统", "路径模拟行驶已手动中断");
             }
         }
 
-        public void StartPathSimulation(List<GeoPoint> path)
+        public bool StartPathSimulation(List<GeoPoint> path, VehicleSimulationOptions? vehicleOptions = null)
         {
             if (path == null || path.Count < 2)
             {
                 Log("系统", "路径点太少，无法模拟");
-                return;
-            }
-
-            if (IsPathSimulating)
-            {
-                _pathSimulationCts?.Cancel();
+                return false;
             }
 
             if (AutoReportInterval < 1)
             {
                 Log("系统", "模拟汇报间隔不能小于1秒");
-                return;
+                return false;
             }
 
+            // Validate before interrupting the previous run.
+            var driver = vehicleOptions is { Enabled: true } ? new VehicleDriver(vehicleOptions) : null;
+            _ = new RouteSpeedProfile(path);
+            _pathSimulationCts?.Cancel();
             _pathSimulationCts = new System.Threading.CancellationTokenSource();
             var token = _pathSimulationCts.Token;
+            var version = Interlocked.Increment(ref _pathSimulationVersion);
+            Volatile.Write(ref _activeVehicleDriver, driver);
+            if (driver is not null) Speed = 0;
             IsPathSimulating = true;
-            Log("系统", "开始路径模拟行驶");
+            Log("系统", driver is null ? "开始路径模拟行驶（固定速度）" :
+                $"开始真实驾驶模拟：期望 {driver.Options.AverageSpeedKph:0.#} km/h，上限 {driver.Options.MaxSpeedKph:0.#} km/h，{driver.Options.Transmission} / {driver.Options.Powertrain}");
 
             _pathSimulationTask = Task.Run(async () =>
             {
                 try
                 {
-                    await _locationSimulationService.RunAsync(path, () => Speed, (point, bearing) =>
+                    void UpdatePosition(GeoPoint point, int bearing, VehicleTelemetry? telemetry)
                     {
                         Application.Current?.Dispatcher?.Invoke(() =>
                         {
+                            if (token.IsCancellationRequested || version != Volatile.Read(ref _pathSimulationVersion)) return;
+                            if (telemetry is not null)
+                            {
+                                Speed = Math.Round(telemetry.SpeedKph, 2);
+                                if (Sync0x03SpeedWithMainSpeed) Speed0x03 = (ushort)(Speed * 10);
+                            }
                             Latitude = Math.Round(point.Lat, 6);
                             Longitude = Math.Round(point.Lng, 6);
                             Direction = bearing;
                             OnMapCarMoved?.Invoke(point.Lat, point.Lng);
+                            OnVehicleTelemetry?.Invoke(telemetry ?? new VehicleTelemetry(Speed, Speed, 0, 0, 0, 0, 0, "auto", "fixed", "none", "cruising", "fixed"));
                         });
-                    }, token);
-                    if (!token.IsCancellationRequested)
+                    }
+                    if (driver is null)
+                        await _locationSimulationService.RunAsync(path, () => Speed, (point, bearing) => UpdatePosition(point, bearing, null), token);
+                    else
+                        await _locationSimulationService.RunVehicleAsync(path, driver, (point, bearing, telemetry) => UpdatePosition(point, bearing, telemetry), token);
+                    if (!token.IsCancellationRequested && version == Volatile.Read(ref _pathSimulationVersion))
                     {
                         Log("系统", "路径模拟行驶已到达终点");
-                        Application.Current?.Dispatcher?.Invoke(() => OnSimulationFinished?.Invoke());
+                        Application.Current?.Dispatcher?.Invoke(() =>
+                        {
+                            if (!token.IsCancellationRequested && version == Volatile.Read(ref _pathSimulationVersion)) OnSimulationFinished?.Invoke();
+                        });
                     }
                 }
                 catch (OperationCanceledException) when (token.IsCancellationRequested) { }
                 catch (Exception ex)
                 {
                     Log("系统", $"路径模拟出错: {ex.Message}");
-                    Application.Current?.Dispatcher?.Invoke(() => OnSimulationFinished?.Invoke());
+                    if (version == Volatile.Read(ref _pathSimulationVersion))
+                        Application.Current?.Dispatcher?.Invoke(() =>
+                        {
+                            if (version != Volatile.Read(ref _pathSimulationVersion)) return;
+                            Speed = 0;
+                            OnSimulationFinished?.Invoke();
+                        });
                 }
                 finally
                 {
-                    Application.Current?.Dispatcher?.BeginInvoke(new Action(() => IsPathSimulating = false));
+                    Application.Current?.Dispatcher?.BeginInvoke(new Action(() =>
+                    {
+                        if (version != Volatile.Read(ref _pathSimulationVersion)) return;
+                        Volatile.Write(ref _activeVehicleDriver, null);
+                        IsPathSimulating = false;
+                    }));
                 }
-            }, token);
+            });
+            return true;
         }
 
         public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();

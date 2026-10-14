@@ -13,6 +13,7 @@
         xmlns:plugin="clr-namespace:TerminalSimulation.PluginBase;assembly=TerminalSimulation.PluginBase"
         xmlns:views="clr-namespace:TerminalSimulation.Wpf.Views"
         mc:Ignorable="d"
+        Icon="/TerminalSimulation.Wpf;component/Assets/app-icon.ico"
         TextElement.Foreground="{DynamicResource MaterialDesignBody}"
         TextElement.FontWeight="Regular"
         TextElement.FontSize="14"
@@ -385,7 +386,9 @@
                 
                 <!-- Icon and Title -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="10,0">
-                    <materialDesign:PackIcon Kind="CarConnected" Foreground="White" Width="24" Height="24" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <Image Source="{StaticResource ApplicationBrandIcon}" Width="28" Height="28"
+                           VerticalAlignment="Center" Margin="0,0,8,0"
+                           RenderOptions.BitmapScalingMode="HighQuality" />
                     <TextBlock Text="{Binding AppTitle}" Foreground="White" VerticalAlignment="Center" FontWeight="Bold" FontSize="16"
                                MaxWidth="360" TextTrimming="CharacterEllipsis" />
                     <TextBlock Text="{Binding AppVersionText}" Foreground="#B3FFFFFF" VerticalAlignment="Center" FontSize="11" Margin="8,0,0,0" />
@@ -413,7 +416,7 @@
                     </ToggleButton>
 
                     <!-- Settings Button -->
-                    <Button Click="BtnSettings_Click" Style="{StaticResource TitleBarButtonStyle}" ToolTip="设置">
+                    <Button x:Name="SettingsButton" Click="BtnSettings_Click" Style="{StaticResource TitleBarButtonStyle}" ToolTip="设置">
                         <materialDesign:PackIcon Kind="Cog" Width="17" Height="17" />
                     </Button>
 
@@ -432,6 +435,61 @@
                 </StackPanel>
             </Grid>
         </Grid>
+
+        <!-- Native popup also stays above hosted map/video surfaces. It does not
+             take focus or block the main workspace. -->
+        <Popup x:Name="UpdateNotificationPopup" PlacementTarget="{Binding ElementName=SettingsButton}"
+               Placement="Custom" AllowsTransparency="True" StaysOpen="False"
+               PopupAnimation="Fade" Opened="UpdateNotificationPopup_Opened"
+               DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}"
+               IsOpen="{Binding IsUpdateNotificationOpen, Mode=TwoWay}">
+            <Grid x:Name="UpdateNotificationCard" Width="330" Margin="12" UseLayoutRounding="True"
+                  KeyboardNavigation.TabNavigation="Cycle" AutomationProperties.Name="新版本提示"
+                  AutomationProperties.LiveSetting="Polite">
+                <Grid.RowDefinitions><RowDefinition Height="10"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                <Border Grid.Row="1" CornerRadius="14" Padding="18,15"
+                        Background="{DynamicResource MaterialDesignPaper}"
+                        BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="1">
+                    <Border.Effect><DropShadowEffect BlurRadius="18" ShadowDepth="3" Opacity="0.2" /></Border.Effect>
+                    <Grid>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,24,0">
+                            <materialDesign:PackIcon Kind="Update" Width="20" Height="20" Margin="0,0,8,0"
+                                                     Foreground="{DynamicResource MaterialDesign.Brush.Primary}" />
+                            <TextBlock Text="发现新版本" FontSize="15" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource MaterialDesignBody}" />
+                        </StackPanel>
+                        <Button Command="{Binding DismissUpdateNotificationCommand}" HorizontalAlignment="Right"
+                                Style="{StaticResource MaterialDesignToolButton}" Width="26" Height="26" Padding="0"
+                                Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                ToolTip="暂时关闭" AutomationProperties.Name="关闭更新提示">
+                            <materialDesign:PackIcon Kind="Close" Width="15" Height="15" />
+                        </Button>
+                        <StackPanel Grid.Row="1" Margin="0,10,0,14">
+                            <TextBlock Text="{Binding UpdateNotificationVersion}" TextWrapping="Wrap" FontSize="12"
+                                       FontFamily="Consolas" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" />
+                            <TextBlock Text="更新由你决定，可先查看版本说明。" Margin="0,5,0,0" FontSize="11"
+                                       Foreground="{DynamicResource MaterialDesignBodyLight}" />
+                        </StackPanel>
+                        <Grid Grid.Row="2">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <Button Command="{Binding DisableUpdateNotificationsCommand}" Content="不再提示"
+                                    Style="{StaticResource MaterialDesignFlatButton}" HorizontalAlignment="Left"
+                                    FontSize="12" Padding="10,0" Height="32"
+                                    Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                    ToolTip="关闭新版本气泡；可在设置 → 关于重新开启" />
+                            <Button Grid.Column="1" Click="BtnUpdateDetails_Click" Content="查看详情"
+                                    IsEnabled="{Binding IsCheckingForUpdates, Converter={StaticResource InvertBooleanConverter}}"
+                                    FontSize="12" Padding="14,0" Height="32"
+                                    Background="{DynamicResource MaterialDesign.Brush.Primary}" Foreground="White" />
+                        </Grid>
+                    </Grid>
+                </Border>
+                <Path Grid.Row="0" Data="M 0,10 L 10,0 L 20,10" Width="20" Height="11" Margin="0,0,36,-1"
+                      HorizontalAlignment="Right" VerticalAlignment="Bottom" Stretch="Fill"
+                      Fill="{DynamicResource MaterialDesignPaper}" Stroke="{DynamicResource MaterialDesignDivider}" StrokeThickness="1" />
+            </Grid>
+        </Popup>
 
         <!-- Normal Main Content Wrapper -->
         <Grid Grid.Row="1" Grid.RowSpan="2">

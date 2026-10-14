@@ -13,10 +13,22 @@ namespace TerminalSimulation.Wpf
         private bool _isClosingAnimated = false;
         private int _lastSelectedTabIndex;
 
-        public ThemeSettingsWindow()
+        public ThemeSettingsWindow(bool openVersions = false)
         {
             InitializeComponent();
             _lastSelectedTabIndex = SettingsTabControl.SelectedIndex;
+            if (openVersions)
+            {
+                SettingsTabControl.SelectedIndex = SettingsTabControl.Items.Count - 1;
+                Loaded += (_, _) => OpenAboutAndVersions();
+            }
+        }
+
+        internal async void OpenAboutAndVersions()
+        {
+            SettingsTabControl.SelectedIndex = SettingsTabControl.Items.Count - 1;
+            if (DataContext is ViewModels.MainViewModel vm)
+                await vm.OpenUpdateDetailsCommand.ExecuteAsync(null);
         }
 
         private void SettingsTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)

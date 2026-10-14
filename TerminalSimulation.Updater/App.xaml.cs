@@ -6,6 +6,7 @@ public partial class App : Application
 {
     protected override async void OnStartup(StartupEventArgs e)
     {
+        TerminalSimulation.Shared.WindowsAppIdentity.Initialize("CarTerminalSimulation.Updater");
         base.OnStartup(e);
 
         try

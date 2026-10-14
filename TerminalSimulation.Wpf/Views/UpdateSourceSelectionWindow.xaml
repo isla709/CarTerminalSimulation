@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
         Title="选择下载来源" Width="690" Height="510" MinWidth="620" MinHeight="450"
+        Icon="/TerminalSimulation.Wpf;component/Assets/app-icon.ico"
         WindowStartupLocation="CenterOwner" ResizeMode="CanResizeWithGrip"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         FontFamily="Microsoft YaHei UI" Loaded="Window_Loaded" Closing="Window_Closing">

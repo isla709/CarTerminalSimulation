@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
         Title="版本管理" Width="760" Height="540" MinWidth="660" MinHeight="460"
+        Icon="/TerminalSimulation.Wpf;component/Assets/app-icon.ico"
         WindowStartupLocation="CenterOwner" ResizeMode="CanResizeWithGrip"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         FontFamily="Microsoft YaHei UI">

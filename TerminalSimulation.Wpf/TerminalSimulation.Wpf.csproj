@@ -27,6 +27,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Resource Include="Assets\app-icon.ico" />
+    <Resource Include="Assets\app-icon.png" />
     <Resource Include="splash_1.jpg" />
     <Resource Include="splash_2.jpg" />
     <Resource Include="splash_3.jpg" />
@@ -41,7 +43,7 @@
 
   <PropertyGroup>
     <!-- 手动修改程序版本号 -->
-    <AppVersion>preview9</AppVersion>
+    <AppVersion>preview10</AppVersion>
     <UpdateChannel>preview</UpdateChannel>
     <!-- 更新版本线和不可逆兼容级别。不同版本线之间禁止互相更新。 -->
     <UpdateLine>main</UpdateLine>
@@ -52,6 +54,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\app-icon.ico</ApplicationIcon>
     <DebugType>embedded</DebugType>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <!-- The application currently ships a single neutral UI and does not load satellite localizations. -->
@@ -60,11 +63,16 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\Shared\WindowsAppIdentity.cs" Link="Helpers\WindowsAppIdentity.cs" />
     <EmbeddedResource Include="Themes\**\*" />
     <!-- Keep the generated version source visible to WPF's temporary markup project. -->
     <Compile Include="$(IntermediateOutputPath)AppVersionInfo.g.cs" />
     <Compile Include="$(IntermediateOutputPath)EmbeddedTencentMapCredential.g.cs" />
     <Content Include="MapApp\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="MapAppOld\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>

@@ -7,6 +7,22 @@ namespace TerminalSimulation.Tests;
 public sealed class TencentMapServiceTests
 {
     [Fact]
+    public void ParsePlaces_AcceptsSuggestionAndSearchAddressShapes()
+    {
+        var root = JsonNode.Parse("""
+            {"data":[
+              {"id":"1","title":"联想地点","city":"杭州市","district":"西湖区","location":{"lat":30.2,"lng":120.1}},
+              {"id":"2","title":"搜索地点","ad_info":{"city":"上海市","district":"浦东新区"},"location":{"lat":31.2,"lng":121.5}},
+              {"title":"无坐标地点"}
+            ]}
+            """)!.AsObject();
+        var results = TencentMapService.ParsePlaces(root);
+        Assert.Equal(2, results.Count);
+        Assert.Equal("杭州市", results[0].City);
+        Assert.Equal("上海市", results[1].City);
+    }
+
+    [Fact]
     public void DecodePolyline_ExpandsTencentDifferentialCoordinates()
     {
         var encoded = new JsonArray(39.984094, 116.307958, 14, 112, -20, 300);

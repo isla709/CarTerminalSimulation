@@ -6,8 +6,14 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>update</AssemblyName>
+    <ApplicationIcon>Assets\update-icon.ico</ApplicationIcon>
     <RootNamespace>TerminalSimulation.Updater</RootNamespace>
     <DebugType>embedded</DebugType>
     <Version>2.0.0</Version>
   </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="Assets\update-icon.ico" />
+    <Resource Include="Assets\update-icon.png" />
+    <Compile Include="..\Shared\WindowsAppIdentity.cs" Link="WindowsAppIdentity.cs" />
+  </ItemGroup>
 </Project>

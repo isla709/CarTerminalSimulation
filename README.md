@@ -2,7 +2,7 @@
 
 [![Dotnet Version](https://img.shields.io/badge/.NET-8.0--windows-blue.svg)](https://dotnet.microsoft.com/)
 [![UI Library](https://img.shields.io/badge/UI-Material--Design--3-purple.svg)](https://github.com/MaterialDesignInXAML/MaterialDesignInXamlToolkit)
-[![Version](https://img.shields.io/badge/version-preview9-orange.svg)](#)
+[![Version](https://img.shields.io/badge/version-preview10-orange.svg)](#)
 
 欢迎使用**车载定位终端模拟系统**。这是一个基于 Windows Presentation Foundation (WPF) 与 .NET 8.0 构建的现代化、高性能车载终端模拟软件。系统深度实现了 **JT808 (道路运输车辆卫星定位系统终端通讯协议及数据格式)** 及 **JT1078 (道路运输车辆卫星定位系统视频通信协议)** 标准规范，旨在帮助车联网平台开发人员、硬件工程师以及测试人员在没有实体车载终端设备的情况下，轻松模拟各种高并发连接、复杂位置轨迹、音频/视频流推送及平台控制交互。
 
@@ -10,6 +10,14 @@
 > 本项目采用支持 Per-Monitor V2 DPI 与响应式布局的现代 WPF UI，支持自定义主题壁纸，内嵌进程内 FFmpeg 视频转码管道，并提供类浏览器式按需多开动态插件系统。
 
 ---
+
+## Preview10 更新概览
+
+Preview10 聚焦真实驾驶轨迹模拟与地图操作体验：新增车辆预设、加减速与换挡模型、弯道处理、手动油门 / 刹车及可选随机驾驶事件；同步增强 `old/new` 两套地图的搜索联想、搜索记录、单点选择和轨迹库管理。两套地图的记录与车辆设置独立保存，重复路线自动合并。
+
+主程序和独立更新器新增多尺寸系统图标，启动封面正确裁剪圆角。发现更高版本时可在设置图标下方显示非强制提示气泡，支持“不再提示”和“查看详情”，不会自动安装更新。
+
+完整介绍及升级注意事项见 [Preview10 更新日志](docs/preview10-release-notes.md)；操作说明见 [地图交互](docs/map-ui-preview10.md)、[真实驾驶模拟](docs/vehicle-simulation.md)、[更新提示](docs/update-notification.md) 和 [系统图标](docs/application-icons.md)。
 
 ## 🚀 核心功能特性
 
@@ -50,7 +58,10 @@
 ### 5. 嵌入式 GIS 地图与轨迹动效
 *   **双向通信桥接**：基于 `WebView2` 高速内核，桥接 WPF 后端与 JavaScript 前端环境。
 *   **双地图方案**：完整保留腾讯地图 JavaScript API GL 与 Leaflet 两套相互独立的地图选点实现，可通过 `config.json` 手动选择。
-*   **位置动态联动**：在地图上双击即可将坐标自动同步回 0x0200 坐标编辑栏。车辆移动时，地图小车图标不仅会根据 `Direction` 航向角参数实时平滑旋转，还具有动态小车跑动效果。
+*   **三种选点模式**：导航路线、自由绘制和单点选择。单点模式每次点击替换上一点，应用后同步到位置编辑栏；路线模式可用于轨迹模拟。
+*   **搜索与记录**：地点联想、键盘选择、搜索记录管理，以及可恢复、重命名、删除的轨迹库。重复轨迹按模式和有序点去重，保留最新参数；`old/new` 不共用记录。
+*   **真实驾驶速度**：保留固定速度模式，另可配置速度上限、期望巡航水平、驾驶风格、动力与变速箱，使用四种车辆预设；支持提前减速入弯、弯心后加速、手动挡操作及可选随机事件。
+*   **位置动态联动**：右下角显示坐标系、速度及驾驶状态，车辆图标随航向旋转。轨迹、模拟与位置上报保持所选坐标系一致；切换时可选择直接解释坐标或转换以保持地图位置。
 
 地图方案暂不在设置页面中公开。关闭程序后编辑主程序目录中的 `config.json`：
 
@@ -61,6 +72,8 @@
 ```
 
 `MapProvider` 支持 `new`（默认，当前地图方案）和 `old`（原地图方案）。修改后重新启动程序生效；未知值会安全回退为 `new`。
+
+搜索 / 轨迹记录位于 `Workspaces/Map/{new|old}/history.json`，车辆设置位于各自的 `vehicle.json`。路线导出使用 `.ctsroute`，保留原始坐标系、点及模拟配置。真实驾驶与随机事件是协议测试用的近似模型，不代表实测车辆性能或真实交通识别。
 
 ### 6. JT808 报文即时结构化分析仪
 *   **一键解析**：支持直接输入十六进制原始报文（可包含或省略首尾 7E），瞬间完成拆解。
@@ -87,10 +100,10 @@ JT1078 协议需要将大型视频帧分割为若干个不超过 950 字节的 R
 *   本系统设计了**混合等待调度器**：采用粗粒度的 `Task.Delay` 提前释放线程控制权以维护 CPU 健康度，在临近发送时间点的尾部采用纳秒级 `SpinWait.SpinUntil` 混合自旋等待进行精确卡点，确保音视频推流时间戳 (PTS) 匀速行进。
 *   **时间戳防溢出保护**：针对 JT1078 `Timestamp` 发生器，基于本地时钟 `DateTimeOffset.UtcNow` 与帧间增量实现双路漂移校正，彻底杜绝了 32 位 PTS 寄存器溢出给流媒体接收端造成的音视频流中断。
 
-### 3. LibVLC 动态压缩与单文件发布
-为了提供极佳的分发体验，系统配置了单文件发布（`PublishSingleFile=true`）。
+### 3. LibVLC 动态压缩与目录式发布
+本项目采用目录式发布，不采用单文件发布；原生运行库需随完整目录分发。
 *   WPF 视频预览依赖 LibVLC 原生 DLL（文件体积超过 100MB 且包含复杂的目录结构）。
-*   本系统在 MSBuild 编译链中引入了自定义 Target `EmbedLibVLC`：在编译阶段自动将 LibVLC 依赖的物理 DLL 动态压缩为单个 `libvlc.zip` 并作为嵌入式资源编译进可执行文件。程序首次启动时在后台静默解压释放，完美解决了“单文件发布”与“原生库分发体积庞大”之间的矛盾。
+*   本系统在 MSBuild 编译链中引入了自定义 Target `EmbedLibVLC`：在编译阶段将 LibVLC 依赖压缩为 `libvlc.zip` 并嵌入程序集，运行时按需释放，以简化原生库分发。该机制不改变整个应用的目录式发布方式。
 
 ---
 
@@ -161,6 +174,10 @@ CarTerminalSimulation/
 ├── create_plugin.py                       # 插件一键脚手架脚本
 ├── PLUGIN_DEVELOPMENT_GUIDE.md            # 插件开发技术指引
 ├── README.md                              # 本说明文件
+├── Directory.Build.props                  # 本地内部插件的可选构建配置
+├── Shared/                                # Windows 应用标识等共享源码
+├── docs/                                  # 更新日志、地图与车辆模拟操作说明
+├── TerminalSimulation.Updater/            # 独立 update.exe 及其系统图标
 │
 ├── TerminalSimulation.Network/            # 异步 TCP 通信网络底座 (net8.0)
 │
@@ -179,6 +196,9 @@ CarTerminalSimulation/
 │   │   └── VideoChannelItem.cs            # JT1078 通道控制及 FFmpeg 转码逻辑
 │   ├── Services/                           # 连接、配置、凭据、位置、串口、TTS、视频与日志服务
 │   ├── Views/                              # 主窗体拆分后的独立页面
+│   ├── MapApp/                             # new 地图独立 Web UI
+│   ├── MapAppOld/                          # old 地图独立 Web UI 与固定版本依赖
+│   ├── Assets/                             # 主程序多尺寸图标
 │   ├── MainWindow.xaml                    # 主窗体 XAML 布局
 │   └── Regions.json                       # 离线行政区域字典数据
 │
@@ -223,12 +243,16 @@ CarTerminalSimulation/
 2. 执行还原与编译：
    ```bash
    dotnet restore
-   dotnet build --configuration Release
+   dotnet build --configuration Debug
    ```
-3. 编译完成后，所有的插件 `.Plugin` 会由构建脚本自动分发至 `TerminalSimulation.Wpf/bin/Release/net8.0-windows/win-x64/Plugins` 目录下。直接运行主程序 `TerminalSimulation.Wpf.exe` 即可启动。
+3. 默认构建输出至 `TerminalSimulation.Wpf/bin/Debug/net8.0-windows/win-x64/`，已配置的插件输出至其中的 `Plugins/`。运行 `TerminalSimulation.Wpf.exe` 即可启动。需要 Release 时显式使用 `dotnet build --configuration Release`，输出至对应 `bin/Release/`。
+
+构建前将腾讯地图 Key 放入本地 `docs/KEY.txt`，或设置环境变量 `CTS_TENCENT_MAP_KEY`；构建会调用 [凭据生成脚本](Scripts/Generate-TencentMapCredential.ps1) 生成中间源码。本地明文 Key 与生成文件不得提交；客户端内嵌凭据不能替代服务端访问控制与配额管理。
 
 ### 3. 输出与分发
 本项目不采用单文件发布。正常编译产物位于 `TerminalSimulation.Wpf/bin/<Configuration>/net8.0-windows/win-x64/`，分发时必须保留 `Plugins/`、`ffmpeg-native/`、LibVLC 运行库和配置资源的目录结构。应用不会联网下载或回写 FFmpeg。
+
+交付 / 打包产物放在 `artifacts/{结果特征或版本名}/`，发布产物放在 `artifacts/publish/`。公开构建应显式传入 `-p:IncludeXunjieCloudPlugin=false` 并使用新的发布目录，避免包含本地内部插件或残留二进制，详见 [内部插件约定](docs/internal-plugins.md)。
 
 
 ---
@@ -242,7 +266,7 @@ CarTerminalSimulation/
 
 ### 安全边界
 
-* 迅洁云保存的账号密码使用 Windows DPAPI（当前用户范围）保护；旧版 AES 数据会在成功读取后自动迁移。
+* 迅洁云为本地内部插件，不再随公开仓库提供源码；仅本地安装该插件时，其保存密码使用 Windows DPAPI（当前用户范围）保护，旧版 AES 数据在成功读取后迁移。
 * `Plugins/` 中的 `.Plugin` 会获得与主程序相同的本机权限。程序记录每个插件的绝对路径和 SHA-256，但不会阻止第三方插件；仅安装你信任的插件。
 * `config.json` 与 `utility_settings.json` 使用临时文件加原子替换；损坏的主配置会保留为 `.corrupt-<时间戳>` 后回退默认值。
 
@@ -251,7 +275,7 @@ CarTerminalSimulation/
 * 启动失败时查看程序目录下的 `startup-crash.log`。
 * FFmpeg 转码失败时确认 `ffmpeg-native/TerminalFfmpeg.Native.dll` 及其依赖 DLL 完整存在；程序不会尝试联网下载。
 * 插件加载失败时在通信日志中核对插件绝对路径、SHA-256 与加载异常；插件与主程序拥有相同权限。
-* 已保存的迅洁云密码无法由当前 Windows 用户解密时，应用会清空密码并提示重新输入，不会回退明文保存。
+* 本地内部迅洁云插件的密码无法由当前 Windows 用户解密时，会清空密码并提示重新输入，不会回退明文保存。
 
 ### Q: 为什么我自己新建的插件 DLL 主程序检测不到？
 **A**: 
@@ -262,4 +286,4 @@ CarTerminalSimulation/
 
 ---
 
-*祝您使用愉快！如有关于 JT808 / JT1078 的协议集成疑问或插件定制问题，请参考 [PLUGIN_DEVELOPMENT_GUIDE.md](file:///e:/Project/CarTerminalSimulation/PLUGIN_DEVELOPMENT_GUIDE.md)。*
+*祝您使用愉快！如有关于 JT808 / JT1078 的协议集成疑问或插件定制问题，请参考 [插件开发指引](PLUGIN_DEVELOPMENT_GUIDE.md)。*

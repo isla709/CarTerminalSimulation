@@ -28,6 +28,16 @@
     mapDefaultLocation: 'auto',
     requestSequence: 0,
     pendingSearchRequestId: 0,
+    pendingSuggestionRequestId: 0,
+    suggestions: [],
+    searches: [],
+    histories: [],
+    historyKind: 'search',
+    suggestionIndex: -1,
+    searchComposing: false,
+    suggestionCache: new Map(),
+    mapGesture: null,
+    ignoreClickUntil: 0,
     pendingRouteRequestId: 0
   };
 
@@ -148,7 +158,8 @@
   }
 
   function fitLogicalPoints(points) {
-    if (!state.mapReady || points.length < 2) return;
+    if (!state.mapReady || !points.length) return;
+    if(points.length === 1){state.map.setCenter(toLatLng(logicalToDisplay(points[0])));state.map.setZoom(16);return}
     const displayPoints = points.map(logicalToDisplay);
     const lats = displayPoints.map(p=>p.lat), lngs = displayPoints.map(p=>p.lng);
     const bounds = new TMap.LatLngBounds(new TMap.LatLng(Math.min(...lats),Math.min(...lngs)),new TMap.LatLng(Math.max(...lats),Math.max(...lngs)));
@@ -158,12 +169,30 @@
   function refreshRouteUi() {
     $('startPointName').textContent = state.routeStart?.name || '点击地图或搜索地点';
     $('endPointName').textContent = state.routeEnd?.name || '点击地图或搜索地点';
-    $('planButton').disabled = !(state.routeStart && state.routeEnd) || state.isSimulating;
+    $('planButton').disabled = !(state.routeStart && state.routeEnd) || state.isSimulating || !!state.pendingRouteRequestId;
     $('drawPointCount').textContent = `${state.pathPoints.length} 个点`;
     $('undoButton').disabled = !state.pathPoints.length || state.isSimulating;
     $('startButton').disabled = state.pathPoints.length < 2 || state.isSimulating;
-    $('saveRouteButton').disabled = state.pathPoints.length < 2;
+    const single = state.routeMode === 'single';
+    const recordable = single ? state.pathPoints.length===1 : state.pathPoints.length>=2;
+    $('saveRouteButton').disabled = !recordable || state.isSimulating;
+    $('recordRouteButton').disabled = !recordable || state.isSimulating;
+    $('openRouteButton').disabled = state.isSimulating;
+    $('startButton').classList.toggle('hidden', single || state.isSimulating);
+    $('stopButton').classList.toggle('hidden', !state.isSimulating);
+    $('clearButton').textContent = single ? '清除点位' : '清除路线';
+    $('applyPointButton').disabled = !state.selectedPoint || state.isSimulating;
+    $('singlePointName').textContent = state.selectedPoint?.name || '在地图上点击选择一个位置';
+    $('singleCoordinates').textContent = state.selectedPoint
+      ? `${coordinateLabel(state.coordinateSystem)} · ${state.selectedPoint.lat.toFixed(6)}, ${state.selectedPoint.lng.toFixed(6)}`
+      : '再次选择会替换当前点，不生成路线';
+    ['modeNavigation','modeDraw','modeSingle','clearStart','clearEnd','swapButton','clearButton','clearDrawButton','applyPointButton'].forEach(id=>{
+      if(state.isSimulating) $(id).disabled=true;
+      else if(id!=='applyPointButton') $(id).disabled=false;
+    });
+    if(state.isSimulating) return;
     if (state.routeMode === 'navigation') setStatus(state.routeStart ? (state.routeEnd ? '可以规划驾车路线' : '请选择终点') : '请选择起点');
+    else if(single) setStatus(state.selectedPoint ? '单点已选择 · 可直接应用到位置上报' : '点击地图选择一个位置');
     else setStatus(state.pathPoints.length < 2 ? '在地图上依次点击绘制轨迹' : `自由路线已就绪 · ${state.pathPoints.length} 个点`);
   }
 
@@ -171,23 +200,32 @@
     state.pathPoints = [];
     state.routeResults = [];
     state.activeRouteIndex = 0;
+    state.pendingRouteRequestId = 0;
+    $('planButton').textContent='规划路线';
     state.carPoint = state.renderedCarPoint = null;
     cancelAnimationFrame(state.carAnimationFrame);
     renderRoutes(); syncMarkers(); renderAlternatives(); refreshRouteUi();
   }
 
   function setRouteMode(mode) {
-    if (state.isSimulating || !['navigation','draw'].includes(mode)) return;
+    if (state.isSimulating || !['navigation','draw','single'].includes(mode)) return;
     if (mode !== state.routeMode) {
       clearRouteGeometry();
       state.routeStart = state.routeEnd = null;
+      state.selectedPoint = null;
       syncMarkers();
     }
     state.routeMode = mode;
     $('modeNavigation').classList.toggle('active',mode==='navigation');
     $('modeDraw').classList.toggle('active',mode==='draw');
+    $('modeSingle').classList.toggle('active',mode==='single');
+    const modes=['navigation','draw','single'];
+    $('modeTabs').style.setProperty('--mode-index',modes.indexOf(mode));
+    ['modeNavigation','modeDraw','modeSingle'].forEach((id,index)=>$(id).setAttribute('aria-selected',String(index===modes.indexOf(mode))));
     $('navigationSection').classList.toggle('hidden',mode!=='navigation');
     $('drawSection').classList.toggle('hidden',mode!=='draw');
+    $('singleSection').classList.toggle('hidden',mode!=='single');
+    renderSearchResults();
     refreshRouteUi();
   }
 
@@ -199,11 +237,16 @@
   }
 
   function handleMapClick(event) {
-    if (state.isSimulating) return;
+    if (state.isSimulating || performance.now() < state.ignoreClickUntil || state.mapGesture?.moved) return;
+    closeSuggestions();
     const display = {lat:event.latLng.getLat(),lng:event.latLng.getLng()};
     const logical = displayToLogical(display);
     state.selectedPoint = logical;
-    if (state.routeMode === 'draw') {
+    if(state.routeMode === 'single') {
+      state.pathPoints=[logical];
+      state.routeStart=state.routeEnd=null;
+      renderRoutes();
+    } else if (state.routeMode === 'draw') {
       state.pathPoints.push(logical);
       renderRoutes();
     } else if (!state.routeStart || state.routeEnd) {
@@ -219,11 +262,13 @@
 
   function requestSearch() {
     const query = $('searchInput').value.trim();
-    if (query.length < 2 || !state.mapReady || state.pendingSearchRequestId) return;
+    if (query.length < 2 || query.length > 120 || !state.mapReady || state.pendingSearchRequestId) return;
+    closeSuggestions();
+    post({type:'map_history',action:'search',query});
     const center = state.map.getCenter();
     const requestId = ++state.requestSequence;
     state.pendingSearchRequestId = requestId;
-    $('searchStatus').textContent = '正在搜索腾讯地图 POI…';
+    $('searchStatus').textContent = '正在搜索附近地点…';
     $('searchButton').disabled = true;
     post({type:'tencent_search',requestId,query,lat:center.getLat(),lng:center.getLng()});
   }
@@ -245,16 +290,26 @@
   function renderSearchResults() {
     const box = $('searchResults');
     if (!state.searchResults.length) { box.style.display='none'; return; }
-    box.innerHTML = state.searchResults.map((item,index)=>`<article class="search-result"><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml([item.city,item.district,item.address].filter(Boolean).join(' · '))}<br>${escapeHtml(item.category)}</p><div class="result-actions"><button data-role="start" data-index="${index}">设为起点</button><button data-role="end" data-index="${index}">设为终点</button><button data-role="view" data-index="${index}">查看</button></div></article>`).join('');
+    box.innerHTML = state.searchResults.map((item,index)=>`<article class="search-result"><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml([item.city,item.district,item.address].filter(Boolean).join(' · '))}<br>${escapeHtml(item.category)}</p><div class="result-actions">${state.routeMode==='single'?`<button data-role="single" data-index="${index}">选择此点</button>`:state.routeMode==='draw'?`<button data-role="draw" data-index="${index}">加入绘制</button>`:`<button data-role="start" data-index="${index}">设为起点</button><button data-role="end" data-index="${index}">设为终点</button>`}<button data-role="view" data-index="${index}">查看</button></div></article>`).join('');
     box.style.display='block';
   }
 
   function useSearchResult(index, role) {
+    if(state.isSimulating && role!=='view') return showToast('请先停止模拟再修改路线');
     const item = state.searchResults[index]; if (!item) return;
     const logical = convertCoordinate(item.latitude,item.longitude,'gcj02',state.coordinateSystem);
     state.selectedPoint = logical;
     if (role === 'view') {
       state.map.setCenter(new TMap.LatLng(item.latitude,item.longitude)); state.map.setZoom(16); syncMarkers(); return;
+    }
+    if(role==='single' || state.routeMode==='single') {
+      state.selectedPoint={...logical,name:item.title};state.pathPoints=[{...state.selectedPoint}];
+      state.routeStart=state.routeEnd=null;renderRoutes();syncMarkers();refreshRouteUi();applySelectedPoint();
+      state.map.setCenter(new TMap.LatLng(item.latitude,item.longitude));state.map.setZoom(16);return;
+    }
+    if(role==='draw') {
+      state.pathPoints.push({...logical,name:item.title});renderRoutes();syncMarkers();refreshRouteUi();
+      state.map.setCenter(new TMap.LatLng(item.latitude,item.longitude));return;
     }
     setRouteMode('navigation');
     setRoutePoint(role,logical,item.title,item.id);
@@ -296,23 +351,33 @@
     post({type:'map_log',message:`腾讯地图已生成路线：${formatDistance(route.distance)}，约 ${route.durationMinutes} 分钟`});
   }
 
+  function formatRouteTags(tags) {
+    const labels={NARROW:'途经窄路',LEAST_LIGHT:'红绿灯少',LEAST_TIME:'时间短',LEAST_DISTANCE:'距离短',RECOMMEND:'推荐路线',HIGHWAY:'途经高速',AVOID_HIGHWAY:'不走高速',NO_TOLL:'不走收费路',TOLL:'收费道路'};
+    return [...new Set((tags||[]).map(tag=>{
+      const value=String(tag||'').trim();
+      return labels[value.toUpperCase()] || (/[\u3400-\u9fff]/.test(value)&&!/[A-Za-z_]/.test(value)?value:'');
+    }).filter(Boolean))].join(' · ');
+  }
   function renderAlternatives() {
     const box=$('routeAlternatives');
-    box.innerHTML=state.routeResults.map((route,index)=>`<button class="route-option ${index===state.activeRouteIndex?'active':''}" data-route="${index}"><b>${index===0?'推荐路线':`备选路线 ${index}`}</b><b>${route.durationMinutes} 分钟</b><span>${formatDistance(route.distance)} · ${route.trafficLightCount||0} 个红绿灯${route.toll?` · ¥${route.toll}`:''}</span><span>${escapeHtml((route.tags||[]).join(' · '))}</span></button>`).join('');
+    box.innerHTML=state.routeResults.map((route,index)=>`<button class="route-option ${index===state.activeRouteIndex?'active':''}" data-route="${index}"><b>${index===0?'推荐路线':`备选路线 ${index}`}</b><b>${route.durationMinutes} 分钟</b><span>${formatDistance(route.distance)} · ${route.trafficLightCount||0} 个红绿灯${route.toll?` · ¥${route.toll}`:''}</span><span>${escapeHtml(formatRouteTags(route.tags))}</span></button>`).join('');
   }
 
   function startSimulation() {
     if (state.pathPoints.length < 2) return;
     state.isSimulating=true;
+    state.followVehicle=true;
+    window.ctsVehicleUi.start(state.coordinateSystem);
+    recordCurrentRoute(defaultRouteName(), true);
     $('startButton').classList.add('hidden'); $('stopButton').classList.remove('hidden');
     $('coordinateSystem').disabled=true; $('modeDraw').disabled=true; $('modeNavigation').disabled=true;
-    post({type:'simulate_path',path:state.pathPoints,speed:Number($('speedInput').value)||60,coordinateSystem:state.coordinateSystem});
+    post({type:'simulate_path',path:state.pathPoints,speed:Number($('speedInput').value)||60,coordinateSystem:state.coordinateSystem,vehicle:window.ctsVehicleUi.options});
     setStatus(`正在模拟 · ${coordinateLabel(state.coordinateSystem)} · ${$('speedInput').value || 60} km/h`);
     refreshRouteUi();
   }
 
   function stopSimulation(){post({type:'stop_simulation'});simulationFinished()}
-  function simulationFinished(){state.isSimulating=false;$('startButton').classList.remove('hidden');$('stopButton').classList.add('hidden');$('coordinateSystem').disabled=false;$('modeDraw').disabled=false;$('modeNavigation').disabled=false;refreshRouteUi()}
+  function simulationFinished(){window.ctsVehicleUi.finish();state.isSimulating=false;$('startButton').classList.remove('hidden');$('stopButton').classList.add('hidden');$('coordinateSystem').disabled=false;$('modeDraw').disabled=false;$('modeNavigation').disabled=false;refreshRouteUi()}
 
   function updateCarLocationLogical(lat,lng,direction){
     state.carPoint={lat:Number(lat),lng:Number(lng)};state.carDirection=Number(direction)||0;
@@ -322,13 +387,178 @@
     state.carAnimationFrame=requestAnimationFrame(animate);
   }
 
-  function requestCoordinateChange(){const next=$('coordinateSystem').value;if(next===state.coordinateSystem)return;$('coordinateSystem').value=state.coordinateSystem;state.pendingCoordinateSystem=next;$('coordinateFrom').textContent=coordinateLabel(state.coordinateSystem);$('coordinateTo').textContent=coordinateLabel(next);$('coordinateOverlay').classList.add('open')}
-  function cancelCoordinateChange(){state.pendingCoordinateSystem=null;$('coordinateSystem').value=state.coordinateSystem;$('coordinateOverlay').classList.remove('open')}
+  function requestCoordinateChange(){const next=$('coordinateSystem').value;if(next===state.coordinateSystem)return;$('coordinateSystem').value=state.coordinateSystem;state.pendingCoordinateSystem=next;$('coordinateFrom').textContent=coordinateLabel(state.coordinateSystem);$('coordinateTo').textContent=coordinateLabel(next);openOverlay('coordinateOverlay')}
+  function cancelCoordinateChange(){state.pendingCoordinateSystem=null;$('coordinateSystem').value=state.coordinateSystem;closeOverlay('coordinateOverlay')}
   function applyCoordinateChange(convertExisting){const next=state.pendingCoordinateSystem;if(!next)return cancelCoordinateChange();const previous=state.coordinateSystem,convert=point=>{if(!point)return point;const value=convertCoordinate(point.lat,point.lng,previous,next);return{...point,...value}};if(convertExisting){state.pathPoints=state.pathPoints.map(convert);state.routeStart=convert(state.routeStart);state.routeEnd=convert(state.routeEnd);state.selectedPoint=convert(state.selectedPoint);state.carPoint=convert(state.carPoint);state.renderedCarPoint=convert(state.renderedCarPoint);state.routeResults.forEach(route=>route.logicalPoints=route.logicalPoints.map(convert))}state.coordinateSystem=next;cancelCoordinateChange();$('coordinateSystem').value=next;renderRoutes();syncMarkers();refreshRouteUi();showToast(`${convertExisting?'已转换坐标并保持地图位置':'已直接切换坐标解释'} · ${coordinateLabel(next)}`);post({type:'map_log',message:`路径、模拟及 JT/T 808 上报统一使用 ${coordinateLabel(next)} 坐标系`})}
 
-  function saveRoute(){if(state.pathPoints.length<2)return;post({type:'save_map_route',route:{format:'CTSROUTE',version:1,applicationVersion:'',coordinateSystem:state.coordinateSystem,mode:state.routeMode,points:state.pathPoints,start:state.routeStart,end:state.routeEnd}})}
+  function routeDocument(){return{formatVersion:1,coordinateSystem:state.coordinateSystem,mode:state.routeMode,speed:Number($('speedInput').value)||60,vehicle:window.ctsVehicleUi.options,points:state.pathPoints.map(p=>({...p})),start:state.routeStart,end:state.routeEnd}}
+  function saveRoute(){if(!state.pathPoints.length||state.isSimulating)return;post({type:'save_map_route',route:routeDocument()})}
   function openRoute(){post({type:'open_map_route'})}
-  function loadRouteFile(document){if(!document?.points?.length)return;state.coordinateSystem=(document.coordinateSystem||'gcj02').toLowerCase();$('coordinateSystem').value=state.coordinateSystem;state.routeMode=document.mode==='draw'?'draw':'navigation';setRouteMode(state.routeMode);state.pathPoints=document.points.map(point=>({lat:Number(point.lat),lng:Number(point.lng),name:point.name||''}));state.routeStart=document.start?{lat:Number(document.start.lat),lng:Number(document.start.lng),name:document.start.name||'起点'}:null;state.routeEnd=document.end?{lat:Number(document.end.lat),lng:Number(document.end.lng),name:document.end.name||'终点'}:null;state.routeResults=[];renderRoutes();syncMarkers();refreshRouteUi();fitLogicalPoints(state.pathPoints);showToast(`已打开 ${coordinateLabel(state.coordinateSystem)} 路线 · ${state.pathPoints.length} 个点`)}
+  function applySelectedPoint(){
+    if(!state.selectedPoint||state.isSimulating)return;
+    const point=state.selectedPoint;
+    post({type:'apply',lat:point.lat,lng:point.lng,coordinateSystem:state.coordinateSystem});
+    showToast(`已应用 ${coordinateLabel(state.coordinateSystem)} 位置`);
+  }
+
+  const icon = name => `<svg class="icon" aria-hidden="true"><use href="#icon-${name}"/></svg>`;
+  const overlayFocus = new Map();
+  function openOverlay(id){
+    closeSuggestions();overlayFocus.set(id,document.activeElement);
+    $(id).classList.add('open');
+    $(id).querySelector('input,button:not(:disabled)')?.focus();
+  }
+  function closeOverlay(id){$(id).classList.remove('open');const previous=overlayFocus.get(id);if(previous?.isConnected)previous.focus();else document.querySelector('.overlay.open input,.overlay.open button:not(:disabled)')?.focus();overlayFocus.delete(id)}
+  function closeSuggestions(){
+    clearTimeout(requestSuggestions.timer);state.pendingSuggestionRequestId=0;state.suggestionIndex=-1;
+    $('searchSuggestions').classList.remove('open');$('searchInput').setAttribute('aria-expanded','false');$('searchInput').removeAttribute('aria-activedescendant');
+  }
+  function renderSuggestions(message=''){
+    const box=$('searchSuggestions'),query=$('searchInput').value.trim();
+    const history=!query;
+    const items=history?state.searches.slice(0,8):state.suggestions;
+    box.innerHTML=`<div class="suggestion-heading"><span>${history?'最近搜索':'地点联想'}</span><button class="quiet-button" data-manage-search>管理</button></div>`+
+      items.map((item,index)=>`<div class="suggestion-row ${index===state.suggestionIndex?'active':''}" id="suggestion-${index}" role="option" aria-selected="${index===state.suggestionIndex}"><button class="suggestion-select" tabindex="-1" data-suggestion="${index}" data-history="${history}">${icon(history?'clock':'search')}<div><strong>${escapeHtml(history?item.query:item.title)}</strong>${history?'':`<small>${escapeHtml([item.city,item.district,item.address].filter(Boolean).join(' · '))}</small>`}</div></button>${history?`<button class="quiet-button" data-delete-search="${escapeHtml(item.id)}" aria-label="删除此搜索记录">${icon('close')}</button>`:''}</div>`).join('')+
+      (!items.length?`<div class="suggestion-message">${escapeHtml(message||(history?'还没有搜索记录':'正在查找地点…'))}</div>`:'');
+    box.classList.add('open');$('searchInput').setAttribute('aria-expanded','true');
+    if(state.suggestionIndex>=0){$('searchInput').setAttribute('aria-activedescendant',`suggestion-${state.suggestionIndex}`);$(`suggestion-${state.suggestionIndex}`)?.scrollIntoView({block:'nearest'})}
+    else $('searchInput').removeAttribute('aria-activedescendant');
+  }
+  function requestSuggestions(){
+    clearTimeout(requestSuggestions.timer);state.pendingSuggestionRequestId=0;state.suggestionIndex=-1;state.suggestions=[];
+    const query=$('searchInput').value.trim();
+    if(state.searchComposing)return;
+    if(!query){renderSuggestions();return}
+    if(query.length<2){renderSuggestions('继续输入至少两个字符');return}
+    if(query.length>120){renderSuggestions('搜索词不能超过 120 个字符');return}
+    renderSuggestions(state.mapReady?'正在查找地点…':'地图加载后可使用地点联想');
+    requestSuggestions.timer=setTimeout(()=>{
+      if(!state.mapReady||document.activeElement!==$('searchInput'))return;
+      const center=state.map.getCenter(),lat=center.getLat(),lng=center.getLng();
+      const cacheKey=`${query}|${lat.toFixed(2)}|${lng.toFixed(2)}`;
+      if(state.suggestionCache.has(cacheKey)){state.suggestions=state.suggestionCache.get(cacheKey);renderSuggestions('没有联想地点，可点击搜索');return}
+      const requestId=++state.requestSequence;state.pendingSuggestionRequestId=requestId;state.suggestionCacheKey=cacheKey;
+      post({type:'tencent_suggest',requestId,query,lat,lng});
+    },400);
+  }
+  function receiveSuggestions(payload){
+    if(Number(payload?.requestId)!==state.pendingSuggestionRequestId||payload.query!==$('searchInput').value.trim())return;
+    state.pendingSuggestionRequestId=0;
+    state.suggestions=payload.succeeded?(payload.results||[]):[];
+    if(payload.succeeded){
+      if(state.suggestionCache.size>=30)state.suggestionCache.delete(state.suggestionCache.keys().next().value);
+      state.suggestionCache.set(state.suggestionCacheKey,state.suggestions);
+    }
+    if(document.activeElement===$('searchInput'))renderSuggestions(payload.succeeded?'没有联想地点，可点击搜索':'联想暂不可用，仍可点击搜索');
+  }
+  function chooseSuggestion(index,history){
+    if(history){const item=state.searches[index];if(!item)return;$('searchInput').value=item.query;closeSuggestions();requestSearch();return}
+    const item=state.suggestions[index];if(!item)return;
+    $('searchInput').value=item.title;state.searchResults=[item];closeSuggestions();renderSearchResults();
+    $('searchStatus').textContent='已选择联想地点';post({type:'map_history',action:'search',query:item.title.slice(0,120)});
+    useSearchResult(0,state.routeMode==='single'?'single':state.routeMode==='draw'?'draw':'view');
+  }
+  function bindSearchUi(){
+    const input=$('searchInput');$('searchButton').onclick=requestSearch;
+    input.addEventListener('focus',requestSuggestions);input.addEventListener('input',requestSuggestions);
+    input.addEventListener('compositionstart',()=>{state.searchComposing=true;closeSuggestions()});
+    input.addEventListener('compositionend',()=>{state.searchComposing=false;requestSuggestions()});
+    input.addEventListener('keydown',event=>{
+      if(event.isComposing||state.searchComposing)return;
+      const open=$('searchSuggestions').classList.contains('open'),count=input.value.trim()?state.suggestions.length:Math.min(8,state.searches.length);
+      if((event.key==='ArrowDown'||event.key==='ArrowUp')&&open&&count){event.preventDefault();state.suggestionIndex=(state.suggestionIndex+(event.key==='ArrowDown'?1:-1)+count)%count;renderSuggestions();return}
+      if(event.key==='Escape'){event.preventDefault();closeSuggestions();return}
+      if(event.key==='Enter'){event.preventDefault();if(open&&state.suggestionIndex>=0)chooseSuggestion(state.suggestionIndex,!input.value.trim());else requestSearch()}
+    });
+    $('searchSuggestions').addEventListener('mousedown',event=>event.preventDefault());
+    $('searchSuggestions').onclick=event=>{
+      const suggestion=event.target.closest('[data-suggestion]');
+      if(suggestion)chooseSuggestion(Number(suggestion.dataset.suggestion),suggestion.dataset.history==='true');
+      const remove=event.target.closest('[data-delete-search]');if(remove)post({type:'map_history',action:'delete',kind:'search',id:remove.dataset.deleteSearch});
+      if(event.target.closest('[data-manage-search]'))showHistory('search');
+    };
+    document.addEventListener('pointerdown',event=>{if(!$('searchZone').contains(event.target))closeSuggestions()});
+    input.addEventListener('blur',()=>setTimeout(()=>{if(!$('searchZone').contains(document.activeElement))closeSuggestions()},0));
+  }
+  function defaultRouteName(){return state.routeMode==='single'?(state.selectedPoint?.name||'单点位置'):state.routeMode==='navigation'?`${state.routeStart?.name||'起点'} → ${state.routeEnd?.name||'终点'}`:'自由绘制轨迹'}
+  function recordCurrentRoute(name,automatic=false){
+    if(!state.pathPoints.length)return;
+    post({type:'map_history',action:'record',name:name.trim().slice(0,80),route:routeDocument(),automatic});
+  }
+  function receiveHistory(payload){
+    $('saveRecord').disabled=false;
+    if(!payload.succeeded){showToast(`记录操作失败：${payload.message||'请检查目录写入权限'}`,true);return}
+    state.searches=payload.searches||[];state.histories=payload.routes||[];$('routeHistoryCount').textContent=state.histories.length;
+    renderHistory();
+    if(document.activeElement===$('searchInput')&&!$('searchInput').value.trim()&&$('searchSuggestions').classList.contains('open'))renderSuggestions();
+    if(['record','rename'].includes(payload.action)&&!payload.automatic){closeOverlay('recordOverlay');showToast(payload.action==='rename'?'记录名称已更新':'轨迹已保存到记录库')}
+  }
+  function showHistory(kind){state.historyKind=kind;renderHistory();openOverlay('historyOverlay');post({type:'map_history',action:'list'})}
+  function renderHistory(){
+    const route=state.historyKind==='route',items=route?state.histories:state.searches;
+    $('historySearchTab').classList.toggle('active',!route);$('historyRouteTab').classList.toggle('active',route);
+    $('historySearchTab').setAttribute('aria-selected',String(!route));$('historyRouteTab').setAttribute('aria-selected',String(route));
+    $('historySummary').textContent=`${items.length} 条${route?'轨迹':'搜索'}记录`;$('clearHistory').disabled=!items.length;
+$('historyList').innerHTML=items.length?items.map(item=>`<article class="history-entry">${icon(route?'route':'clock')}<div class="history-copy"><strong title="${escapeHtml(route?item.name:item.query)}">${escapeHtml(route?item.name:item.query)}</strong><p>${route?`${coordinateLabel(item.coordinateSystem)} · ${{navigation:'导航',draw:'绘制',single:'单点'}[item.mode]||'轨迹'} · ${item.pointCount} 个点 · ${escapeHtml(item.speedDescription||'固定 '+item.speed+' km/h')}<br>`:''}${escapeHtml(new Date(item.createdAtUtc).toLocaleString('zh-CN',{hour12:false}))}</p></div><div class="history-actions"><button class="quiet-button" data-history-use="${escapeHtml(item.id)}" ${route&&state.isSimulating?'disabled':''}>${route?'恢复':'搜索'}</button>${route?`<button class="quiet-button" data-history-rename="${escapeHtml(item.id)}">重命名</button>`:''}<button class="quiet-button destructive" data-history-delete="${escapeHtml(item.id)}" aria-label="删除记录">${icon('trash')}</button></div></article>`).join(''):`<div class="empty-state">${icon(route?'route':'clock')}暂无${route?'轨迹':'搜索'}记录<br>${route?'开始模拟时自动记录，也可手动记入轨迹库':'搜索过的关键词将在此显示'}</div>`;
+  }
+  function askDelete(message,action){$('confirmMessage').textContent=message;askDelete.action=action;openOverlay('confirmOverlay')}
+  function bindHistoryUi(){
+    $('searchHistoryButton').onclick=()=>showHistory('search');$('routeHistoryButton').onclick=()=>showHistory('route');
+    $('historySearchTab').onclick=()=>{state.historyKind='search';renderHistory()};$('historyRouteTab').onclick=()=>{state.historyKind='route';renderHistory()};
+    $('doneHistory').onclick=$('closeHistory').onclick=()=>closeOverlay('historyOverlay');
+    $('clearHistory').onclick=()=>askDelete(`清空全部${state.historyKind==='route'?'轨迹':'搜索'}记录？此操作不可撤销。`,()=>post({type:'map_history',action:'clear',kind:state.historyKind}));
+    $('historyList').onclick=event=>{
+      const use=event.target.closest('[data-history-use]');
+      if(use){if(use.disabled)return;closeOverlay('historyOverlay');if(state.historyKind==='route')post({type:'map_history',action:'load',id:use.dataset.historyUse});else{const item=state.searches.find(x=>x.id===use.dataset.historyUse);if(item){$('searchInput').value=item.query;requestSearch()}}}
+      const rename=event.target.closest('[data-history-rename]');
+      if(rename){const item=state.histories.find(x=>x.id===rename.dataset.historyRename);if(!item)return;bindHistoryUi.renameId=item.id;$('recordTitle').textContent='重命名轨迹';$('recordName').value=item.name;openOverlay('recordOverlay');$('recordName').select()}
+      const remove=event.target.closest('[data-history-delete]');
+      if(remove){const kind=state.historyKind,id=remove.dataset.historyDelete;if(kind==='route')askDelete('删除这条轨迹记录？已导出的路线文件不受影响。',()=>post({type:'map_history',action:'delete',kind,id}));else post({type:'map_history',action:'delete',kind,id})}
+    };
+    $('recordRouteButton').onclick=()=>{bindHistoryUi.renameId=null;$('recordTitle').textContent='保存轨迹记录';$('recordName').value=defaultRouteName().slice(0,80);openOverlay('recordOverlay');$('recordName').select()};
+    $('cancelRecord').onclick=()=>closeOverlay('recordOverlay');
+    $('saveRecord').onclick=()=>{const name=$('recordName').value.trim();if(!name)return $('recordName').focus();$('saveRecord').disabled=true;if(bindHistoryUi.renameId)post({type:'map_history',action:'rename',id:bindHistoryUi.renameId,name});else recordCurrentRoute(name)};
+    $('recordName').onkeydown=event=>{if(event.key==='Enter'&&!event.isComposing&&!$('saveRecord').disabled)$('saveRecord').click()};
+    $('cancelConfirm').onclick=()=>{askDelete.action=null;closeOverlay('confirmOverlay')};$('acceptConfirm').onclick=()=>{const action=askDelete.action;askDelete.action=null;closeOverlay('confirmOverlay');action?.()};
+    document.addEventListener('keydown',event=>{
+      const overlays=Array.from(document.querySelectorAll('.overlay.open')).sort((a,b)=>Number(getComputedStyle(a).zIndex)-Number(getComputedStyle(b).zIndex));
+      const top=overlays.at(-1);if(!top)return;
+      if(event.key==='Escape'){event.preventDefault();event.stopPropagation();if(top.id==='coordinateOverlay')cancelCoordinateChange();else if(top.id==='vehicleOverlay')window.ctsVehicleUi.closeSettings();else closeOverlay(top.id);return}
+      if(event.key==='Tab'){const controls=Array.from(top.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled)')).filter(x=>x.getClientRects().length);const first=controls[0],last=controls.at(-1);if(!top.contains(document.activeElement)){event.preventDefault();first?.focus()}else if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus()}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus()}}
+    });
+    ['settingsOverlay','historyOverlay','recordOverlay','confirmOverlay'].forEach(id=>$(id).addEventListener('click',event=>{if(event.target===$(id))closeOverlay(id)}));
+  }
+  function bindMapGestures(){
+    const map=$('map');map.draggable=false;
+    map.addEventListener('dragstart',event=>{event.preventDefault();event.stopPropagation()},true);
+    map.addEventListener('pointerdown',event=>{
+      if(event.button!==0||event.target.closest('button,input,a,[role="button"]'))return;
+      state.mapGesture={id:event.pointerId,x:event.clientX,y:event.clientY,moved:false};
+    },true);
+    window.addEventListener('pointermove',event=>{
+      const gesture=state.mapGesture;if(!gesture||gesture.id!==event.pointerId)return;
+      if(Math.hypot(event.clientX-gesture.x,event.clientY-gesture.y)>5){gesture.moved=true;state.followVehicle=false}
+    },true);
+    const finish=event=>{if(state.mapGesture?.id!==event.pointerId)return;if(state.mapGesture.moved)state.ignoreClickUntil=performance.now()+300;state.mapGesture=null};
+    window.addEventListener('pointerup',finish,true);window.addEventListener('pointercancel',finish,true);
+    window.addEventListener('blur',()=>{state.mapGesture=null});
+  }
+  function loadRouteFile(document){
+    if(state.isSimulating)return showToast('请先停止模拟再打开轨迹',true);
+    if(!document?.points?.length)return;
+    clearRouteGeometry();state.selectedPoint=null;
+    setRouteMode(['draw','single'].includes(document.mode)?document.mode:'navigation');
+    state.coordinateSystem=(document.coordinateSystem||'gcj02').toLowerCase();$('coordinateSystem').value=state.coordinateSystem;
+    state.pathPoints=document.points.map(point=>({lat:Number(point.lat),lng:Number(point.lng),name:point.name||''}));
+    state.routeStart=document.start?{...document.start,lat:Number(document.start.lat),lng:Number(document.start.lng)}:null;
+    state.routeEnd=document.end?{...document.end,lat:Number(document.end.lat),lng:Number(document.end.lng)}:null;
+    if(state.routeMode==='single'){state.pathPoints=state.pathPoints.slice(0,1);state.selectedPoint={...state.pathPoints[0]};state.routeStart=state.routeEnd=null}
+    $('speedInput').value=Number(document.speed)||60;
+    window.ctsVehicleUi.setOptions(document.vehicle||{enabled:false});
+    state.routeResults=[];renderRoutes();renderAlternatives();syncMarkers();refreshRouteUi();fitLogicalPoints(state.pathPoints);
+    showToast(`已恢复 ${coordinateLabel(state.coordinateSystem)} 轨迹 · ${state.pathPoints.length} 个点`);
+    post({type:'map_log',message:`打开轨迹后，路径、模拟及 JT/T 808 上报统一使用 ${coordinateLabel(state.coordinateSystem)} 坐标系`});
+  }
   function routeFileOperationResult(operation,succeeded,message){showToast(message||'操作完成',!succeeded)}
 
   function initializeMapSettings(settings){state.mapDefaultLocation=settings.defaultLocation||'auto';state.currentMapStyle=settings.mapStyle||'default';if(!$('mapStyle').querySelector(`option[value="${CSS.escape(state.currentMapStyle)}"]`))state.currentMapStyle='default';state.currentPathStyle=settings.pathStyle||'theme-neon-blue';$('defaultLocation').value=state.mapDefaultLocation;$('mapStyle').value=state.currentMapStyle;$('pathStyle').value=state.currentPathStyle;applyVisualSettings(true);applyDefaultLocation()}
@@ -348,26 +578,28 @@
     }
     createRouteLayer();createMarkerLayer();renderRoutes();syncMarkers()
   }
-  function applyDefaultLocation(){if(!state.mapReady)return;if(state.mapDefaultLocation==='auto'){post({type:'request_network_location',showFailure:false});return}const city=defaultCities[state.mapDefaultLocation];if(city){const display=wgs84ToGcj02(city[0],city[1]);state.map.setCenter(toLatLng(display));state.map.setZoom(11)}}
+  function applyDefaultLocation(){if(!state.mapReady)return;if(state.mapDefaultLocation==='auto'){post({type:'request_network_location',showFailure:false});return}const city=defaultCities[state.mapDefaultLocation];if(city){const display=wgs84ToGcj02(city[0],city[1]);state.map.setCenter(toLatLng(display));state.map.setZoom(11);if(!state.pathPoints.length&&!state.routeStart)setStatus(`默认城市 · ${$('defaultLocation').selectedOptions[0]?.textContent||'已设置'}`)}}
   function applyNetworkLocation(location){if(!location||!state.mapReady)return;const display=wgs84ToGcj02(Number(location.lat),Number(location.lng));state.map.setCenter(toLatLng(display));state.map.setZoom(11);setStatus(`当前城市 · ${location.label||'腾讯地图 IP 定位'}`)}
-  function networkLocationFailed(message){$('locateButton').disabled=false;if(message)showToast(`自动定位不可用：${message}`,true)}
+  function networkLocationFailed(message){$('locateButton').disabled=false;if(!state.pathPoints.length&&!state.routeStart)setStatus('自动定位暂不可用 · 可在地图设置中选择默认城市');if(message)showToast(`自动定位不可用：${message}`,true)}
 
   function bindUi(){
-    $('collapseButton').onclick=()=>{const body=$('plannerBody');body.classList.toggle('collapsed');$('collapseButton').textContent=body.classList.contains('collapsed')?'+':'−'};
-    $('settingsButton').onclick=()=>{$('settingsOverlay').classList.add('open')};$('closeSettings').onclick=$('cancelSettings').onclick=()=>$('settingsOverlay').classList.remove('open');
+    $('collapseButton').onclick=()=>{const body=$('plannerBody');body.classList.toggle('collapsed');const open=!body.classList.contains('collapsed');$('collapseButton').setAttribute('aria-expanded',String(open));$('collapseButton').title=open?'收起面板':'展开面板';$('collapseButton').setAttribute('aria-label',$('collapseButton').title);body.inert=!open;closeSuggestions()};
+    $('settingsButton').onclick=()=>openOverlay('settingsOverlay');$('closeSettings').onclick=$('cancelSettings').onclick=()=>closeOverlay('settingsOverlay');
     $('saveSettings').onclick=()=>{const previousStyle=state.currentMapStyle;state.mapDefaultLocation=$('defaultLocation').value;state.currentMapStyle=$('mapStyle').value;state.currentPathStyle=$('pathStyle').value;$('settingsOverlay').classList.remove('open');applyVisualSettings(previousStyle!==state.currentMapStyle);applyDefaultLocation();post({type:'save_map_settings',defaultLocation:state.mapDefaultLocation,mapStyle:state.currentMapStyle,pathStyle:state.currentPathStyle})};
     $('resetSettings').onclick=()=>{$('defaultLocation').value='auto';$('mapStyle').value='default';$('pathStyle').value='theme-neon-blue'};
-    $('searchButton').onclick=requestSearch;$('searchInput').onkeydown=e=>{if(e.key==='Enter')requestSearch()};
+    bindSearchUi();bindHistoryUi();bindMapGestures();
+    window.ctsVehicleUi.init(post,showToast,stopSimulation);
     $('searchResults').onclick=e=>{const button=e.target.closest('button[data-index]');if(button)useSearchResult(Number(button.dataset.index),button.dataset.role)};
     $('modeNavigation').onclick=()=>setRouteMode('navigation');$('modeDraw').onclick=()=>setRouteMode('draw');
+    $('modeSingle').onclick=()=>setRouteMode('single');$('applyPointButton').onclick=applySelectedPoint;
     $('clearStart').onclick=()=>{state.routeStart=null;clearRouteGeometry();syncMarkers();refreshRouteUi()};$('clearEnd').onclick=()=>{state.routeEnd=null;clearRouteGeometry();syncMarkers();refreshRouteUi()};
     $('swapButton').onclick=()=>{[state.routeStart,state.routeEnd]=[state.routeEnd,state.routeStart];syncMarkers();refreshRouteUi();if(state.routeStart&&state.routeEnd)requestRoute()};$('planButton').onclick=requestRoute;
     $('routeAlternatives').onclick=e=>{const button=e.target.closest('[data-route]');if(button)selectRoute(Number(button.dataset.route),true)};
-    $('undoButton').onclick=()=>{state.pathPoints.pop();renderRoutes();refreshRouteUi()};$('clearDrawButton').onclick=clearRouteGeometry;$('clearButton').onclick=()=>{clearRouteGeometry();state.routeStart=state.routeEnd=state.selectedPoint=null;syncMarkers();refreshRouteUi()};
+    $('undoButton').onclick=()=>{state.pathPoints.pop();renderRoutes();refreshRouteUi()};$('clearDrawButton').onclick=clearRouteGeometry;$('clearButton').onclick=()=>{if(state.isSimulating)return;clearRouteGeometry();state.routeStart=state.routeEnd=state.selectedPoint=null;syncMarkers();refreshRouteUi()};
     $('startButton').onclick=startSimulation;$('stopButton').onclick=stopSimulation;$('speedInput').onchange=()=>{if(state.isSimulating)post({type:'simulate_speed',speed:Number($('speedInput').value)||60})};
     $('coordinateSystem').onchange=requestCoordinateChange;$('cancelCoordinate').onclick=cancelCoordinateChange;$('directCoordinate').onclick=()=>applyCoordinateChange(false);$('convertCoordinate').onclick=()=>applyCoordinateChange(true);
     $('openRouteButton').onclick=openRoute;$('saveRouteButton').onclick=saveRoute;
-    $('locateButton').onclick=()=>post({type:'request_network_location',showFailure:true});
+    $('locateButton').onclick=()=>{if(state.isSimulating&&state.carPoint){state.followVehicle=true;state.map.setCenter(toLatLng(logicalToDisplay(state.carPoint)));showToast('已恢复跟随车辆')}else post({type:'request_network_location',showFailure:true})};
     $('view2dButton').onclick=()=>setPerspective(false);
     $('view3dButton').onclick=()=>setPerspective(true);
   }
@@ -390,7 +622,7 @@
     try {
       const center=wgs84ToGcj02(35.8617,104.1954);
       state.map=createMap(toLatLng(center),4);
-      state.map.on('click',handleMapClick);state.mapReady=true;createRouteLayer();createMarkerLayer();post({type:'request_map_settings'});post({type:'map_log',message:'腾讯地图 JavaScript API GL 已加载'});setStatus('正在获取默认位置…');
+      state.map.on('click',handleMapClick);state.mapReady=true;createRouteLayer();createMarkerLayer();post({type:'request_map_settings'});post({type:'map_history',action:'list'});post({type:'map_log',message:'腾讯地图 JavaScript API GL 已加载'});setStatus('正在获取默认位置…');
     } catch (error) {
       showToast('腾讯地图初始化失败，请检查 Key 来源限制',true);
       post({type:'map_log',message:`腾讯地图前端初始化失败：${error?.message || '未知错误'}`});
@@ -411,7 +643,7 @@
   window.simulationFinished=simulationFinished;
   window.loadRouteFile=loadRouteFile;
   window.routeFileOperationResult=routeFileOperationResult;
-  window.ctsMap={receiveSearch,receiveRoutes};
+  window.ctsMap={receiveSearch,receiveRoutes,receiveSuggestions,receiveHistory,receiveVehicleSettings:window.ctsVehicleUi.receiveSettings,simulationAccepted:payload=>{if(!payload.accepted){simulationFinished();showToast(payload.message||'无法开始模拟',true)}}};
   window.addEventListener('error',event=>post({type:'map_log',message:`地图脚本错误：${event.message || '未知错误'}`}));
   window.addEventListener('unhandledrejection',event=>post({type:'map_log',message:`地图异步错误：${event.reason?.message || event.reason || '未知错误'}`}));
   bindUi();loadTencentApi();

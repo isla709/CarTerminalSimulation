@@ -3,34 +3,50 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-  <title>腾讯地图选点</title>
+  <title>地图与轨迹</title>
   <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="vehicle.css">
 </head>
 <body>
+  <svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+    <symbol id="icon-locate" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></symbol>
+    <symbol id="icon-settings" viewBox="0 0 24 24"><path d="M4 6h8m4 0h4M4 12h3m4 0h9M4 18h10m4 0h2"/><circle cx="14" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></symbol>
+    <symbol id="icon-chevron" viewBox="0 0 24 24"><path d="M6 14l6-6 6 6"/></symbol>
+    <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M16 16l5 5"/></symbol>
+    <symbol id="icon-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="icon-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="icon-route" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="18" cy="19" r="2"/><path d="M6 7v6a3 3 0 003 3h6a3 3 0 000-6H9"/></symbol>
+    <symbol id="icon-trash" viewBox="0 0 24 24"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></symbol>
+    <symbol id="icon-navigation" viewBox="0 0 24 24"><path d="M12 3l8 18-8-5-8 5z"/></symbol>
+  </defs></svg>
   <div id="map"></div>
   <div class="map-vignette"></div>
 
   <section id="planner" class="planner glass">
     <header class="planner-header">
-      <div class="brand-mark">➤</div>
-      <div class="brand-copy"><strong>地图选点与轨迹模拟</strong><span>腾讯地图 · 实时路线规划</span></div>
-      <button class="icon-button" id="locateButton" title="定位到当前城市">◎</button>
-      <button class="icon-button" id="settingsButton" title="地图设置">⚙</button>
-      <button class="icon-button" id="collapseButton" title="收起">−</button>
+      <div class="brand-mark"><svg class="icon"><use href="#icon-navigation"/></svg></div>
+      <div class="brand-copy"><strong>地图与轨迹</strong><span>地点探索 · 路线规划 · 轨迹模拟</span></div>
+      <button class="icon-button" id="locateButton" title="定位到当前城市" aria-label="定位到当前城市"><svg class="icon"><use href="#icon-locate"/></svg></button>
+      <button class="icon-button" id="settingsButton" title="地图设置" aria-label="地图设置"><svg class="icon"><use href="#icon-settings"/></svg></button>
+      <button class="icon-button" id="collapseButton" title="收起面板" aria-label="收起面板" aria-expanded="true"><svg class="icon"><use href="#icon-chevron"/></svg></button>
     </header>
 
     <div id="plannerBody" class="planner-body">
+      <div class="search-zone" id="searchZone">
       <div class="search-box">
-        <span class="search-icon">⌕</span>
-        <input id="searchInput" autocomplete="off" placeholder="搜索地点、道路、园区或商场">
+        <svg class="icon search-icon"><use href="#icon-search"/></svg>
+        <input id="searchInput" autocomplete="off" placeholder="搜索地点、道路、园区或商场" role="combobox" aria-label="搜索地点" aria-autocomplete="list" aria-expanded="false" aria-controls="searchSuggestions">
         <button id="searchButton" class="primary compact">搜索</button>
       </div>
-      <div id="searchStatus" class="subtle-status"></div>
+      <div id="searchSuggestions" class="search-suggestions" role="listbox"></div>
+      </div>
+      <div class="search-meta"><span id="searchStatus" class="subtle-status" aria-live="polite"></span><button id="searchHistoryButton" class="quiet-button"><svg class="icon"><use href="#icon-clock"/></svg>搜索记录</button></div>
       <div id="searchResults" class="search-results"></div>
 
-      <nav class="mode-tabs" aria-label="路线模式">
-        <button id="modeNavigation" class="mode-tab active">导航路线</button>
-        <button id="modeDraw" class="mode-tab">自由绘制</button>
+      <nav id="modeTabs" class="mode-tabs" aria-label="选点模式" role="tablist" style="--mode-index:0">
+        <button id="modeNavigation" class="mode-tab active" role="tab" aria-selected="true" aria-controls="navigationSection">导航路线</button>
+        <button id="modeDraw" class="mode-tab" role="tab" aria-selected="false" aria-controls="drawSection">自由绘制</button>
+        <button id="modeSingle" class="mode-tab" role="tab" aria-selected="false" aria-controls="singleSection">单点选择</button>
       </nav>
 
       <section id="navigationSection" class="route-editor">
@@ -41,6 +57,12 @@
         <div id="routeAlternatives" class="route-alternatives"></div>
       </section>
 
+      <section id="singleSection" class="route-editor hidden" role="tabpanel">
+        <div class="single-heading"><i class="point single"></i><strong id="singlePointName">在地图上点击选择一个位置</strong></div>
+        <p id="singleCoordinates" class="single-coordinates">再次选择会替换当前点，不生成路线</p>
+        <button id="applyPointButton" class="primary full-width" disabled>应用此位置</button>
+      </section>
+
       <section id="drawSection" class="route-editor hidden">
         <div class="draw-help"><div><small>自由绘制</small><strong>在地图上依次点击添加轨迹点</strong></div><b id="drawPointCount">0 个点</b></div>
         <div class="route-actions"><button id="undoButton" class="secondary" disabled>撤销</button><button id="clearDrawButton" class="secondary">重新绘制</button></div>
@@ -48,11 +70,12 @@
 
       <section class="simulation-card">
         <div class="field-row">
-          <label><span>模拟速度</span><div class="input-suffix"><input id="speedInput" type="number" min="0" max="999" step="1" value="60"><em>km/h</em></div></label>
+          <div class="speed-field"><div class="speed-field-heading"><label id="vehicleSpeedLabel" for="speedInput">模拟速度</label><button id="vehicleSettingsButton" class="vehicle-entry" title="真实驾驶模拟设置" aria-label="真实驾驶模拟设置"><svg class="icon"><use href="#icon-settings"/></svg></button></div><div class="input-suffix"><input id="speedInput" type="number" min="0" max="999" step="1" value="60"><em>km/h</em><button id="vehicleSpeedSummary" class="vehicle-speed-summary hidden" title="真实驾驶模拟设置">真实驾驶</button></div></div>
           <label><span>坐标系</span><select id="coordinateSystem"><option value="gcj02">GCJ-02</option><option value="wgs84">WGS-84</option><option value="bd09">BD-09</option></select></label>
         </div>
         <div class="simulation-actions"><button id="clearButton" class="secondary">清除路线</button><button id="startButton" class="success" disabled>开始模拟</button><button id="stopButton" class="danger hidden">停止模拟</button></div>
         <div class="file-actions"><button id="openRouteButton" class="text-button">打开路线</button><button id="saveRouteButton" class="text-button" disabled>保存路线</button></div>
+        <div class="file-actions"><button id="recordRouteButton" class="text-button" disabled><svg class="icon"><use href="#icon-route"/></svg>记入轨迹库</button><button id="routeHistoryButton" class="text-button"><svg class="icon"><use href="#icon-clock"/></svg>轨迹记录 <span id="routeHistoryCount" class="count-badge">0</span></button></div>
       </section>
     </div>
   </section>
@@ -67,14 +90,30 @@
 
   <div id="settingsOverlay" class="overlay">
     <div class="dialog glass">
-      <header><div><strong>地图选点设置</strong><span>调整默认位置和轨迹外观</span></div><button id="closeSettings" class="icon-button">×</button></header>
+      <header><div><strong>地图设置</strong><span>调整默认位置和轨迹外观</span></div><button id="closeSettings" class="icon-button" aria-label="关闭设置"><svg class="icon"><use href="#icon-close"/></svg></button></header>
       <div class="dialog-body">
-        <label class="setting"><div><strong>默认位置</strong><span>自动模式使用腾讯地图 IP 定位</span></div><select id="defaultLocation"><option value="auto">自动（网络位置）</option><option value="beijing">北京</option><option value="shanghai">上海</option><option value="guangzhou">广州</option><option value="shenzhen">深圳</option><option value="chengdu">成都</option><option value="chongqing">重庆</option><option value="hangzhou">杭州</option><option value="wuhan">武汉</option><option value="xian">西安</option><option value="nanjing">南京</option></select></label>
-        <label class="setting"><div><strong>地图风格</strong><span>当前 Key 可用的地图样式</span></div><select id="mapStyle"><option value="default">腾讯默认</option><option value="style1">墨渊</option></select></label>
+        <label class="setting"><div><strong>默认位置</strong><span>自动模式使用设备网络位置</span></div><select id="defaultLocation"><option value="auto">自动（网络位置）</option><option value="beijing">北京</option><option value="shanghai">上海</option><option value="guangzhou">广州</option><option value="shenzhen">深圳</option><option value="chengdu">成都</option><option value="chongqing">重庆</option><option value="hangzhou">杭州</option><option value="wuhan">武汉</option><option value="xian">西安</option><option value="nanjing">南京</option></select></label>
+        <label class="setting"><div><strong>地图风格</strong><span>选择地图的视觉样式</span></div><select id="mapStyle"><option value="default">默认</option><option value="style1">墨渊</option></select></label>
         <label class="setting"><div><strong>路线样式</strong><span>路线、车辆与进度使用的强调色</span></div><select id="pathStyle"><option value="theme-neon-blue">导航蓝</option><option value="theme-neon-purple">霓虹紫</option><option value="theme-solid-red">警示红</option><option value="theme-solid-orange">活力橙</option></select></label>
       </div>
       <footer><button id="resetSettings" class="secondary">恢复默认</button><span></span><button id="cancelSettings" class="secondary">取消</button><button id="saveSettings" class="primary">保存并应用</button></footer>
     </div>
+  </div>
+
+  <div id="historyOverlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="historyTitle">
+    <div class="dialog history-dialog glass">
+      <header><div><strong id="historyTitle">我的记录</strong><span>保存在本机，重启后仍可使用</span></div><button id="closeHistory" class="icon-button" aria-label="关闭记录"><svg class="icon"><use href="#icon-close"/></svg></button></header>
+      <nav class="history-tabs" role="tablist"><button id="historySearchTab" class="active" role="tab" aria-selected="true">搜索记录</button><button id="historyRouteTab" role="tab" aria-selected="false">轨迹记录</button></nav>
+      <div class="history-toolbar"><span id="historySummary"></span><button id="clearHistory" class="quiet-button destructive">清空记录</button></div>
+      <div id="historyList" class="history-list"></div>
+      <footer class="history-footer"><span>最多保留 50 条搜索与 30 条轨迹</span><button id="doneHistory" class="secondary">完成</button></footer>
+    </div>
+  </div>
+  <div id="recordOverlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="recordTitle">
+    <div class="dialog small-dialog glass"><header><div><strong id="recordTitle">保存轨迹记录</strong><span>保留路线、速度与当前坐标系</span></div></header><div class="dialog-body"><label class="record-label" for="recordName">名称</label><input id="recordName" class="record-input" maxlength="80" placeholder="为这条轨迹起个名字"></div><footer><span></span><button id="cancelRecord" class="secondary">取消</button><button id="saveRecord" class="primary">保存记录</button></footer></div>
+  </div>
+  <div id="confirmOverlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <div class="dialog small-dialog glass"><header><div><strong id="confirmTitle">删除记录</strong><span id="confirmMessage"></span></div></header><footer><span></span><button id="cancelConfirm" class="secondary">取消</button><button id="acceptConfirm" class="danger">确认删除</button></footer></div>
   </div>
 
   <div id="coordinateOverlay" class="overlay">
@@ -89,6 +128,7 @@
     </div>
   </div>
 
+  <script src="vehicle.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

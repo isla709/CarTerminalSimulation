@@ -12,6 +12,7 @@ public partial class App : System.Windows.Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         ConsoleLogger.Setup(e.Args);
+        TerminalSimulation.Shared.WindowsAppIdentity.Initialize("CarTerminalSimulation.Main");
         DispatcherUnhandledException += (_, args) =>
         {
             WriteStartupCrash(args.Exception);

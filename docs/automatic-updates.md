@@ -4,7 +4,9 @@
 
 ## 更新源配置
 
-首次启动会在程序目录创建 `update-sources.json`。仓库中的 `update-sources.example.json` 是完整示例。更新源按 `priority` 从高到低检查，并汇总当前版本线内的全部兼容版本供用户选择。自动检查只更新“关于”页状态，不弹出安装窗口。
+首次启动会在程序目录创建 `update-sources.json`。仓库中的 `update-sources.example.json` 是完整示例。更新源按 `priority` 从高到低检查，并汇总当前版本线内的全部兼容版本供用户选择。自动检查更新“关于”页状态；Preview10 起，发现更高版本时还可在设置图标下方显示非模态气泡，不弹出安装窗口，也不会自动安装。
+
+气泡提供“不再提示”和“查看详情”。不再提示会持久化为 `config.json.ShowUpdateNotifications=false`，可在“设置 → 关于”重新开启；关闭提示不影响检查更新或手动版本管理。同一版本在一次运行中最多自动提示一次，后台 / 最小化时延迟至窗口激活后提示。详见 [新版本提示气泡](update-notification.md)。
 
 - `github`：读取指定仓库的 Releases。公开仓库不需要令牌。
 - `gitcode`：读取 GitCode 公开仓库的 Releases，使用 `/api/v5/repos/{owner}/{repo}/releases`，公开发布不需要登录。
@@ -41,16 +43,16 @@ GitCode Release 与 GitHub 使用相同的两个发布资产：`update-manifest.
 {
   "schemaVersion": 2,
   "product": "TerminalSimulation",
-  "version": "preview6-build.20260921.1",
+  "version": "preview10-build.20261014.1",
   "channel": "preview",
   "line": "main",
   "compatibilityEpoch": 1,
-  "publishedAt": "2026-09-21T12:00:00+08:00",
-  "releaseNotes": "修复视频与网络稳定性。",
+  "publishedAt": "2026-10-14T12:00:00+08:00",
+  "releaseNotes": "Preview10：真实驾驶轨迹模拟与地图交互完善。",
   "minimumUpdaterVersion": "2.0.0",
   "package": {
-    "fileName": "TerminalSimulation-win-x64-preview6-build.20260921.1.zip",
-    "url": "https://downloads.example.com/TerminalSimulation-win-x64-preview6-build.20260921.1.zip",
+    "fileName": "TerminalSimulation-win-x64-preview10-build.20261014.1.zip",
+    "url": "https://downloads.example.com/TerminalSimulation-win-x64-preview10-build.20261014.1.zip",
     "sha256": "64 位十六进制 SHA-256",
     "size": 12345678
   },
@@ -59,6 +61,8 @@ GitCode Release 与 GitHub 使用相同的两个发布资产：`update-manifest.
 ```
 
 GitHub Release 中 `package.url` 可以省略；通用托管源必须提供绝对或相对清单地址的 URL。`sha256` 必填。`delete` 仅用于确实需要移除的旧程序文件，路径必须相对安装目录。
+
+以上日期、构建号、大小及地址仅为格式示例，不代表已经生成或发布的 Preview10 包；正式发布必须使用实际产物的信息。
 
 `compatibilityEpoch` 是单调递增的不可逆兼容级别。同一级别内允许任意升级和回退；升级到更高级别后，不再显示或安装低级别版本。例如 V1 使用级别 1，存在破坏性兼容变更的 V2 使用级别 2，则 V1 可以升级 V2，但 V2 不允许回退 V1。
 
@@ -73,7 +77,7 @@ GitHub Release 中 `package.url` 可以省略；通用托管源必须提供绝�
 ```powershell
  powershell -ExecutionPolicy Bypass -File scripts/New-UpdatePackage.ps1 `
   -InputDirectory TerminalSimulation.Wpf/bin/Release/net8.0-windows/win-x64 `
-  -Version preview6-build.20260921.1 `
+  -Version preview10-build.20261014.1 `
   -Line main `
   -CompatibilityEpoch 1 `
   -ReleaseNotes "本次更新说明"

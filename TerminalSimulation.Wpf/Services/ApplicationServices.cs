@@ -50,6 +50,8 @@ internal interface ILocationSimulationService
 {
     Task RunAsync(IReadOnlyList<ViewModels.GeoPoint> path, Func<double> speedKph,
         Action<ViewModels.GeoPoint, int> positionChanged, CancellationToken cancellationToken);
+    Task RunVehicleAsync(IReadOnlyList<ViewModels.GeoPoint> path, VehicleDriver driver,
+        Action<ViewModels.GeoPoint, int, VehicleTelemetry> changed, CancellationToken cancellationToken);
 }
 
 internal interface IVideoPushSession : IAsyncDisposable

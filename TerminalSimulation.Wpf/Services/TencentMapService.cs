@@ -33,6 +33,24 @@ internal sealed class TencentMapService
                          $"&key={Uri.EscapeDataString(_keyProvider())}";
         var root = await GetJsonAsync(requestUri, cancellationToken).ConfigureAwait(false);
         EnsureSuccess(root, "地点搜索");
+        return ParsePlaces(root);
+    }
+
+    public async Task<IReadOnlyList<TencentPlaceResult>> SuggestAsync(
+        string keyword, double latitude, double longitude, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(keyword)) return [];
+        var location = FormattableString.Invariant($"{latitude:F6},{longitude:F6}");
+        var requestUri = "ws/place/v1/suggestion?output=json&page_size=8&page_index=1&get_subpois=1" +
+                         $"&keyword={Uri.EscapeDataString(keyword.Trim())}" +
+                         $"&location={Uri.EscapeDataString(location)}&key={Uri.EscapeDataString(_keyProvider())}";
+        var root = await GetJsonAsync(requestUri, cancellationToken).ConfigureAwait(false);
+        EnsureSuccess(root, "地点联想");
+        return ParsePlaces(root);
+    }
+
+    internal static IReadOnlyList<TencentPlaceResult> ParsePlaces(JsonObject root)
+    {
         var results = new List<TencentPlaceResult>();
         foreach (var item in root["data"]?.AsArray() ?? [])
         {
@@ -45,9 +63,9 @@ internal sealed class TencentMapService
                 place["title"]?.ToString() ?? "未命名地点",
                 place["address"]?.ToString() ?? string.Empty,
                 place["category"]?.ToString() ?? "地点",
-                adInfo?["province"]?.ToString() ?? string.Empty,
-                adInfo?["city"]?.ToString() ?? string.Empty,
-                adInfo?["district"]?.ToString() ?? string.Empty,
+                adInfo?["province"]?.ToString() ?? place["province"]?.ToString() ?? string.Empty,
+                adInfo?["city"]?.ToString() ?? place["city"]?.ToString() ?? string.Empty,
+                adInfo?["district"]?.ToString() ?? place["district"]?.ToString() ?? string.Empty,
                 latitude,
                 longitude));
         }

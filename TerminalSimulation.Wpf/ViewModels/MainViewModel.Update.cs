@@ -14,6 +14,56 @@ public partial class MainViewModel
     private readonly CancellationTokenSource _updateCancellation = new();
     private readonly object _updateTaskSync = new();
     private Task _activeUpdateCheckTask = Task.CompletedTask;
+    private UpdateCheckResult? _lastUpdateResult;
+    private readonly UpdateNotificationPolicy _updateNotificationPolicy = new();
+    private bool _updateNotificationPending;
+
+    [ObservableProperty]
+    private bool _showUpdateNotifications = true;
+
+    [ObservableProperty]
+    private bool _isUpdateNotificationOpen;
+
+    [ObservableProperty]
+    private string _updateNotificationVersion = "";
+
+    partial void OnShowUpdateNotificationsChanged(bool value)
+    {
+        if (!value) { IsUpdateNotificationOpen = false; _updateNotificationPending = false; }
+        if (!_isLoadingConfig) SaveConfigDebounced();
+    }
+
+    [RelayCommand]
+    private void DismissUpdateNotification() { IsUpdateNotificationOpen = false; _updateNotificationPending = false; }
+
+    internal void DeferUpdateNotification() { _updateNotificationPending = true; IsUpdateNotificationOpen = false; }
+    internal void ShowDeferredUpdateNotification()
+    {
+        if (!_updateNotificationPending || !ShowUpdateNotifications || IsSettingsOpen) return;
+        _updateNotificationPending = false;
+        IsUpdateNotificationOpen = _lastUpdateResult?.Candidate is not null;
+    }
+
+    [RelayCommand]
+    private void DisableUpdateNotifications() => ShowUpdateNotifications = false;
+
+    [RelayCommand]
+    private async Task OpenUpdateDetailsAsync()
+    {
+        DismissUpdateNotification();
+        if (IsCheckingForUpdates) return;
+        try
+        {
+            if (_lastUpdateResult is { Candidates.Count: > 0 } result)
+                ShowVersionManagement(result);
+            else await CheckForUpdatesAsync();
+        }
+        catch (Exception ex)
+        {
+            _appLogger.Error("自动更新", "打开版本管理失败", ex);
+            MessageBox.Show(ex.Message, "版本管理", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
 
     [ObservableProperty]
     private bool _isCheckingForUpdates;
@@ -34,6 +84,9 @@ public partial class MainViewModel
 
     partial void OnIncludePrereleaseUpdatesChanged(bool value)
     {
+        _lastUpdateResult = null;
+        _updateNotificationPending = false;
+        IsUpdateNotificationOpen = false;
         if (!_isLoadingConfig)
             SaveConfigDebounced();
     }
@@ -63,6 +116,7 @@ public partial class MainViewModel
     {
         if (Interlocked.CompareExchange(ref _updateCheckActive, 1, 0) != 0) return;
         IsCheckingForUpdates = true;
+        if (interactive) IsUpdateNotificationOpen = false;
         UpdateToolTip = "正在检查更新…";
         try
         {
@@ -73,7 +127,9 @@ public partial class MainViewModel
                 cancellationToken,
                 AppVersionInfo.UpdateChannel,
                 IncludePrereleaseUpdates);
+            cancellationToken.ThrowIfCancellationRequested();
             WriteLastUpdateCheck();
+            _lastUpdateResult = result;
 
             IsUpdateAvailable = result.Candidate is not null;
             UpdateToolTip = result.Candidate is not null
@@ -84,8 +140,12 @@ public partial class MainViewModel
                         ? "当前版本线暂无其他版本"
                         : "未配置可用更新源";
 
-            // Automatic checks are informational only. Never interrupt startup
-            // or pressure the user with an update dialog.
+            UpdateNotificationVersion = result.Candidate?.Version ?? "";
+            _updateNotificationPending = false;
+            IsUpdateNotificationOpen = _updateNotificationPolicy.TryAnnounce(
+                AppVersionInfo.FullVersion, result.Candidate?.Version, ShowUpdateNotifications && !IsSettingsOpen, interactive);
+            // Automatic checks only offer the dismissible title-bar bubble.
+            // Never open a modal upgrade prompt or start the updater automatically.
             if (!interactive) return;
 
             if (result.Candidates.Count == 0)
@@ -99,41 +159,7 @@ public partial class MainViewModel
                 return;
             }
 
-            var mainWindow = Application.Current.MainWindow;
-            var dialogOwner = Application.Current.Windows
-                .OfType<Window>()
-                .FirstOrDefault(window => window.IsActive) ?? mainWindow;
-            var dialog = new UpdateAvailableWindow(
-                AppVersionInfo.FullVersion,
-                AppVersionInfo.UpdateLine,
-                AppVersionInfo.CompatibilityEpoch,
-                result.Candidates,
-                result.Candidate)
-            {
-                Owner = dialogOwner
-            };
-            if (dialog.ShowDialog() != true || dialog.SelectedCandidate is not { } selectedCandidate) return;
-
-            var sourceDialog = new UpdateSourceSelectionWindow(selectedCandidate)
-            {
-                Owner = dialogOwner
-            };
-            if (sourceDialog.ShowDialog() != true || sourceDialog.SelectedSource is not { } selectedSource) return;
-
-            try
-            {
-                UpdateLauncher.Start(
-                    selectedCandidate,
-                    selectedSource,
-                    AppVersionInfo.UpdateLine,
-                    AppVersionInfo.CompatibilityEpoch);
-                mainWindow?.Close();
-            }
-            catch (Exception ex)
-            {
-                _appLogger.Error("自动更新", "启动更新程序失败", ex);
-                MessageBox.Show(ex.Message, "无法启动更新", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
+            ShowVersionManagement(result);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -150,6 +176,46 @@ public partial class MainViewModel
         {
             IsCheckingForUpdates = false;
             Interlocked.Exchange(ref _updateCheckActive, 0);
+        }
+    }
+
+    private void ShowVersionManagement(UpdateCheckResult result)
+    {
+        var mainWindow = Application.Current.MainWindow;
+        Window? dialogOwner = Application.Current.Windows.OfType<ThemeSettingsWindow>().FirstOrDefault(window => window.IsVisible);
+        dialogOwner ??= Application.Current.Windows
+            .OfType<Window>()
+            .FirstOrDefault(window => window.IsActive) ?? mainWindow;
+        var dialog = new UpdateAvailableWindow(
+            AppVersionInfo.FullVersion,
+            AppVersionInfo.UpdateLine,
+            AppVersionInfo.CompatibilityEpoch,
+            result.Candidates,
+            result.Candidate)
+        {
+            Owner = dialogOwner
+        };
+        if (dialog.ShowDialog() != true || dialog.SelectedCandidate is not { } selectedCandidate) return;
+
+        var sourceDialog = new UpdateSourceSelectionWindow(selectedCandidate)
+        {
+            Owner = dialogOwner
+        };
+        if (sourceDialog.ShowDialog() != true || sourceDialog.SelectedSource is not { } selectedSource) return;
+
+        try
+        {
+            UpdateLauncher.Start(
+                selectedCandidate,
+                selectedSource,
+                AppVersionInfo.UpdateLine,
+                AppVersionInfo.CompatibilityEpoch);
+            mainWindow?.Close();
+        }
+        catch (Exception ex)
+        {
+            _appLogger.Error("自动更新", "启动更新程序失败", ex);
+            MessageBox.Show(ex.Message, "无法启动更新", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 

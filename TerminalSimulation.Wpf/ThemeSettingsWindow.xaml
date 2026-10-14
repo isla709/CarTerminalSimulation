@@ -5,6 +5,7 @@
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ShowInTaskbar="False" ResizeMode="NoResize"
+        Icon="/TerminalSimulation.Wpf;component/Assets/app-icon.ico"
         Title="设置" WindowStartupLocation="CenterOwner">
     <Window.Resources>
         <Storyboard x:Key="OpenStoryboard">

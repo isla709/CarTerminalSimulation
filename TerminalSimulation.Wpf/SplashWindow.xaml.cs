@@ -1,5 +1,6 @@
 using System;
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
 namespace TerminalSimulation.Wpf
@@ -25,8 +26,16 @@ namespace TerminalSimulation.Wpf
             ];
             var imageName = splashImages[Random.Shared.Next(splashImages.Length)];
             SplashBackground.ImageSource = new BitmapImage(
-                new Uri($"pack://application:,,,/{imageName}", UriKind.Absolute));
+                new Uri($"pack://application:,,,/TerminalSimulation.Wpf;component/{imageName}", UriKind.Absolute));
             VersionText.Text = AppVersionInfo.FullVersion;
+        }
+
+        private void SplashSurface_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            var radius = Math.Max(0, SplashFrame.CornerRadius.TopLeft - SplashFrame.BorderThickness.Left);
+            var clip = new RectangleGeometry(new Rect(e.NewSize), radius, radius);
+            clip.Freeze();
+            SplashSurface.Clip = clip;
         }
         
         public void SetLoadingText(string text)

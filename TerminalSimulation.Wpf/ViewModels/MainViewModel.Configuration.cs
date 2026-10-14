@@ -125,6 +125,7 @@ namespace TerminalSimulation.Wpf.ViewModels
                             SelectedTTSVoice = config.SelectedTTSVoice ?? "";
                             TextDownlinkEncodingIndex = config.TextDownlinkEncodingIndex;
                             IncludePrereleaseUpdates = config.IncludePrereleaseUpdates;
+                            ShowUpdateNotifications = config.ShowUpdateNotifications;
                             MapProvider = config.MapProvider?.Trim().ToLowerInvariant() switch
                             {
                                 "old" => "old",
@@ -380,6 +381,7 @@ namespace TerminalSimulation.Wpf.ViewModels
                 SelectedTTSVoice = SelectedTTSVoice,
                 TextDownlinkEncodingIndex = TextDownlinkEncodingIndex
                 ,IncludePrereleaseUpdates = IncludePrereleaseUpdates,
+                ShowUpdateNotifications = ShowUpdateNotifications,
                 MapProvider = MapProvider,
                 MapDefaultLocation = MapDefaultLocation,
                 MapStyle = MapStyle,
