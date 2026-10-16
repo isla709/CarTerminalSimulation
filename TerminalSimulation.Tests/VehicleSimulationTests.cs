@@ -166,10 +166,14 @@ public sealed class VehicleSimulationTests
         {
             var oldStore = new AtomicJsonConfigStore<VehicleSimulationOptions>(Path.Combine(directory, "old", "vehicle.json"));
             var newStore = new AtomicJsonConfigStore<VehicleSimulationOptions>(Path.Combine(directory, "new", "vehicle.json"));
-            var options = VehicleSimulationOptions.Presets["manual-truck"] with { Enabled = true };
+            var options = (VehicleSimulationOptions.Presets["manual-truck"] with { Enabled = true, RandomEventsEnabled = true }).Validate();
+            options.TrafficEvents.Events["signalQueue"] = options.TrafficEvents.Events["signalQueue"] with { ProbabilityPercent = 83, IntervalSeconds = 99 };
             await oldStore.SaveAsync(options);
             Assert.Equal("manual-truck", oldStore.Load().Validate().Preset);
             Assert.False(newStore.Load().Enabled);
+            Assert.Equal(83, oldStore.Load().Validate().TrafficEvents.Events["signalQueue"].ProbabilityPercent);
+            Assert.Equal(99, oldStore.Load().Validate().TrafficEvents.Events["signalQueue"].IntervalSeconds);
+            Assert.NotEqual(83, newStore.Load().TrafficEvents.Events["signalQueue"].ProbabilityPercent);
             var webOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
             var json = JsonSerializer.Serialize(options, webOptions);
             Assert.Equal(options.GearRatios, JsonSerializer.Deserialize<VehicleSimulationOptions>(json, webOptions)!.Validate().GearRatios);

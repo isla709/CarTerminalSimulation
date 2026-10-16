@@ -10,7 +10,7 @@ namespace TerminalSimulation.PluginBase
     public interface IPluginContext
     {
         /// <summary>
-        /// 向主程序的“通信日志”面板输出日志
+        /// 向主程序的“系统日志”面板输出插件分类日志
         /// </summary>
         /// <param name="message">日志内容</param>
         void Log(string message);

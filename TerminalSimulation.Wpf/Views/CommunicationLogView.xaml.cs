@@ -15,29 +15,32 @@ public partial class CommunicationLogView : UserControl
     {
         InitializeComponent();
         _scrollTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(75), DispatcherPriority.Background, (_, _) => ScrollToEnd(), Dispatcher);
+        _scrollTimer.Stop();
         Loaded += (_, _) => Attach(DataContext as MainViewModel);
-        Unloaded += (_, _) => Attach(null);
+        Unloaded += (_, _) => { _scrollTimer.Stop(); Attach(null); };
         DataContextChanged += (_, e) => { if (IsLoaded) Attach(e.NewValue as MainViewModel); };
     }
 
     private void Attach(MainViewModel? viewModel)
     {
         if (ReferenceEquals(_viewModel, viewModel)) return;
-        if (_viewModel != null) _viewModel.LogMessages.CollectionChanged -= OnLogMessagesChanged;
+        if (_viewModel != null) ((INotifyCollectionChanged)_viewModel.SystemLogs.VisibleEntries).CollectionChanged -= OnLogMessagesChanged;
         _viewModel = viewModel;
-        if (_viewModel != null) _viewModel.LogMessages.CollectionChanged += OnLogMessagesChanged;
+        if (_viewModel != null) ((INotifyCollectionChanged)_viewModel.SystemLogs.VisibleEntries).CollectionChanged += OnLogMessagesChanged;
+        OnLogMessagesChanged(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
     }
 
     private void OnLogMessagesChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        if (_viewModel?.AutoScrollLogs != true) return;
         _scrollTimer.Stop();
+        if (_viewModel?.AutoScrollLogs != true || !IsLoaded) return;
         _scrollTimer.Start();
     }
 
     private void ScrollToEnd()
     {
         _scrollTimer.Stop();
+        if (_viewModel?.AutoScrollLogs != true || !IsLoaded) return;
         if (LogListBox.Items.Count > 0) LogListBox.ScrollIntoView(LogListBox.Items[^1]);
     }
 }

@@ -3,6 +3,9 @@
   const $=id=>document.getElementById(id),clone=value=>JSON.parse(JSON.stringify(value));
   const labels={manual:'手动挡',automatic:'普通自动挡',cvt:'CVT 无级变速',dct:'双离合',singleSpeed:'单速减速器',fixed:'固定速度',petrol:'汽油',diesel:'柴油',electric:'纯电',hybrid:'混合动力',none:'—'};
   const presetNames={'small-manual':'小型手动挡汽车','small-auto':'小型普通自动挡汽车',electric:'电动汽车','manual-truck':'大型手动挡卡车 / 洒水车'};
+  const trafficDefaults={minimumGapSeconds:30,allowVirtualSignalsOnStraight:true,virtualSignalSpacingMeters:450,events:{}};
+  let trafficCatalog=[];
+  function normalizeTraffic(value){const result={...clone(trafficDefaults),...clone(value||{})};result.events={...result.events};for(const item of trafficCatalog)result.events[item.id]={...item.defaults,...result.events[item.id]};return result}
   const defaults={enabled:false,randomEventsEnabled:false,preset:'small-auto',maxSpeedKph:100,averageSpeedKph:50,drivingStyle:'normal',maxAcceleration:2.6,brakeDeceleration:6,transmission:'automatic',powertrain:'petrol',gearRatios:[3.4,2.1,1.4,1,.8,.64],finalDrive:4.1,wheelRadius:.3,idleRpm:800,redlineRpm:6500,upshiftRpm:3200,downshiftRpm:1200,shiftDuration:.45};
   let options=clone(defaults),presets={},running=false,coordinate='gcj02',lastTelemetry=null,dirty=false,opener=null,post=()=>{},notify=()=>{},stop=()=>{};
   let controls={automatic:true,gear:1,throttle:0,brake:0};
@@ -15,7 +18,13 @@
         <label class="vehicle-preset">车辆预设<select id="vehiclePreset">${Object.entries(presetNames).map(([id,name])=>`<option value="${id}">${name}</option>`).join('')}<option value="custom">自定义车辆</option></select></label>
         <div class="vehicle-fields">${field('maxSpeedKph')}${field('averageSpeedKph')}<label>驾驶风格<select id="vehicle-drivingStyle"><option value="calm">温和 / 平顺</option><option value="normal">普通驾驶</option><option value="sport">积极 / 运动</option></select></label>${field('maxAcceleration')}<label>变速箱类型<select id="vehicle-transmission"><option value="manual">手动挡</option><option value="automatic">普通自动挡</option><option value="cvt">CVT 无级变速</option><option value="dct">双离合</option><option value="singleSpeed">单速减速器</option></select></label><label>动力类型<select id="vehicle-powertrain"><option value="petrol">汽油</option><option value="diesel">柴油</option><option value="electric">纯电</option><option value="hybrid">混合动力</option></select></label>${field('brakeDeceleration')}</div>
         <details id="vehicleAdvanced"><summary>换挡与传动参数</summary><label class="vehicle-ratios">各挡位齿比（从 1 挡起，用逗号分隔）<input id="vehicleGearRatios" type="text" maxlength="150" required></label><div class="vehicle-fields">${['upshiftRpm','downshiftRpm','shiftDuration','finalDrive','wheelRadius','idleRpm','redlineRpm'].map(field).join('')}</div></details>
-        <label class="vehicle-enable vehicle-events-setting"><input type="checkbox" id="vehicleRandomEvents"><span><strong>启用随机驾驶事件</strong><small>模拟汇入排队、加速汇入、右转礼让、超车、红灯等待；自动操作时生效</small></span></label>
+        <section class="traffic-settings"><label class="vehicle-enable vehicle-events-setting"><input type="checkbox" id="vehicleRandomEvents"><span><strong>启用随机交通情景</strong><small>分阶段模拟路口通行、车流变化和道路干扰；仅自动驾驶操作时生效</small></span></label>
+          <div id="trafficSettingsBody"><div class="traffic-presets" aria-label="交通情景预设"><span>快速配置</span><button type="button" data-traffic-preset="light">畅通道路</button><button type="button" data-traffic-preset="daily">日常通勤</button><button type="button" data-traffic-preset="rush">高峰拥堵</button></div>
+          <div class="vehicle-fields traffic-global"><label>事件结束后的最小间隔（秒）<input id="trafficMinimumGap" type="number" min="5" max="600" step="1" required></label><label>直路虚拟信号路口最小间距（米）<input id="trafficSignalSpacing" type="number" min="100" max="5000" step="10" required></label></div>
+          <label class="traffic-switch"><input id="trafficVirtualSignals" type="checkbox">允许在直路布置虚拟信号路口</label>
+          <p class="traffic-help">关闭直路路口后，红灯情景只在轨迹中可识别的较大转向前安排。下方“机会间隔”是满足条件的行驶时间内，平均多久抽签一次；“概率”是每次抽签命中的几率，不是每秒概率。冷却、路况条件和其他情景会降低实际频次，0% 等同关闭。</p>
+          <div class="traffic-bulk"><strong>交通情景</strong><button type="button" id="trafficEnableAll">全部启用</button><button type="button" id="trafficDisableAll">全部关闭</button></div><div id="trafficEventList"></div>
+          <p class="traffic-help">停车类时间表示每轮停稳后的等待时长；缓行类表示每段受限时长。多轮情景还包含队列前移、起步反应与恢复，不是整个事件的总时长。设置随路线保存，下一次开始模拟时生效。</p></div></section>
         <p class="vehicle-note">平均速度是期望巡航水平。弯道、起步、换挡和终点减速会影响全程均速。预设非实测车型参数；随机事件是虚拟交通场景，不表示地图中真实的行人、信号灯或路况。</p><div id="vehicleError" class="vehicle-error" role="alert"></div>
       </form><footer><span></span><button id="vehicleCancel" class="secondary">取消</button><button id="vehicleSave" class="primary">保存并应用</button></footer></div>
     </div>
@@ -46,12 +55,61 @@
     Object.keys(numberFields).forEach(key=>$(`vehicle-${key}`).value=value[key]);
     ['drivingStyle','transmission','powertrain'].forEach(key=>$(`vehicle-${key}`).value=value[key]);
     $('vehicleGearRatios').value=value.gearRatios.join(', ');$('vehicleError').textContent='';
+    fillTraffic(value.trafficEvents);
+  }
+  function fillTraffic(value){
+    const settings=normalizeTraffic(value);
+    $('trafficMinimumGap').value=settings.minimumGapSeconds;$('trafficSignalSpacing').value=settings.virtualSignalSpacingMeters;$('trafficVirtualSignals').checked=settings.allowVirtualSignalsOnStraight;
+    $('trafficEventList').replaceChildren();
+    for(const group of [...new Set(trafficCatalog.map(item=>item.group))]){
+      const section=document.createElement('details');section.className='traffic-group';section.open=group===trafficCatalog[0]?.group;
+      const summary=document.createElement('summary');summary.textContent=group;section.append(summary);
+      for(const item of trafficCatalog.filter(item=>item.group===group)){
+        const rule=settings.events[item.id],card=document.createElement('article');card.className='traffic-event-card';
+        // Names/descriptions are local application catalog data, never map/POI responses.
+        card.innerHTML=`<label class="traffic-event-title"><input id="traffic-${item.id}-enabled" type="checkbox"><strong></strong></label><p></p><div class="traffic-rule-fields"></div>`;
+        card.querySelector('strong').textContent=item.name;card.querySelector('p').textContent=item.description;
+        card.querySelector('input').checked=rule.enabled;
+        const fields=[['probabilityPercent','每次触发概率（%）',0,100,1],['intervalSeconds','平均机会间隔（秒）',5,3600,1],['minDurationSeconds','最短阶段时间（秒）',1,180,1],['maxDurationSeconds','最长阶段时间（秒）',1,180,1]];
+        if(item.hasCycles)fields.push(['minCycles','最少轮数',1,6,1],['maxCycles','最多轮数',1,6,1]);
+        if(item.hasSlowSpeed)fields.push(['slowSpeedKph','缓行速度（km/h）',2,60,1]);
+        for(const [key,label,min,max,step] of fields){const row=document.createElement('label');row.textContent=label;const input=document.createElement('input');Object.assign(input,{id:`traffic-${item.id}-${key}`,type:'number',min,max,step,value:rule[key],required:true});row.append(input);card.querySelector('.traffic-rule-fields').append(row)}
+        section.append(card);
+      }
+      $('trafficEventList').append(section);
+    }
+    updateTrafficAvailability();
+  }
+  function collectTraffic(){
+    const settings=normalizeTraffic(options.trafficEvents);
+    settings.minimumGapSeconds=Number($('trafficMinimumGap').value);settings.virtualSignalSpacingMeters=Number($('trafficSignalSpacing').value);settings.allowVirtualSignalsOnStraight=$('trafficVirtualSignals').checked;
+    for(const item of trafficCatalog){const rule=settings.events[item.id];rule.enabled=$(`traffic-${item.id}-enabled`).checked;
+      for(const key of ['probabilityPercent','intervalSeconds','minDurationSeconds','maxDurationSeconds',...(item.hasCycles?['minCycles','maxCycles']:[]),...(item.hasSlowSpeed?['slowSpeedKph']:[])])rule[key]=Number($(`traffic-${item.id}-${key}`).value);
+      if(rule.maxDurationSeconds<rule.minDurationSeconds)throw new Error(`${item.name}：最长阶段时间不能小于最短阶段时间`);
+      if(rule.maxCycles<rule.minCycles)throw new Error(`${item.name}：最多轮数不能小于最少轮数`);
+    }
+    return settings;
+  }
+  function updateTrafficAvailability(){
+    const enabled=$('vehicleEnabled').checked;$('vehicleRandomEvents').disabled=!enabled;
+    $('trafficSettingsBody').classList.toggle('inactive',!enabled||!$('vehicleRandomEvents').checked);
+    // Keep controls editable while the master switch is off, so scenarios can be prepared in advance.
+    $('trafficSignalSpacing').disabled=!$('trafficVirtualSignals').checked;
+  }
+  function applyTrafficPreset(name){
+    const settings=normalizeTraffic();settings.minimumGapSeconds=name==='rush'?20:name==='light'?60:30;
+    for(const item of trafficCatalog){const rule=settings.events[item.id];
+      if(name==='light'){rule.intervalSeconds=Math.min(3600,rule.intervalSeconds*2);rule.probabilityPercent=Math.round(rule.probabilityPercent*.5);rule.enabled=!['signalQueue','stopGo','phantomJam','railCrossing'].includes(item.id)}
+      if(name==='rush'){rule.intervalSeconds=Math.max(30,Math.round(rule.intervalSeconds*.65));if(['signalQueue','stopGo','phantomJam','slowLeader','mergeAlternating'].includes(item.id))rule.probabilityPercent=85;}
+    }
+    $('vehicleRandomEvents').checked=true;fillTraffic(settings);
   }
   function open(){if(running)return;opener=document.activeElement;fillForm(options);$('vehicleOverlay').classList.add('open');$('vehicleEnabled').focus()}
   function close(){$('vehicleOverlay').classList.remove('open');opener?.focus()}
   function collect(){
     const value=clone(options);value.enabled=$('vehicleEnabled').checked;value.preset=$('vehiclePreset').value;
     value.randomEventsEnabled=$('vehicleRandomEvents').checked;
+    value.trafficEvents=collectTraffic();
     Object.keys(numberFields).forEach(key=>value[key]=Number($(`vehicle-${key}`).value));
     ['drivingStyle','transmission','powertrain'].forEach(key=>value[key]=$(`vehicle-${key}`).value);
     value.gearRatios=$('vehicleGearRatios').value.split(/[,，\s]+/).filter(Boolean).map(Number);
@@ -74,11 +132,12 @@
     ['vehicleRuntimeGear','vehicleThrottle','vehicleBrake','vehicleGearDown','vehicleGearUp'].forEach(id=>$(id).disabled=controls.automatic||!running||!manual);
     $('vehicleOperationBadge').textContent=manual&&!controls.automatic?'手动':'自动';
   }
-  function setOptions(value){options={...clone(defaults),...clone(value)};dirty=true;updateSummary();updateOperation()}
+  function setOptions(value){options={...clone(defaults),...clone(value)};options.trafficEvents=normalizeTraffic(options.trafficEvents);dirty=true;updateSummary();updateOperation()}
   function receiveSettings(payload){
     $('vehicleSave').disabled=false;
     if(!payload.succeeded){$('vehicleError').textContent=payload.message||'设置未保存';notify(payload.message||'无法读取车辆设置',true);return}
     presets=payload.presets||presets;
+    trafficCatalog=payload.trafficEventCatalog||trafficCatalog;
     if(payload.action==='get'&&dirty)return;
     setOptions(payload.options||defaults);
     if(payload.action==='save'){close();notify(options.enabled?'真实驾驶设置已保存':'已恢复固定速度模式')}
@@ -105,15 +164,20 @@
     for(const pedal of ['Throttle','Brake']){const percent=Math.round(Math.max(0,Math.min(1,Number(value[pedal.toLowerCase()])||0))*100);$(`vehicle${pedal}Text`).textContent=percent+'%';$(`vehicle${pedal}Meter`).value=percent}
     $('vehicleRuntimeGear').value=String(value.gear||0);
     $('vehicleConstraint').textContent=({curve:'弯道限速 / 提前减速',turnLeft:'左转入弯 · 提前减速',turnRight:'右转入弯 · 提前减速',turnExit:'通过弯心 · 平顺加速出弯',finish:'接近终点，平顺停车',cruise:'按驾驶风格调节巡航',rpmLimit:'转速达到红线，限制动力',shiftProtected:'降挡保护：预计转速超过红线',fixed:'固定速度行驶'})[value.constraint]||'模拟中';
-    const eventName={mergeQueue:'汇入口减速排队',mergeAccelerate:'短时加速汇入',pedestrianYield:'右转礼让行人',overtake:'超车加速通过',redLight:'红灯等待'}[value.drivingEvent];
+    const eventName=trafficCatalog.find(item=>item.id===value.drivingEvent)?.name;
     $('vehicleEvent').classList.toggle('hidden',!eventName);
-    $('vehicleEvent').textContent=eventName?`模拟事件 · ${eventName}\n${{waiting:'停车等待',braking:'提前减速',queuing:'缓行排队',accelerating:'短时加速'}[value.eventStage]||'处理中'} · ${value.eventStage==='braking'||value.eventStage==='queuing'?'停稳后等待 ':''}${Math.ceil(value.eventRemainingSeconds||0)} 秒`:'';
+    const stages={approaching:'提前减速 · 接近等待点',braking:'制动至停稳',red:'红灯等待',redQueue:'红灯排队等待',startDelay:'前车起步 · 反应等待',queueMove:'跟随队列前移',queueStop:'拥堵停车',mergeWait:'交替合流让行',releasing:'队列放行 · 平顺起步',compression:'车流压缩 · 减速波',waveRelease:'拥堵波缓解 · 短暂恢复',following:'随前车缓行',gapOpening:'收油减速 · 拉开车距',recovering:'车距恢复 · 平顺加速',oncomingWait:'等待对向车流间隙',pedestrianWait:'等待行人通过',obstructionWait:'等待前方占道解除',workzoneWait:'施工入口等待放行',emergencyWait:'停车避让应急车辆',barrierWait:'等待道口栏杆开启',narrowPass:'低速通过施工窄道',cautiousPass:'观察后缓慢通过',bumpApproach:'接近减速带 / 破损路面',bumpPass:'低速通过颠簸路段'};
+    const cycle=value.eventTotalCycles>1?` · 第 ${value.eventCycle}/${value.eventTotalCycles} 轮`:'';
+    const time=value.eventRemainingSeconds>0?` · ${['approaching','braking'].includes(value.eventStage)?'停稳后等待 ':''}${Math.ceil(value.eventRemainingSeconds)} 秒`:'';
+    $('vehicleEvent').textContent=eventName?`模拟情景 · ${eventName}${cycle}\n${stages[value.eventStage]||'处理中'}${time}`:'';
     if(value.controlMode)controls.automatic=value.controlMode!=='manual';
     if(controls.automatic||value.constraint==='shiftProtected')controls.gear=value.gear||0;
     updateOperation();
   }
-  $('vehiclePreset').onchange=()=>{const preset=presets[$('vehiclePreset').value];if(preset)fillForm({...clone(preset),enabled:true,randomEventsEnabled:$('vehicleRandomEvents').checked})};
-  $('vehicleEnabled').onchange=()=>{$('vehicleRandomEvents').disabled=!$('vehicleEnabled').checked};
+  $('vehiclePreset').onchange=()=>{const preset=presets[$('vehiclePreset').value];if(preset){const traffic=collectTraffic();fillForm({...clone(preset),enabled:true,randomEventsEnabled:$('vehicleRandomEvents').checked,trafficEvents:traffic})}};
+  $('vehicleEnabled').onchange=$('vehicleRandomEvents').onchange=$('trafficVirtualSignals').onchange=updateTrafficAvailability;
+  document.querySelectorAll('[data-traffic-preset]').forEach(button=>button.onclick=()=>applyTrafficPreset(button.dataset.trafficPreset));
+  for(const [id,enabled] of [['trafficEnableAll',true],['trafficDisableAll',false]])$(id).onclick=()=>{for(const item of trafficCatalog)$(`traffic-${item.id}-enabled`).checked=enabled};
   $('vehicleSettingsButton').onclick=$('vehicleSpeedSummary').onclick=open;
   $('vehicleClose').onclick=$('vehicleCancel').onclick=close;
   $('vehicleSave').onclick=()=>{if(!$('vehicleForm').reportValidity())return;try{const value=collect();$('vehicleSave').disabled=true;post({type:'vehicle_settings',action:'save',options:value})}catch(error){$('vehicleError').textContent=error.message}};

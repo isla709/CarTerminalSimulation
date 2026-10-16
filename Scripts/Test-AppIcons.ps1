@@ -53,7 +53,8 @@ public static class IconProbe {
 
 foreach ($entry in @(
     @{Asset='TerminalSimulation.Wpf/Assets/app-icon.ico'; Exe='TerminalSimulation.Wpf.exe'},
-    @{Asset='TerminalSimulation.Updater/Assets/update-icon.ico'; Exe='update.exe'}
+    @{Asset='TerminalSimulation.Updater/Assets/update-icon.ico'; Exe='update.exe'},
+    @{Asset='TerminalSimulation.Updater/Assets/setup-icon.ico'; Exe='setup.exe'; NativeBuild='Updater.Native/bin/Debug/setup.exe'}
 )) {
     $bytes = [IO.File]::ReadAllBytes((Join-Path $repoDirectory $entry.Asset))
     if ([BitConverter]::ToUInt16($bytes, 0) -ne 0 -or [BitConverter]::ToUInt16($bytes, 2) -ne 1 -or
@@ -66,7 +67,8 @@ foreach ($entry in @(
         if ($size -ne $expectedSizes[$index] -or [BitConverter]::ToUInt16($bytes, $offset+6) -ne 32 -or
             $dataOffset + $length -gt $bytes.Length) { throw 'Invalid ICO image entry.' }
     }
-    $nativeSizes = [IconProbe]::ExeSizes((Join-Path $build $entry.Exe))
+    $executable = if ($entry.NativeBuild) { Join-Path $repoDirectory $entry.NativeBuild } else { Join-Path $build $entry.Exe }
+    $nativeSizes = [IconProbe]::ExeSizes($executable)
     if (($nativeSizes -join ',') -ne ($expectedSizes -join ',')) { throw "EXE icon sizes mismatch: $($entry.Exe)" }
     Write-Output "EXE icon resource passed: $($entry.Exe) [$($nativeSizes -join ',')]"
 }

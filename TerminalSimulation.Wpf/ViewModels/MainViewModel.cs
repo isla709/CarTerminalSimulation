@@ -63,6 +63,12 @@ namespace TerminalSimulation.Wpf.ViewModels
 
     public partial class LogMessageItem : ObservableObject
     {
+        public long Sequence { get; init; }
+        public ApplicationLogCategory Category { get; init; }
+        public string CategoryName => Category switch {
+            ApplicationLogCategory.Communication => "通信", ApplicationLogCategory.Plugin => "插件", _ => "系统"
+        };
+        public string DisplaySource => DirectionStr == $"[{CategoryName}]" ? "" : DirectionStr;
         [ObservableProperty] private string _timestampStr = "";
         [ObservableProperty] private string _directionStr = "";
         [ObservableProperty] private string _message = "";
@@ -960,7 +966,8 @@ namespace TerminalSimulation.Wpf.ViewModels
         private Task? _autoReportTask;
 
         [ObservableProperty] private bool _autoScrollLogs = true;
-        [ObservableProperty] private ObservableCollection<LogMessageItem> _logMessages = new();
+        public SystemLogViewModel SystemLogs { get; } = new();
+        public ObservableCollection<LogMessageItem> LogMessages => SystemLogs.Entries;
         [ObservableProperty] private bool _isUtilitiesVisible = false;
         
 
@@ -2174,6 +2181,7 @@ namespace TerminalSimulation.Wpf.ViewModels
             Task pendingSave;
             lock (_saveLock) { pendingSave = _lastConfigSaveTask; }
             await pendingSave;
+            SystemLogs.Dispose();
             GC.SuppressFinalize(this);
         }
 

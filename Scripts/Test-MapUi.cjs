@@ -40,13 +40,14 @@ const fakeSdk = `
     const defaults={enabled:false,preset:'small-auto',maxSpeedKph:100,averageSpeedKph:50,drivingStyle:'normal',maxAcceleration:2.6,brakeDeceleration:6,transmission:'automatic',powertrain:'petrol',gearRatios:[3.4,2.1,1.4,1,.8,.64],finalDrive:4.1,wheelRadius:.3,idleRpm:800,redlineRpm:6500,upshiftRpm:3200,downshiftRpm:1200,shiftDuration:.45};
     const presets={'small-auto':defaults,'small-manual':{...defaults,preset:'small-manual',transmission:'manual',maxAcceleration:2.4,gearRatios:[3.6,2.1,1.36,1,.82],upshiftRpm:3000,downshiftRpm:1100,shiftDuration:.65},electric:{...defaults,preset:'electric',transmission:'singleSpeed',powertrain:'electric',gearRatios:[1]},'manual-truck':{...defaults,preset:'manual-truck',transmission:'manual',powertrain:'diesel',maxAcceleration:.7,gearRatios:[12.2,9.3,7.2,5.4,4.1,3.1,2.3,1.75,1.3,1]}};
     window.__vehicleSettings=defaults;
+    const trafficEventCatalog=[['signalSingle','路口红灯 · 一轮放行','路口通行'],['signalQueue','路口红灯 · 多轮排队','路口通行'],['leftTurnYield','无保护左转让行','路口通行'],['crosswalkYield','人行横道礼让','路口通行'],['stopGo','拥堵车流 · 走走停停','车流变化'],['phantomJam','幽灵堵车 · 连续减速波','车流变化'],['slowLeader','慢车跟行','车流变化'],['cutIn','邻车切入 · 拉开车距','车流变化'],['mergeAlternating','汇入口交替通行','车流变化'],['busObstruction','公交停靠 / 临时占道','道路干扰'],['roadworks','施工窄道 · 交替放行','道路干扰'],['emergencyYield','应急车辆避让','道路干扰'],['speedBump','减速带 / 破损路面','道路干扰'],['railCrossing','铁路道口等待','道路干扰']].map(([id,name,group])=>({id,name,group,description:'离线测试：虚拟交通情景，等待、前移与恢复。',hasCycles:['signalQueue','stopGo','phantomJam','mergeAlternating'].includes(id),hasSlowSpeed:id!=='signalSingle',defaults:{enabled:id!=='railCrossing',probabilityPercent:60,intervalSeconds:180,minDurationSeconds:8,maxDurationSeconds:25,minCycles:['signalQueue','stopGo','phantomJam'].includes(id)?2:1,maxCycles:['signalQueue','stopGo','phantomJam','mergeAlternating'].includes(id)?4:1,slowSpeedKph:12}}));
     const publish=(action,automatic=false)=>setTimeout(()=>window.ctsMap.receiveHistory({succeeded:true,action,automatic,...window.__history}),0);
     window.chrome={webview:{postMessage(raw){
       const message=JSON.parse(raw);window.__messages.push(message);
       if(message.type==='request_map_settings')setTimeout(()=>window.initializeMapSettings({defaultLocation:'beijing',mapStyle:'default',pathStyle:'theme-neon-blue'}),0);
       if(message.type==='vehicle_settings'){
         if(message.action==='save')window.__vehicleSettings=message.options;
-        setTimeout(()=>window.ctsMap.receiveVehicleSettings({succeeded:true,action:message.action,options:window.__vehicleSettings,presets}),0);
+        setTimeout(()=>window.ctsMap.receiveVehicleSettings({succeeded:true,action:message.action,options:window.__vehicleSettings,presets,trafficEventCatalog}),0);
       }
       if(message.type!=='map_history')return;
       const history=window.__history;
@@ -144,6 +145,25 @@ const fakeSdk = `
     await page.locator('#vehicleSettingsButton').click();
     await page.selectOption('#vehiclePreset','small-manual');
     await page.locator('#vehicleRandomEvents').check();
+    assert.equal(await page.locator('.traffic-event-card').count(),14);
+    await page.locator('[data-traffic-preset="rush"]').click();
+    assert.equal(await page.locator('#traffic-signalQueue-probabilityPercent').inputValue(),'85');
+    await page.locator('#trafficDisableAll').click();
+    assert.equal(await page.locator('.traffic-event-title input:checked').count(),0);
+    await page.locator('[data-traffic-preset="daily"]').click();
+    assert.equal(await page.locator('#traffic-railCrossing-enabled').isChecked(),false);
+    await page.locator('#traffic-signalQueue-enabled').uncheck();
+    await page.locator('#traffic-signalSingle-probabilityPercent').fill('73');
+    await page.locator('#traffic-signalSingle-intervalSeconds').fill('123');
+    await page.locator('#traffic-signalSingle-minDurationSeconds').fill('50');
+    await page.locator('#traffic-signalSingle-maxDurationSeconds').fill('10');
+    await page.locator('#vehicleSave').click();assert.match(await page.locator('#vehicleError').innerText(),/最长阶段时间不能小于/);
+    await page.locator('#traffic-signalSingle-minDurationSeconds').fill('8');
+    await page.locator('#traffic-signalSingle-maxDurationSeconds').fill('25');
+    // Vehicle presets must not reset independently edited traffic settings.
+    await page.selectOption('#vehiclePreset','electric');await page.selectOption('#vehiclePreset','small-manual');
+    assert.equal(await page.locator('#traffic-signalSingle-probabilityPercent').inputValue(),'73');
+    await page.locator('#trafficVirtualSignals').uncheck();assert.equal(await page.locator('#trafficSignalSpacing').isDisabled(),true);
     await page.locator('#vehicle-maxSpeedKph').fill('70');await page.locator('#vehicle-averageSpeedKph').fill('80');
     await page.locator('#vehicleSave').click();assert.match(await page.locator('#vehicleError').innerText(),/不能高于/);
     await page.locator('#vehicle-averageSpeedKph').fill('45');await page.locator('#vehicleSave').click();await page.waitForTimeout(50);
@@ -152,11 +172,13 @@ const fakeSdk = `
     await page.locator('#startButton').click();await page.waitForTimeout(50);
     const simulation=await page.evaluate(()=>window.__messages.filter(x=>x.type==='simulate_path').at(-1));
     assert.equal(simulation.vehicle.transmission,'manual');assert.equal(simulation.vehicle.averageSpeedKph,45);assert.equal(simulation.vehicle.randomEventsEnabled,true);
+    assert.equal(simulation.vehicle.trafficEvents.events.signalSingle.probabilityPercent,73);assert.equal(simulation.vehicle.trafficEvents.events.signalSingle.intervalSeconds,123);
+    assert.equal(simulation.vehicle.trafficEvents.events.signalQueue.enabled,false);assert.equal(simulation.vehicle.trafficEvents.allowVirtualSignalsOnStraight,false);
     assert.equal(await page.locator('#vehicleStatusPanel').isVisible(),true);
     await page.evaluate(()=>window.updateVehicleTelemetry({coordinateSystem:'wgs84',telemetry:{speedKph:32.45,targetSpeedKph:40,gear:3,rpm:2200,throttle:.45,brake:0,controlMode:'auto',transmission:'manual',powertrain:'petrol',phase:'accelerating',constraint:'curve',actualAverageSpeedKph:26}}));
     assert.equal(await page.locator('#vehicleActualSpeed').innerText(),'32.5');assert.equal(await page.locator('#vehicleCoordinate').innerText(),'WGS-84');
-    await page.evaluate(()=>window.updateVehicleTelemetry({speedKph:0,targetSpeedKph:0,gear:1,rpm:800,controlMode:'auto',transmission:'manual',powertrain:'petrol',phase:'waiting',constraint:'turnRight',drivingEvent:'pedestrianYield',eventStage:'waiting',eventRemainingSeconds:5.2}));
-    assert.match(await page.locator('#vehicleEvent').innerText(),/模拟事件.*右转礼让行人/);assert.match(await page.locator('#vehicleEvent').innerText(),/6 秒/);
+    await page.evaluate(()=>window.updateVehicleTelemetry({speedKph:0,targetSpeedKph:0,gear:1,rpm:800,controlMode:'auto',transmission:'manual',powertrain:'petrol',phase:'waiting',constraint:'turnRight',drivingEvent:'signalQueue',eventStage:'redQueue',eventRemainingSeconds:5.2,eventCycle:2,eventTotalCycles:3}));
+    assert.match(await page.locator('#vehicleEvent').innerText(),/模拟情景.*多轮排队.*第 2\/3 轮/);assert.match(await page.locator('#vehicleEvent').innerText(),/6 秒/);
     assert.equal(await page.locator('#vehiclePhase').innerText(),'停车等待');
     assert.match(await page.locator('#vehicleConstraint').innerText(),/右转入弯/);
     await page.evaluate(()=>window.updateVehicleTelemetry({speedKph:32.45,targetSpeedKph:40,gear:3,rpm:2200,throttle:.45,controlMode:'auto',transmission:'manual',powertrain:'petrol',constraint:'turnExit'}));
@@ -180,6 +202,7 @@ const fakeSdk = `
     await page.locator('[data-history-use]').first().click();
     assert.equal(await page.evaluate(()=>window.ctsVehicleUi.options.transmission),'manual');
     assert.equal(await page.evaluate(()=>window.ctsVehicleUi.options.randomEventsEnabled),true);
+    assert.equal(await page.evaluate(()=>window.ctsVehicleUi.options.trafficEvents.events.signalSingle.probabilityPercent),73);
     await page.locator('#startButton').click();
     await page.evaluate(()=>window.ctsMap.simulationAccepted({accepted:false,message:'测试拒绝无效路线'}));
     assert.equal(await page.locator('#vehicleStatusPanel').isVisible(),false);assert.equal(await page.locator('#startButton').isVisible(),true);
@@ -199,9 +222,12 @@ const fakeSdk = `
       await page.waitForTimeout(350);
       const vehicleDialog=await page.locator('#vehicleOverlay .dialog').boundingBox();assert.ok(vehicleDialog.y>=0&&vehicleDialog.y+vehicleDialog.height<=height+1);
       assert.ok(await page.locator('#vehicleSave').isVisible());
-      await page.screenshot({path:path.join(output,`vehicle-settings-${width}x${height}.png`)});await page.locator('#vehicleCancel').click();await page.waitForTimeout(250);
+      await page.screenshot({path:path.join(output,`vehicle-settings-${width}x${height}.png`)});
+      await page.locator('#traffic-signalSingle-probabilityPercent').scrollIntoViewIfNeeded();await page.waitForTimeout(200);
+      const overflowTraffic=await page.locator('.traffic-event-card').first().evaluate(card=>card.scrollWidth>card.clientWidth+1);assert.equal(overflowTraffic,false);
+      await page.screenshot({path:path.join(output,`traffic-settings-${width}x${height}.png`)});await page.locator('#vehicleCancel').click();await page.waitForTimeout(250);
       await page.locator('#startButton').click();await page.waitForTimeout(300);
-      await page.evaluate(()=>window.updateVehicleTelemetry({speedKph:0,targetSpeedKph:0,gear:1,rpm:800,controlMode:'auto',transmission:'manual',powertrain:'petrol',phase:'waiting',constraint:'turnRight',drivingEvent:'redLight',eventStage:'waiting',eventRemainingSeconds:12}));
+      await page.evaluate(()=>window.updateVehicleTelemetry({speedKph:0,targetSpeedKph:0,gear:1,rpm:800,controlMode:'auto',transmission:'manual',powertrain:'petrol',phase:'waiting',constraint:'turnRight',drivingEvent:'signalQueue',eventStage:'redQueue',eventRemainingSeconds:12,eventCycle:2,eventTotalCycles:3}));
       assert.equal(await page.locator('#vehicleEvent').isVisible(),true);
       const panel=await page.locator('#vehicleStatusPanel').boundingBox();assert.ok(panel.x>=0&&panel.x+panel.width<=width+1&&panel.y>=0&&panel.y+panel.height<=height+1);
       await page.screenshot({path:path.join(output,`vehicle-panel-${width}x${height}.png`)});await page.locator('#vehicleStop').click();

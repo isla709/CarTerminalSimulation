@@ -20,7 +20,7 @@ namespace TerminalSimulation.Wpf.ViewModels
         [RelayCommand]
         private void ClearLogs()
         {
-            LogMessages.Clear();
+            SystemLogs.Clear();
             PassthroughMessages.Clear();
         }
 
@@ -288,39 +288,6 @@ namespace TerminalSimulation.Wpf.ViewModels
         private void Log(string direction, string message)
         {
             _appLogger.Info(direction, message, _networkClient.ConnectionId);
-
-            if (Application.Current != null)
-            {
-                Application.Current.Dispatcher.Invoke(() =>
-                {
-                    bool isRaw = message.StartsWith("RAW: ");
-                    string rawHex = "";
-                    string displayMsg = message;
-
-                    if (isRaw)
-                    {
-                        rawHex = message.Substring(5).Trim();
-                        displayMsg = message; // Keep RAW: prefix for visual clarity, or you can strip it
-                    }
-
-                    var item = new LogMessageItem
-                    {
-                        TimestampStr = $"[{DateTime.Now:HH:mm:ss.fff}]",
-                        DirectionStr = $"[{direction}]",
-                        Message = displayMsg,
-                        HasRaw = isRaw,
-                        RawData = rawHex
-                    };
-
-                    LogMessages.Add(item);
-
-                    // Keep only the last 2000 log items to prevent memory issues
-                    if (LogMessages.Count > 2000)
-                    {
-                        LogMessages.RemoveAt(0);
-                    }
-                });
-            }
         }
 
         private void RemoveErrorProperties(JsonNode node)

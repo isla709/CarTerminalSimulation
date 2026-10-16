@@ -7,7 +7,11 @@ namespace TerminalSimulation.Wpf.Services.Updates;
 
 internal sealed class UpdateService
 {
+    private sealed record ReleasePackageAsset(string Name, string Url, long? Size, string? Digest);
+
     private const int MaximumManifestBytes = 1024 * 1024;
+    // Manifest/plan protocol compatibility, NOT the independent .Updater engine
+    // version. Keeping v2 lets legacy clients discover Preview11+ payloads.
     private static readonly Version SupportedUpdaterVersion = new(2, 0, 0);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -18,11 +22,13 @@ internal sealed class UpdateService
     private readonly HttpClient _httpClient;
     private readonly IAppLogger _logger;
     private readonly string _configurationPath;
+    private readonly string _installationDirectory;
 
-    public UpdateService(IAppLogger logger, HttpClient? httpClient = null, string? configurationPath = null)
+    public UpdateService(IAppLogger logger, HttpClient? httpClient = null, string? configurationPath = null, string? installationDirectory = null)
     {
         _logger = logger;
         _configurationPath = configurationPath ?? Path.Combine(AppContext.BaseDirectory, "update-sources.json");
+        _installationDirectory = installationDirectory ?? AppContext.BaseDirectory;
         _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         if (!_httpClient.DefaultRequestHeaders.UserAgent.Any())
             _httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("CarTerminalSimulation", "1.0"));
@@ -130,7 +136,10 @@ internal sealed class UpdateService
             diagnostics.AddRange(outcome.Diagnostics);
         }
 
-        var available = MergeCandidates(sourceCandidates, diagnostics)
+        var preferredPackageFormat = File.Exists(Path.Combine(_installationDirectory, ".Installation", "install.json"))
+            ? "cts-setup-v1"
+            : "zip";
+        var available = SelectPackageVariants(MergeCandidates(sourceCandidates, diagnostics), preferredPackageFormat)
             // Version ordering deliberately treats locally generated alpha-numeric build
             // suffixes as equivalent to a numbered release from the same day.  That rule
             // prevents automatic update loops, but it must not hide a real Release from
@@ -224,17 +233,8 @@ internal sealed class UpdateService
                 foreach (var manifest in manifests)
                 {
                     if (!IsSelectable(manifest, channel, strictChannelPolicy, includePrerelease, line, currentCompatibilityEpoch)) continue;
-                    var packageAsset = release.Assets.FirstOrDefault(asset =>
-                        string.Equals(asset.Name, manifest.Package.FileName, StringComparison.OrdinalIgnoreCase));
-                    if (packageAsset is null)
-                        throw new InvalidDataException($"Release 缺少清单指定的资产 {manifest.Package.FileName}。");
-
-                    var sha256 = manifest.Package.Sha256;
-                    if (string.IsNullOrWhiteSpace(sha256) && packageAsset.Digest?.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase) == true)
-                        sha256 = packageAsset.Digest[7..];
-                    manifest.Package.Sha256 = sha256;
-                    manifest.Package.Url = packageAsset.BrowserDownloadUrl;
-                    manifest.Package.Size ??= packageAsset.Size;
+                    ResolveReleasePackages(manifest, release.Assets.Select(asset =>
+                        new ReleasePackageAsset(asset.Name, asset.BrowserDownloadUrl, asset.Size, asset.Digest)));
                     manifest.PublishedAt ??= release.PublishedAt;
                     manifest.ReleaseNotes ??= release.Body;
                     candidates.Add(CreateCandidate(manifest, source, allowInsecureHttp: false, manifestUri));
@@ -299,12 +299,8 @@ internal sealed class UpdateService
                 foreach (var manifest in manifests)
                 {
                     if (!IsSelectable(manifest, channel, strictChannelPolicy, includePrerelease, line, currentCompatibilityEpoch)) continue;
-                    var packageAsset = release.Assets.FirstOrDefault(asset =>
-                        string.Equals(asset.Name, manifest.Package.FileName, StringComparison.OrdinalIgnoreCase));
-                    if (packageAsset is null)
-                        throw new InvalidDataException($"Release 缺少清单指定的资产 {manifest.Package.FileName}。");
-
-                    manifest.Package.Url = packageAsset.BrowserDownloadUrl;
+                    ResolveReleasePackages(manifest, release.Assets.Select(asset =>
+                        new ReleasePackageAsset(asset.Name, asset.BrowserDownloadUrl, null, null)));
                     manifest.PublishedAt ??= release.CreatedAt;
                     manifest.ReleaseNotes ??= release.Body;
                     candidates.Add(CreateCandidate(manifest, source, allowInsecureHttp: false, manifestUri));
@@ -399,7 +395,7 @@ internal sealed class UpdateService
         return await JsonSerializer.DeserializeAsync<T>(limited, JsonOptions, cancellationToken);
     }
 
-    private static UpdateSourceCandidate CreateCandidate(
+    private UpdateSourceCandidate CreateCandidate(
         UpdateManifest manifest,
         UpdateSourceDefinition source,
         bool allowInsecureHttp,
@@ -415,13 +411,15 @@ internal sealed class UpdateService
             Version.TryParse(manifest.MinimumUpdaterVersion, out var minimumUpdater) &&
             minimumUpdater > SupportedUpdaterVersion)
             throw new InvalidDataException($"此更新需要 update.exe {minimumUpdater} 或更高版本，请先安装完整升级包。");
-        if (string.IsNullOrWhiteSpace(manifest.Package.FileName)) throw new InvalidDataException("更新清单缺少包文件名。");
-        if (manifest.Package.Sha256.Length != 64 || !manifest.Package.Sha256.All(Uri.IsHexDigit))
+        var package = SelectPackage(manifest);
+        if (string.IsNullOrWhiteSpace(package.FileName)) throw new InvalidDataException("更新清单缺少包文件名。");
+        if (package.Format is not ("auto" or "zip" or "cts-setup-v1")) throw new InvalidDataException("不支持此更新包格式。");
+        if (package.Sha256.Length != 64 || !package.Sha256.All(Uri.IsHexDigit))
             throw new InvalidDataException("更新清单缺少有效的 SHA-256 摘要。");
 
         Uri packageUri;
-        if (Uri.TryCreate(manifest.Package.Url, UriKind.Absolute, out var absolute)) packageUri = absolute;
-        else if (!string.IsNullOrWhiteSpace(manifest.Package.Url)) packageUri = new Uri(manifestUri, manifest.Package.Url);
+        if (Uri.TryCreate(package.Url, UriKind.Absolute, out var absolute)) packageUri = absolute;
+        else if (!string.IsNullOrWhiteSpace(package.Url)) packageUri = new Uri(manifestUri, package.Url);
         else throw new InvalidDataException("更新清单缺少下载地址。");
         RequireRemoteUri(packageUri.AbsoluteUri, allowInsecureHttp);
 
@@ -436,10 +434,89 @@ internal sealed class UpdateService
                 DisplayName(source),
                 source.Priority,
                 packageUri,
-                manifest.Package.Sha256,
-                manifest.Package.Size,
-                allowInsecureHttp),
+                package.Sha256,
+                package.Size,
+                allowInsecureHttp, package.Format),
             manifest.Delete);
+    }
+
+    private UpdatePackage SelectPackage(UpdateManifest manifest)
+    {
+        var all = new[] { manifest.Package }.Concat(manifest.Packages).ToArray();
+        var hasInstallationRecord = File.Exists(Path.Combine(_installationDirectory, ".Installation", "install.json"));
+        var preferred = hasInstallationRecord
+            ? new[] { "cts-setup-v1", "zip", "auto" }
+            : new[] { "zip", "auto", "cts-setup-v1" };
+        foreach (var format in preferred)
+        {
+            var package = all.FirstOrDefault(item =>
+                string.Equals(item.Format, format, StringComparison.OrdinalIgnoreCase) &&
+                IsUsablePackage(item));
+            if (package is not null) return package;
+        }
+
+        // Older manifests contain only the required legacy `package` property.
+        return manifest.Package;
+
+        static bool IsUsablePackage(UpdatePackage package) =>
+            !string.IsNullOrWhiteSpace(package.FileName) &&
+            !string.IsNullOrWhiteSpace(package.Url) &&
+            Uri.TryCreate(package.Url, UriKind.RelativeOrAbsolute, out _) &&
+            package.Sha256.Length == 64 && package.Sha256.All(Uri.IsHexDigit);
+    }
+
+    private static void ResolveReleasePackages(UpdateManifest manifest, IEnumerable<ReleasePackageAsset> assets)
+    {
+        var releaseAssets = assets.ToArray();
+        var legacyAsset = releaseAssets.FirstOrDefault(asset =>
+            string.Equals(asset.Name, manifest.Package.FileName, StringComparison.OrdinalIgnoreCase));
+        if (legacyAsset is null)
+            throw new InvalidDataException($"Release 缺少清单指定的兼容主包 {manifest.Package.FileName}。");
+
+        ApplyAsset(manifest.Package, legacyAsset);
+        var resolvedAlternates = new List<UpdatePackage>();
+        foreach (var alternative in manifest.Packages)
+        {
+            var packageAsset = releaseAssets.FirstOrDefault(asset =>
+                string.Equals(asset.Name, alternative.FileName, StringComparison.OrdinalIgnoreCase));
+            if (packageAsset is null) continue;
+            ApplyAsset(alternative, packageAsset);
+            resolvedAlternates.Add(alternative);
+        }
+
+        manifest.Packages = resolvedAlternates;
+        return;
+
+        static void ApplyAsset(UpdatePackage package, ReleasePackageAsset asset)
+        {
+            if (string.IsNullOrWhiteSpace(package.Sha256) && asset.Digest?.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase) == true)
+                package.Sha256 = asset.Digest[7..];
+            package.Url = asset.Url;
+            package.Size ??= asset.Size;
+        }
+    }
+
+    private static IReadOnlyList<UpdateCandidate> SelectPackageVariants(
+        IReadOnlyList<UpdateCandidate> candidates,
+        string preferredFormat)
+    {
+        var selected = new List<UpdateCandidate>();
+        foreach (var group in candidates.GroupBy(candidate => $"{candidate.Line}\n{candidate.Version}", StringComparer.OrdinalIgnoreCase))
+        {
+            var preferred = group
+                .OrderBy(candidate => PackageFormatRank(candidate.Sources.FirstOrDefault()?.PackageFormat, preferredFormat))
+                .ThenByDescending(candidate => candidate.Sources.Max(source => source.Priority))
+                .First();
+            selected.Add(preferred);
+        }
+        return selected;
+    }
+
+    private static int PackageFormatRank(string? format, string preferredFormat)
+    {
+        if (string.Equals(format, preferredFormat, StringComparison.OrdinalIgnoreCase)) return 0;
+        if (string.Equals(format, "auto", StringComparison.OrdinalIgnoreCase)) return 1;
+        return 2;
     }
 
     private static bool IsSelectable(
@@ -476,7 +553,7 @@ internal sealed class UpdateService
     {
         var merged = new List<UpdateCandidate>();
         foreach (var group in sourceCandidates.GroupBy(
-                     candidate => $"{candidate.Line}\n{candidate.Version}",
+                     candidate => $"{candidate.Line}\n{candidate.Version}\n{candidate.Source.PackageFormat}",
                      StringComparer.OrdinalIgnoreCase))
         {
             var ordered = group
@@ -520,6 +597,7 @@ internal sealed class UpdateService
         string.Equals(baseline.Channel, candidate.Channel, StringComparison.OrdinalIgnoreCase) &&
         baseline.CompatibilityEpoch == candidate.CompatibilityEpoch &&
         string.Equals(baseline.Source.Sha256, candidate.Source.Sha256, StringComparison.OrdinalIgnoreCase) &&
+        (baseline.Source.PackageFormat == "auto" || candidate.Source.PackageFormat == "auto" || baseline.Source.PackageFormat == candidate.Source.PackageFormat) &&
         (baseline.Source.PackageSize is null || candidate.Source.PackageSize is null ||
          baseline.Source.PackageSize == candidate.Source.PackageSize) &&
         baseline.Delete.SequenceEqual(candidate.Delete, StringComparer.OrdinalIgnoreCase);

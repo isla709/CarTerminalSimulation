@@ -1,5 +1,7 @@
 # Convert the project's small SVG vocabulary into reproducible Windows icon assets.
 # Run with Windows PowerShell -STA; no external image tools are required.
+param([string[]]$IconPaths = @('TerminalSimulation.Wpf/Assets/app-icon', 'TerminalSimulation.Updater/Assets/update-icon'))
+
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName PresentationCore, WindowsBase, System.Drawing
 $repoDirectory = Split-Path -Parent $PSScriptRoot
@@ -89,7 +91,7 @@ function Get-DibBytes([Drawing.Bitmap]$bitmap) {
     return ,$bytes
 }
 
-foreach ($asset in @('TerminalSimulation.Wpf/Assets/app-icon', 'TerminalSimulation.Updater/Assets/update-icon')) {
+foreach ($asset in $IconPaths) {
     $basePath = Join-Path $repoDirectory $asset
     [xml]$svg = Get-Content -LiteralPath ($basePath + '.svg') -Raw
     $frames = @()

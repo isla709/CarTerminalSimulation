@@ -43,7 +43,7 @@
 
   <PropertyGroup>
     <!-- 手动修改程序版本号 -->
-    <AppVersion>preview10</AppVersion>
+    <AppVersion>preview11</AppVersion>
     <UpdateChannel>preview</UpdateChannel>
     <!-- 更新版本线和不可逆兼容级别。不同版本线之间禁止互相更新。 -->
     <UpdateLine>main</UpdateLine>
@@ -103,19 +103,7 @@
     <Copy SourceFiles="@(NativeFfmpegRuntime)" DestinationFolder="$(TargetDir)ffmpeg-native" SkipUnchangedFiles="true" />
   </Target>
   <Target Name="CopyUpdaterRuntime" AfterTargets="Build">
-    <PropertyGroup>
-      <UpdaterRuntimeDirectory>$(MSBuildProjectDirectory)\..\TerminalSimulation.Updater\bin\$(Configuration)\net8.0-windows</UpdaterRuntimeDirectory>
-      <UpdaterRuntimeDirectory Condition="Exists('$(UpdaterRuntimeDirectory)\$(RuntimeIdentifier)\update.exe')">$(UpdaterRuntimeDirectory)\$(RuntimeIdentifier)</UpdaterRuntimeDirectory>
-    </PropertyGroup>
-    <ItemGroup>
-      <UpdaterRuntime Include="$(UpdaterRuntimeDirectory)\update.exe" />
-      <UpdaterRuntime Include="$(UpdaterRuntimeDirectory)\update.dll" />
-      <UpdaterRuntime Include="$(UpdaterRuntimeDirectory)\update.deps.json" />
-      <UpdaterRuntime Include="$(UpdaterRuntimeDirectory)\update.runtimeconfig.json" />
-    </ItemGroup>
-    <Error Condition="!Exists('$(UpdaterRuntimeDirectory)\update.exe')"
-           Text="更新程序未生成：update.exe" />
-    <Copy SourceFiles="@(UpdaterRuntime)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\Scripts\Build-UpdaterBundle.ps1&quot; -Configuration &quot;$(Configuration)&quot; -OutputPath &quot;$(TargetDir).&quot;" />
   </Target>
   <Target Name="RemoveUnusedCultureDirectories" AfterTargets="CopyFilesToOutputDirectory">
     <ItemGroup>
@@ -127,10 +115,16 @@
           BeforeTargets="ComputeFilesToPublish"
           DependsOnTargets="BuildNativeFfmpegBridge">
     <PropertyGroup>
-      <PublishUpdaterRuntimeDirectory>$(MSBuildProjectDirectory)\..\TerminalSimulation.Updater\bin\$(Configuration)\net8.0-windows</PublishUpdaterRuntimeDirectory>
-      <PublishUpdaterRuntimeDirectory Condition="Exists('$(PublishUpdaterRuntimeDirectory)\$(RuntimeIdentifier)\update.exe')">$(PublishUpdaterRuntimeDirectory)\$(RuntimeIdentifier)</PublishUpdaterRuntimeDirectory>
+      <PublishUpdaterRuntimeDirectory>$(TargetDir)</PublishUpdaterRuntimeDirectory>
     </PropertyGroup>
     <ItemGroup>
+      <ProtectedUpdaterRuntime Include="$(TargetDir).Updater\**\*"
+          Exclude="$(TargetDir).Updater\state.json;$(TargetDir).Updater\update.lock;$(TargetDir).Updater\app-runtime.txt;$(TargetDir).Updater\app-hostfxr.txt;$(TargetDir).Updater\transactions\**\*" />
+      <ResolvedFileToPublish Include="@(ProtectedUpdaterRuntime)">
+        <RelativePath>.Updater\%(RecursiveDir)%(Filename)%(Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
       <PublishNativeFfmpegRuntime Include="$(MSBuildProjectDirectory)\..\FFmpeg.Native\artifacts\win-x64\*.dll" />
       <PublishNativeFfmpegRuntime Include="$(MSBuildProjectDirectory)\..\FFmpeg.Native\artifacts\win-x64\FFmpeg-GPL-LICENSE.txt" />
       <ResolvedFileToPublish Include="@(PublishNativeFfmpegRuntime)">

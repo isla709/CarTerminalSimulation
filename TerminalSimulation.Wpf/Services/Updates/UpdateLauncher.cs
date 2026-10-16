@@ -46,6 +46,7 @@ internal static class UpdateLauncher
             PackageUrl = source.PackageUri.AbsoluteUri,
             Sha256 = source.Sha256,
             PackageSize = source.PackageSize,
+            PackageFormat = source.PackageFormat,
             TargetDirectory = Path.GetFullPath(AppContext.BaseDirectory),
             MainExecutablePath = Path.GetFullPath(executablePath),
             ParentProcessId = Environment.ProcessId,
@@ -82,6 +83,7 @@ internal static class UpdateLauncher
         public string PackageUrl { get; set; } = string.Empty;
         public string Sha256 { get; set; } = string.Empty;
         public long? PackageSize { get; set; }
+        public string PackageFormat { get; set; } = "auto";
         public string TargetDirectory { get; set; } = string.Empty;
         public string MainExecutablePath { get; set; } = string.Empty;
         public int ParentProcessId { get; set; }

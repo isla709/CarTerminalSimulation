@@ -9,11 +9,19 @@
     <ApplicationIcon>Assets\update-icon.ico</ApplicationIcon>
     <RootNamespace>TerminalSimulation.Updater</RootNamespace>
     <DebugType>embedded</DebugType>
-    <Version>2.0.0</Version>
+    <Version>3.1.0</Version>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- Share the main app's JSON dependency version. Both executables live in
+         one directory; runtime-pack JSON 8 cannot describe JSON 9's dependencies. -->
+    <PackageReference Include="System.Text.Json" Version="9.0.0" />
+  </ItemGroup>
   <ItemGroup>
     <Resource Include="Assets\update-icon.ico" />
     <Resource Include="Assets\update-icon.png" />
+    <Resource Include="Assets\setup-icon.ico" />
+    <Resource Include="Assets\setup-icon.png" />
     <Compile Include="..\Shared\WindowsAppIdentity.cs" Link="WindowsAppIdentity.cs" />
   </ItemGroup>
 </Project>

@@ -4,12 +4,18 @@
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes">
     <Grid>
         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="8,8,8,4">
-            <CheckBox Content="自动滚动至最新" IsChecked="{Binding AutoScrollLogs}" Margin="0,0,16,0" />
-            <Button Content="清空日志" Command="{Binding ClearLogsCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" Height="24" Padding="8,0" />
-        </StackPanel>
+        <WrapPanel x:Name="LogToolbar" Grid.Row="0" Margin="8,8,8,4" VerticalAlignment="Center">
+            <TextBlock Text="日志筛选" VerticalAlignment="Center" Margin="0,0,12,6" />
+            <CheckBox Content="通信日志" IsChecked="{Binding SystemLogs.ShowCommunication}" Margin="0,0,14,6" ToolTip="发送、接收、协议、网络及音视频通信" />
+            <CheckBox Content="系统日志" IsChecked="{Binding SystemLogs.ShowSystem}" Margin="0,0,14,6" ToolTip="运行状态、配置、地图、更新及系统异常" />
+            <CheckBox Content="插件日志" IsChecked="{Binding SystemLogs.ShowPlugin}" Margin="0,0,14,6" ToolTip="插件加载、插件消息及插件操作" />
+            <Button Content="全部" Command="{Binding SystemLogs.ShowAllCategoriesCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" Height="26" Padding="8,0" Margin="0,0,16,6" />
+            <CheckBox Content="自动滚动至最新" IsChecked="{Binding AutoScrollLogs}" Margin="0,0,16,6" />
+            <Button Content="清空日志" Command="{Binding ClearLogsCommand}" ToolTip="清空全部分类的日志，而非仅清空筛选结果" Style="{StaticResource MaterialDesignOutlinedButton}" Height="26" Padding="8,0" Margin="0,0,12,6" />
+            <TextBlock Text="{Binding SystemLogs.CountSummary}" VerticalAlignment="Center" Opacity="0.65" Margin="0,0,0,6" />
+        </WrapPanel>
         <ListBox Grid.Row="1" x:Name="LogListBox" materialDesign:ThemeAssist.Theme="Dark"
-                 ItemsSource="{Binding LogMessages}" Background="#1E1E1E" Foreground="#D4D4D4"
+                 ItemsSource="{Binding SystemLogs.VisibleEntries}" Background="#1E1E1E" Foreground="#D4D4D4"
                  Margin="8,0,8,8" Padding="4"
                  VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling"
                  VirtualizingStackPanel.ScrollUnit="Pixel" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -27,7 +33,10 @@
                     <Grid Margin="2,1">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="{Binding TimestampStr}" Foreground="#888888" FontFamily="Consolas" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Top" />
-                        <TextBlock Grid.Column="1" Text="{Binding DirectionStr}" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" FontFamily="Consolas" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Top" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,8,0" VerticalAlignment="Top">
+                            <TextBlock Text="{Binding CategoryName, StringFormat='[{0}]'}" Foreground="#8FB7E8" FontFamily="Consolas" FontSize="13" Margin="0,0,6,0" />
+                            <TextBlock Text="{Binding DisplaySource}" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" FontFamily="Consolas" FontSize="13" />
+                        </StackPanel>
                         <Button Grid.Column="2" Content="复制" Command="{Binding CopyRawCommand}" Visibility="{Binding HasRaw, Converter={StaticResource BooleanToVisibilityConverter}}"
                                 Style="{StaticResource MaterialDesignOutlinedButton}" Height="20" Padding="4,0" Margin="0,0,8,0" FontSize="10" VerticalAlignment="Top" />
                         <TextBlock Grid.Column="3" Text="{Binding Message}" Foreground="#D4D4D4"
@@ -36,5 +45,8 @@
                 </DataTemplate>
             </ListBox.ItemTemplate>
         </ListBox>
+        <TextBlock Grid.Row="1" Text="没有符合筛选条件的日志" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#999999" IsHitTestVisible="False">
+            <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding SystemLogs.VisibleEntries.IsEmpty}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+        </TextBlock>
     </Grid>
 </UserControl>

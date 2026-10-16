@@ -4,6 +4,7 @@ public sealed record VehicleSimulationOptions
 {
     public bool Enabled { get; init; }
     public bool RandomEventsEnabled { get; init; }
+    public TrafficEventOptions TrafficEvents { get; init; } = new();
     public string Preset { get; init; } = "small-auto";
     public double MaxSpeedKph { get; init; } = 100;
     public double AverageSpeedKph { get; init; } = 50;
@@ -49,7 +50,7 @@ public sealed record VehicleSimulationOptions
             Range(ratios[i], .1, 20, $"{i + 1} 挡齿比");
             if (i > 0 && ratios[i] >= ratios[i - 1]) throw new ArgumentException("挡位齿比必须逐挡递减");
         }
-        return this with { GearRatios = ratios };
+        return this with { GearRatios = ratios, TrafficEvents = (TrafficEvents ?? throw new ArgumentException("交通事件设置不能为空")).Validate() };
     }
 
     public static IReadOnlyDictionary<string, VehicleSimulationOptions> Presets { get; } = new Dictionary<string, VehicleSimulationOptions>
@@ -66,7 +67,8 @@ public sealed record VehicleControls(bool Automatic = true, int Gear = 1, double
 public sealed record VehicleTelemetry(double SpeedKph, double TargetSpeedKph, double Acceleration,
     int Gear, double Rpm, double Throttle, double Brake, string ControlMode, string Transmission,
     string Powertrain, string Phase, string Constraint, double TraveledMeters = 0, double RemainingMeters = 0,
-    double ActualAverageSpeedKph = 0, string DrivingEvent = "", string EventStage = "", double EventRemainingSeconds = 0);
+    double ActualAverageSpeedKph = 0, string DrivingEvent = "", string EventStage = "", double EventRemainingSeconds = 0,
+    int EventCycle = 0, int EventTotalCycles = 0);
 
 // Behavioral longitudinal approximation, not a calibrated physics/traffic model.
 // The same calculated velocity drives movement and protocol speed reporting.
@@ -147,7 +149,8 @@ internal sealed class VehicleDriver
         if (incident.Hold && _speed < .05) phase = "waiting";
         return new VehicleTelemetry(_speed * 3.6, target, _acceleration, _gear, Math.Clamp(rpm, Options.Powertrain == "electric" ? 0 : Options.IdleRpm, Options.RedlineRpm),
             throttle, brake, automatic ? "auto" : "manual", Options.Transmission, Options.Powertrain, phase,
-            warning.Length > 0 ? warning : routeConstraint, DrivingEvent: incident.Kind, EventStage: incident.Stage, EventRemainingSeconds: incident.RemainingSeconds);
+            warning.Length > 0 ? warning : routeConstraint, DrivingEvent: incident.Kind, EventStage: incident.Stage, EventRemainingSeconds: incident.RemainingSeconds,
+            EventCycle: incident.Cycle, EventTotalCycles: incident.TotalCycles);
     }
 
     private void ShiftTo(int gear)

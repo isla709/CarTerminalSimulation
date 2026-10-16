@@ -13,6 +13,7 @@ public sealed class UpdatePlan
     public string PackageUrl { get; set; } = string.Empty;
     public string Sha256 { get; set; } = string.Empty;
     public long? PackageSize { get; set; }
+    public string PackageFormat { get; set; } = "auto";
     public string TargetDirectory { get; set; } = string.Empty;
     public string MainExecutablePath { get; set; } = string.Empty;
     public int ParentProcessId { get; set; }
@@ -20,7 +21,9 @@ public sealed class UpdatePlan
     public List<string> Delete { get; set; } = [];
 }
 
-public sealed record UpdateProgress(string Message, double? Percent = null, string? Version = null);
+public enum UpdateStage { Preparing, Downloading, Verifying, Adapting, Installing, Starting, Completed }
+public sealed record UpdateProgress(string Message, double? Percent = null, string? Version = null,
+    UpdateStage Stage = UpdateStage.Preparing);
 public sealed record UpdateResult(bool Success, string Message);
 
 [JsonSourceGenerationOptions(
@@ -28,4 +31,7 @@ public sealed record UpdateResult(bool Success, string Message);
     PropertyNameCaseInsensitive = true,
     WriteIndented = true)]
 [JsonSerializable(typeof(UpdatePlan))]
+[JsonSerializable(typeof(KernelState))]
+[JsonSerializable(typeof(BundleManifest))]
+[JsonSerializable(typeof(List<TransactionFile>))]
 internal partial class UpdaterJsonContext : JsonSerializerContext;

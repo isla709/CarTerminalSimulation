@@ -35,10 +35,10 @@
                     <materialDesign:PackIcon Kind="RocketLaunchOutline" Width="23" Height="23"
                                              Foreground="{DynamicResource MaterialDesign.Brush.Primary}" />
                     <StackPanel Grid.Column="1" Margin="14,0,0,0">
-                        <TextBlock Text="Preview10 版本简介" FontSize="15" FontWeight="SemiBold" />
+                        <TextBlock Text="Preview11 版本简介" FontSize="15" FontWeight="SemiBold" />
                         <TextBlock Margin="0,7,0,0" TextWrapping="Wrap" LineHeight="21"
                                    Foreground="{DynamicResource MaterialDesignBodyLight}"
-                                   Text="本版本新增真实驾驶速度模拟，支持车辆预设、弯前减速与出弯加速、手动换挡及可选随机驾驶事件。同步完善 old/new 两套地图的搜索联想、单点选择、独立记录管理与轨迹去重；统一主程序和更新器的系统图标，修复启动封面圆角，并提供可关闭的新版本提示气泡。" />
+                                   Text="本版本引入独立持久更新内核和运行时自适配：在兼容版本之间升级或回退时保留新版更新能力，自动选择目标自包含、系统或私有运行时，并在启动验证失败时恢复原文件。更新窗口采用全新现代化布局、分阶段进度与过渡动画，支持安全取消，完成后自动关闭。" />
                     </StackPanel>
                 </Grid>
             </Border>

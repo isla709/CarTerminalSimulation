@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using TerminalSimulation.Wpf.Services;
 
 namespace TerminalSimulation.Wpf
 {
@@ -69,12 +70,12 @@ namespace TerminalSimulation.Wpf
 
         public static void LogInfo(string message)
         {
-            WriteLog("INFO", message);
+            WriteLog("INFO", message, "系统");
         }
 
         public static void LogAction(string action, string details)
         {
-            WriteLog("ACTION", $"【操作】{action} | 详情: {details}");
+            WriteLog("ACTION", $"【操作】{action} | 详情: {details}", action);
         }
 
         public static void LogNetwork(string direction, byte[] rawData, string parsedDetails)
@@ -86,12 +87,13 @@ namespace TerminalSimulation.Wpf
                 msg += $" RAW ({rawData!.Length} B): {hexData}\n";
             }
             msg += $"解析详情:\n{parsedDetails}";
-            WriteLog(direction, msg);
+            WriteLog(direction, msg, direction, ApplicationLogCategory.Communication,
+                string.IsNullOrEmpty(hexData) ? parsedDetails : $"RAW: {hexData}\n{parsedDetails}", hexData.Length > 0 ? hexData : null);
         }
 
         public static void LogDebug(string component, string message)
         {
-            WriteLog("DEBUG", $"[{component}] {message}");
+            WriteLog("DEBUG", $"[{component}] {message}", component, entryMessage: message);
         }
 
         public static void LogError(string component, string message, Exception? ex = null)
@@ -101,11 +103,13 @@ namespace TerminalSimulation.Wpf
             {
                 errMsg += $"\n[异常堆栈] {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}";
             }
-            WriteLog("ERROR", errMsg);
+            WriteLog("ERROR", errMsg, component);
         }
 
-        private static void WriteLog(string level, string message)
+        private static void WriteLog(string level, string message, string? source = null,
+            ApplicationLogCategory? category = null, string? entryMessage = null, string? rawData = null)
         {
+            ApplicationLog.Shared.Write(source ?? level, entryMessage ?? message, category, rawData);
             if (!_isConsoleActive) return;
 
             string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");

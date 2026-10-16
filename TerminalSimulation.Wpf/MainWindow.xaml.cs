@@ -228,7 +228,7 @@ public partial class MainWindow : Window
                             vm.MapStyle = NormalizeMapSetting(data["mapStyle"]?.ToString(), SupportedMapStyles, "default");
                         }
                         vm.MapRouteStyle = NormalizeMapSetting(data["pathStyle"]?.ToString(), SupportedMapRouteStyles, "theme-neon-blue");
-                        vm.LogMessage("地图", "地图选点设置已保存");
+                        vm.LogMessage("地图", "轨迹模拟设置已保存");
                     }
                     else if (type == "save_map_route")
                     {
@@ -584,7 +584,7 @@ public partial class MainWindow : Window
             else options = store.Load().Validate();
             await SendTencentMapCallbackAsync("receiveVehicleSettings", new
             {
-                succeeded = true, action, options, presets = VehicleSimulationOptions.Presets
+                succeeded = true, action, options, presets = VehicleSimulationOptions.Presets, trafficEventCatalog = TrafficEventCatalog.All
             });
         }
         catch (Exception ex)

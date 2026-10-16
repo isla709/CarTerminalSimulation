@@ -546,7 +546,7 @@
                     <!-- Terminal Heartbeat -->
                     <materialDesign:Card Margin="0,0,0,8">
                         <StackPanel Margin="16">
-                            <TextBlock Text="终端心跳保活 (0x0002)" Style="{StaticResource MaterialDesignHeadline6TextBlock}" Margin="0,0,0,16" />
+                            <TextBlock Text="终端心跳 (0x0002)" Style="{StaticResource MaterialDesignHeadline6TextBlock}" Margin="0,0,0,16" />
                             <StackPanel Orientation="Horizontal">
                                 <TextBox materialDesign:HintAssist.Hint="心跳间隔 (秒)" Style="{StaticResource MaterialDesignFloatingHintTextBox}" Text="{Binding HeartbeatInterval}" Width="100" Margin="0,0,16,0" IsEnabled="{Binding IsHeartbeatDisabled, Converter={StaticResource InvertBooleanConverter}}" />
                                 <ToggleButton Style="{StaticResource MaterialDesignSwitchToggleButton}" IsChecked="{Binding IsHeartbeatDisabled}" VerticalAlignment="Bottom" Margin="0,0,8,4" />
@@ -840,12 +840,12 @@
                             Style="{StaticResource MaterialDesignTabControl}"
                             ClipToBounds="True"
                             SelectionChanged="MainTabControl_SelectionChanged">
-                    <TabItem Header="通信日志">
+                    <TabItem Header="系统日志">
                         <Grid RenderTransformOrigin="0.5,0.5">
                             <views:CommunicationLogView />
                         </Grid>
                     </TabItem>
-                    <TabItem Header="地图选点">
+                    <TabItem Header="轨迹模拟">
                         <Grid RenderTransformOrigin="0.5,0.5">
                             <!-- WebView2 is an HWND host and cannot participate in WPF
                                  opacity/render transforms. Keep it hidden while the WPF
@@ -872,7 +872,7 @@
                                                                      HorizontalAlignment="Center"
                                                                      VerticalAlignment="Center" />
                                         </Border>
-                                        <TextBlock Text="地图选点"
+                                        <TextBlock Text="轨迹模拟"
                                                    Margin="0,14,0,0"
                                                    FontSize="15"
                                                    FontWeight="SemiBold"

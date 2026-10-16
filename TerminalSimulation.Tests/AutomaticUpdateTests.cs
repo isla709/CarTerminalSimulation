@@ -801,6 +801,30 @@ public sealed class AutomaticUpdateTests
         Content = new StringContent(json, Encoding.UTF8, "application/json")
     };
 
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData("auto", true)]
+    [InlineData("zip", true)]
+    [InlineData("cts-setup-v1", true)]
+    [InlineData("unknown-installer", false)]
+    public async Task PackageFormat_AcceptsLegacyAndSetupProtocol_RejectsUnknown(string? format, bool accepted)
+    {
+        var root = CreateTemporaryDirectory();
+        try
+        {
+            var config = Path.Combine(root, "update-sources.json");
+            await File.WriteAllTextAsync(config, """{"schemaVersion":3,"channel":"preview","line":"main","sources":[{"type":"manifest","name":"test","enabled":true,"manifestUrl":"https://updates.example/manifest.json"}]}""");
+            var body = System.Text.Json.Nodes.JsonNode.Parse("""{"schemaVersion":2,"product":"TerminalSimulation","version":"preview11-build.20261015.1","channel":"preview","line":"main","compatibilityEpoch":1,"package":{"fileName":"setup.exe","url":"setup.exe","size":123,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}""")!.AsObject();
+            if (format is not null) body["package"]!["format"] = format;
+            using var client = new HttpClient(new StubHandler(_ => JsonResponse(body.ToJsonString())));
+            var service = new UpdateService(new TestLogger(), client, config);
+            var result = await service.CheckForUpdatesAsync("preview10", "main", 1, CancellationToken.None);
+            Assert.Equal(accepted, result.Candidate is not null);
+            if (accepted) Assert.Equal(format ?? "auto", Assert.Single(result.Candidate!.Sources).PackageFormat);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     private static string CreateTemporaryDirectory()
     {
         var path = Path.Combine(Path.GetTempPath(), "TerminalSimulation.Tests", Guid.NewGuid().ToString("N"));
@@ -823,5 +847,62 @@ public sealed class AutomaticUpdateTests
     private sealed class UpdateSourceConfigurationForTest
     {
         public int SchemaVersion { get; set; }
+    }
+
+    [Theory]
+    [InlineData(false, "zip", "https://updates.example/portable.zip")]
+    [InlineData(true, "cts-setup-v1", "https://updates.example/installer.exe")]
+    public async Task DualFormatManifest_SelectsPackageMatchingInstallationMode(
+        bool installed,
+        string expectedFormat,
+        string expectedUrl)
+    {
+        var root = CreateTemporaryDirectory();
+        try
+        {
+            var config = Path.Combine(root, "update-sources.json");
+            await File.WriteAllTextAsync(config, """{"schemaVersion":3,"channel":"preview","line":"main","sources":[{"type":"manifest","name":"test","enabled":true,"manifestUrl":"https://updates.example/manifest.json"}]}""");
+            var installDirectory = Path.Combine(root, "app");
+            if (installed)
+            {
+                Directory.CreateDirectory(Path.Combine(installDirectory, ".Installation"));
+                await File.WriteAllTextAsync(Path.Combine(installDirectory, ".Installation", "install.json"), "{}");
+            }
+
+            const string manifest = """
+                {
+                  "schemaVersion": 2,
+                  "product": "TerminalSimulation",
+                  "version": "preview12-build.20261017.1",
+                  "channel": "preview",
+                  "line": "main",
+                  "compatibilityEpoch": 1,
+                  "package": {
+                    "format": "zip",
+                    "fileName": "portable.zip",
+                    "url": "https://updates.example/portable.zip",
+                    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "size": 100
+                  },
+                  "packages": [
+                    {
+                      "format": "cts-setup-v1",
+                      "fileName": "installer.exe",
+                      "url": "https://updates.example/installer.exe",
+                      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                      "size": 200
+                    }
+                  ]
+                }
+                """;
+            using var client = new HttpClient(new StubHandler(_ => JsonResponse(manifest)));
+            var service = new UpdateService(new TestLogger(), client, config, installDirectory);
+            var result = await service.CheckForUpdatesAsync("preview11-build.20261016.1", "main", 1, CancellationToken.None);
+
+            var selected = Assert.Single(Assert.IsType<UpdateCandidate>(result.Candidate).Sources);
+            Assert.Equal(expectedFormat, selected.PackageFormat);
+            Assert.Equal(expectedUrl, selected.PackageUri.AbsoluteUri);
+        }
+        finally { Directory.Delete(root, true); }
     }
 }

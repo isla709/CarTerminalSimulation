@@ -72,6 +72,9 @@ internal sealed class UpdateManifest
     public string? ReleaseNotes { get; set; }
     public string? MinimumUpdaterVersion { get; set; }
     public UpdatePackage Package { get; set; } = new();
+    // Optional alternatives added by dual-format releases. `package` remains the
+    // legacy ZIP descriptor so older updater versions continue to work unchanged.
+    public List<UpdatePackage> Packages { get; set; } = [];
     public List<string> Delete { get; set; } = [];
 }
 
@@ -85,6 +88,7 @@ internal sealed class UpdateCatalog
 
 internal sealed class UpdatePackage
 {
+    public string Format { get; set; } = "auto";
     public string FileName { get; set; } = string.Empty;
     public string? Url { get; set; }
     public string Sha256 { get; set; } = string.Empty;
@@ -97,7 +101,8 @@ internal sealed record UpdateDownloadSource(
     Uri PackageUri,
     string Sha256,
     long? PackageSize,
-    bool AllowInsecureHttp)
+    bool AllowInsecureHttp,
+    string PackageFormat = "auto")
 {
     public string Host => PackageUri.Host;
 }
