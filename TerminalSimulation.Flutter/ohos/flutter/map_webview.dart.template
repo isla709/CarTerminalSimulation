@@ -1,0 +1,15 @@
+// Build.ps1 selects this adapter only with the CPF Flutter SDK. Its OHOS
+// PlatformView types do not exist in the upstream Windows/Android Flutter SDK.
+import 'package:flutter/widgets.dart';
+import 'package:flutter/foundation.dart';
+import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_ohos/webview_flutter_ohos.dart';
+
+Future<void> configureMapWebView(WebViewController controller) async {
+  if (kDebugMode && const bool.fromEnvironment('CTS_MAP_WEB_DEBUG')) {
+    await OhosWebViewController.enableDebugging(true);
+  }
+}
+
+Widget mapWebView(WebViewController controller) =>
+    WebViewWidget(controller: controller);

@@ -1,0 +1,33 @@
+name: terminal_simulation
+description: CTS Windows, Linux, Android and HarmonyOS terminal simulator.
+publish_to: none
+version: 0.1.0+1
+environment:
+  sdk: '>=3.10.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  fast_gbk: ^1.0.0
+  cryptography: 2.9.0
+  webview_cef: 0.6.2
+  file_selector: 1.1.0
+  webview_flutter:
+    git:
+      url: https://gitcode.com/CPF-Flutter/flutter_packages.git
+      ref: 5a9d0055772c7973712c0eaaf2de0e5f0749f8b9
+      path: packages/webview_flutter/webview_flutter
+  webview_flutter_ohos:
+    git:
+      url: https://gitcode.com/CPF-Flutter/flutter_packages.git
+      ref: 5a9d0055772c7973712c0eaaf2de0e5f0749f8b9
+      path: packages/webview_flutter/webview_flutter_ohos
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/brand/app-icon.png
+    - assets/map/
+    - assets/credentials/
