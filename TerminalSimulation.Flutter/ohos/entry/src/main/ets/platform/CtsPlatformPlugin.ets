@@ -5,6 +5,7 @@ import { BusinessError } from '@ohos.base';
 import common from '@ohos.app.ability.common';
 import picker from '@ohos.file.picker';
 import fs from '@ohos.file.fs';
+import uiMaterial from '@ohos.arkui.uiMaterial';
 
 // A compiled platform adapter, unrelated to the excluded dynamic CTS plugin system.
 export default class CtsPlatformPlugin implements FlutterPlugin, MethodCallHandler {
@@ -25,6 +26,12 @@ export default class CtsPlatformPlugin implements FlutterPlugin, MethodCallHandl
   onMethodCall(call: MethodCall, result: MethodResult): void {
     if (call.method === 'dataDirectory') {
       result.success(this.context.filesDir);
+    } else if (call.method === 'openVideo') {
+      if (this.saving) { result.error('busy', '文件选择器正在使用', null); return; }
+      this.saving = true;
+      this.openVideo().then((path: string | null) => result.success(path))
+        .catch(() => result.error('video-open-failed', '无法读取视频，请选择不超过 256 MiB 的 H.264 裸流文件', null))
+        .finally(() => { this.saving = false; });
     } else if (call.method === 'openDocument') {
       if (this.saving) { result.error('busy', '文件选择器正在使用', null); return; }
       this.saving = true;
@@ -51,6 +58,11 @@ export default class CtsPlatformPlugin implements FlutterPlugin, MethodCallHandl
       capability.set('platform', 'harmonyos');
       capability.set('apiVersion', deviceInfo.sdkApiVersion);
       capability.set('nativeDialogs', deviceInfo.sdkApiVersion >= 26);
+      capability.set('nativeChrome', deviceInfo.sdkApiVersion >= 26);
+      if (deviceInfo.sdkApiVersion >= 26) {
+        capability.set('immersiveMaterialSupported', uiMaterial.isImmersiveMaterialSupported());
+        capability.set('materialLevel', uiMaterial.getGlobalMaterialLevel());
+      }
       result.success(capability);
     } else if (call.method === 'showMaterialDialog') {
       // The entry module opts in to system materials. No API 26-only calls run on older systems.
@@ -109,5 +121,25 @@ export default class CtsPlatformPlugin implements FlutterPlugin, MethodCallHandl
       for (const part of chunks) { bytes.set(part, offset); offset += part.byteLength; }
       return bytes;
     } finally { await fs.close(file); }
+  }
+  private async openVideo(): Promise<string | null> {
+    const paths = await new picker.DocumentViewPicker(this.context).select({
+      maxSelectNumber: 1, fileSuffixFilters: ['H.264|.h264,.264,.avc']
+    });
+    if (paths.length === 0) return null;
+    const source = await fs.open(paths[0], fs.OpenMode.READ_ONLY);
+    const directory = this.context.filesDir + '/video-sources';
+    let destination = '';
+    try {
+      if ((await fs.stat(source.fd)).size > 256 * 1024 * 1024) throw new Error('视频超过 256 MiB');
+      await fs.mkdir(directory, true);
+      destination = directory + '/video-' + Date.now() + '.h264';
+      await fs.copyFile(source.fd, destination);
+      if ((await fs.stat(destination)).size > 256 * 1024 * 1024) throw new Error('视频超过 256 MiB');
+      return destination;
+    } catch (error) {
+      if (destination.length > 0) { try { await fs.unlink(destination); } catch (_) {} }
+      throw new Error('视频读取失败');
+    } finally { await fs.close(source); }
   }
 }

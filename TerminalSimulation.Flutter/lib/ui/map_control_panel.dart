@@ -7,6 +7,7 @@ import '../core/vehicle_options.dart';
 import '../services/map_workspace_controller.dart';
 import 'components.dart';
 import 'map_vehicle_settings.dart';
+import 'device_position_controls.dart';
 
 class MapControlPanel extends StatefulWidget {
   const MapControlPanel({
@@ -32,7 +33,7 @@ class MapControlPanel extends StatefulWidget {
 
 class _MapControlPanelState extends State<MapControlPanel> {
   final search = TextEditingController(), speed = TextEditingController();
-  final speedFocus = FocusNode();
+  final speedFocus = FocusNode(), searchFocus = FocusNode();
   Timer? debounce;
   String _lastQuery = '';
   bool _composing = false;
@@ -55,6 +56,78 @@ class _MapControlPanelState extends State<MapControlPanel> {
   int gear = 1;
   double throttle = 0, brake = 0;
   MapWorkspaceController get c => widget.controller;
+  Widget _livePanel() => Material(
+    color: Theme.of(context).colorScheme.surface,
+    child: Column(
+      children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onVerticalDragUpdate: widget.onDrag == null
+              ? null
+              : (d) => widget.onDrag!(d.delta.dy),
+          onVerticalDragEnd: widget.onDragEnd == null
+              ? null
+              : (_) => widget.onDragEnd!(),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 4, 4),
+            child: Row(
+              children: [
+                const Icon(Icons.my_location),
+                const SizedBox(width: 8),
+                const Expanded(child: Text('设备实时位置')),
+                IconButton(
+                  tooltip: widget.collapsed ? '展开面板' : '收起面板',
+                  onPressed: widget.onToggle,
+                  icon: Icon(
+                    widget.collapsed ? Icons.expand_less : Icons.expand_more,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (!widget.collapsed) ...[
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: ModelSlice<Object?>(
+                listenable: c.model,
+                select: () => (
+                  c.model.deviceFix,
+                  c.model.hasDeviceFix,
+                  c.model.locationStatus,
+                  c.model.locationChanging,
+                  c.model.locationRevision,
+                ),
+                builder: (context, _) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    DevicePositionSummary(model: c.model),
+                    const SizedBox(height: 20),
+                    OutlinedButton.icon(
+                      onPressed: c.model.hasDeviceFix ? c.resumeFollow : null,
+                      icon: const Icon(Icons.my_location),
+                      label: const Text('回到当前位置'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: OutlinedButton.icon(
+              onPressed: c.model.locationChanging
+                  ? null
+                  : () => run(() => c.model.setRealLocation(false)),
+              icon: const Icon(Icons.gps_off),
+              label: const Text('停止设备定位'),
+            ),
+          ),
+        ],
+      ],
+    ),
+  );
   @override
   void initState() {
     super.initState();
@@ -69,6 +142,7 @@ class _MapControlPanelState extends State<MapControlPanel> {
     search.dispose();
     speed.dispose();
     speedFocus.dispose();
+    searchFocus.dispose();
     super.dispose();
   }
 
@@ -109,8 +183,9 @@ class _MapControlPanelState extends State<MapControlPanel> {
   }
 
   void submitSearch(String value) {
+    if (!search.value.composing.isCollapsed) return;
     debounce?.cancel();
-    FocusScope.of(context).unfocus();
+    searchFocus.unfocus();
     unawaited(c.search(value));
   }
 
@@ -144,38 +219,8 @@ class _MapControlPanelState extends State<MapControlPanel> {
     if (convert != null && mounted) c.setSystem(value, convert: convert);
   }
 
-  Future<String?> askName(String title, String value) async {
-    final field = TextEditingController(text: value);
-    try {
-      return await showDialog<String>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(title),
-          content: TextField(
-            controller: field,
-            autofocus: true,
-            maxLength: 80,
-            decoration: const InputDecoration(labelText: '名称'),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () {
-                final text = field.text.trim();
-                if (text.isNotEmpty) Navigator.pop(ctx, text);
-              },
-              child: const Text('保存'),
-            ),
-          ],
-        ),
-      );
-    } finally {
-      WidgetsBinding.instance.addPostFrameCallback((_) => field.dispose());
-    }
-  }
+  Future<String?> askName(String title, String value) =>
+      promptText(context, title, value);
 
   Future<void> history({bool routes = true}) async {
     await c.refreshHistory();
@@ -539,7 +584,8 @@ class _MapControlPanelState extends State<MapControlPanel> {
             final scaled = MediaQuery.textScalerOf(context).scale(14) / 14;
             final two = box.maxWidth >= (160 * scaled) * 2 + 12;
             final children = <Widget>[
-              TextFormField(
+              AppTextField(
+                key: const ValueKey('map-speed'),
                 controller: speed,
                 focusNode: speedFocus,
                 readOnly: c.vehicle.enabled,
@@ -597,22 +643,15 @@ class _MapControlPanelState extends State<MapControlPanel> {
                     : null,
               ),
             ];
-            return two
-                ? Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(child: children[0]),
-                      const SizedBox(width: 12),
-                      Expanded(child: children[1]),
-                    ],
-                  )
-                : Column(
-                    children: [
-                      children[0],
-                      const SizedBox(height: 16),
-                      children[1],
-                    ],
-                  );
+            final width = two ? (box.maxWidth - 12) / 2 : box.maxWidth;
+            return Wrap(
+              spacing: 12,
+              runSpacing: 16,
+              children: [
+                for (var i = 0; i < children.length; i++)
+                  SizedBox(key: ValueKey(i), width: width, child: children[i]),
+              ],
+            );
           },
         ),
         const SizedBox(height: 16),
@@ -653,7 +692,12 @@ class _MapControlPanelState extends State<MapControlPanel> {
     );
   }
 
-  Widget driving() {
+  Widget driving() => ListenableBuilder(
+    listenable: c.model,
+    builder: (context, _) => _driving(),
+  );
+
+  Widget _driving() {
     final t = c.model.vehicleTelemetry;
     if (t == null) return const SizedBox.shrink();
     final values = t.values;
@@ -748,6 +792,7 @@ class _MapControlPanelState extends State<MapControlPanel> {
 
   @override
   Widget build(BuildContext context) {
+    if (c.model.realLocation) return _livePanel();
     final scheme = Theme.of(context).colorScheme;
     return Material(
       color: scheme.surface,
@@ -841,8 +886,10 @@ class _MapControlPanelState extends State<MapControlPanel> {
                           ],
                         ),
                       ),
-                    TextField(
+                    AppTextField(
+                      key: const ValueKey('map-search'),
                       controller: search,
+                      focusNode: searchFocus,
                       onSubmitted: submitSearch,
                       textInputAction: TextInputAction.search,
                       decoration: InputDecoration(
@@ -1067,70 +1114,73 @@ class _MapControlPanelState extends State<MapControlPanel> {
               ),
             ),
           const Divider(height: 1),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-            child: Row(
-              children: [
-                if (MediaQuery.textScalerOf(context).scale(14) > 20)
-                  IconButton.filledTonal(
-                    tooltip: '清除路线',
-                    onPressed: c.editable ? c.clear : null,
-                    icon: const Icon(Icons.delete_outline),
-                  )
-                else
-                  Expanded(
-                    child: OutlinedButton(
+          Offstage(
+            offstage: MediaQuery.viewInsetsOf(context).bottom > 0,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+              child: Row(
+                children: [
+                  if (MediaQuery.textScalerOf(context).scale(14) > 20)
+                    IconButton.filledTonal(
+                      tooltip: '清除路线',
                       onPressed: c.editable ? c.clear : null,
-                      child: const Text('清除路线'),
+                      icon: const Icon(Icons.delete_outline),
+                    )
+                  else
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: c.editable ? c.clear : null,
+                        child: const Text('清除路线'),
+                      ),
                     ),
-                  ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 2,
-                  child: FilledButton.icon(
-                    onPressed: c.running
-                        ? c.stop
-                        : c.canSave
-                        ? () => run(() async {
-                            FocusScope.of(context).unfocus();
-                            if (!c.vehicle.enabled) {
-                              final value = double.tryParse(speed.text);
-                              if (value == null) {
-                                throw const FormatException('请输入有效速度');
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: FilledButton.icon(
+                      onPressed: c.running
+                          ? c.stop
+                          : c.canSave
+                          ? () => run(() async {
+                              FocusScope.of(context).unfocus();
+                              if (!c.vehicle.enabled) {
+                                final value = double.tryParse(speed.text);
+                                if (value == null) {
+                                  throw const FormatException('请输入有效速度');
+                                }
+                                c.setSpeed(value);
                               }
-                              c.setSpeed(value);
-                            }
-                            automatic = true;
-                            gear = 1;
-                            throttle = brake = 0;
-                            await c.startSimulation();
-                          })
-                        : null,
-                    style: c.running
-                        ? FilledButton.styleFrom(
-                            backgroundColor: scheme.error,
-                            foregroundColor: scheme.onError,
-                          )
-                        : null,
-                    icon: Icon(
-                      c.running
-                          ? Icons.stop
-                          : c.mode == 'single'
-                          ? Icons.check
-                          : Icons.play_arrow,
-                    ),
-                    label: Text(
-                      c.model.simulationPreparing
-                          ? '取消准备'
-                          : c.running
-                          ? '停止模拟'
-                          : c.mode == 'single'
-                          ? '应用位置'
-                          : '开始模拟',
+                              automatic = true;
+                              gear = 1;
+                              throttle = brake = 0;
+                              await c.startSimulation();
+                            })
+                          : null,
+                      style: c.running
+                          ? FilledButton.styleFrom(
+                              backgroundColor: scheme.error,
+                              foregroundColor: scheme.onError,
+                            )
+                          : null,
+                      icon: Icon(
+                        c.running
+                            ? Icons.stop
+                            : c.mode == 'single'
+                            ? Icons.check
+                            : Icons.play_arrow,
+                      ),
+                      label: Text(
+                        c.model.simulationPreparing
+                            ? '取消准备'
+                            : c.running
+                            ? '停止模拟'
+                            : c.mode == 'single'
+                            ? '应用位置'
+                            : '开始模拟',
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],

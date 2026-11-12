@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/app_model.dart';
+import '../services/video_files.dart';
 import 'components.dart';
 
 class VideoPage extends StatefulWidget {
@@ -21,6 +22,24 @@ class _VideoPageState extends State<VideoPage> {
   });
   int channel = 1;
   String error = '';
+  bool picking = false;
+  Future<void> _pickVideo() async {
+    setState(() => picking = true);
+    try {
+      final selected = await VideoFiles.pick();
+      if (mounted && selected != null) {
+        setState(() {
+          path.text = selected;
+          error = '';
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => error = '$e');
+    } finally {
+      if (mounted) setState(() => picking = false);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -73,22 +92,39 @@ class _VideoPageState extends State<VideoPage> {
           '推流源',
           child: Column(
             children: [
-              TextField(
-                controller: path,
-                decoration: const InputDecoration(labelText: 'H.264 文件路径'),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.video_file_outlined),
+                title: Text(
+                  path.text.isEmpty
+                      ? '尚未选择视频'
+                      : path.text.replaceAll('\\', '/').split('/').last,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: const Text('H.264 Annex-B 裸流 · 最大 256 MiB'),
+                onTap: picking ? null : _pickVideo,
+              ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  onPressed: picking ? null : _pickVideo,
+                  icon: const Icon(Icons.folder_open),
+                  label: Text(picking ? '正在选择…' : '选择视频文件'),
+                ),
               ),
               const SizedBox(height: 16),
               FieldGrid(
                 children: [
-                  TextField(
+                  AppTextField(
                     controller: host,
                     decoration: const InputDecoration(labelText: '媒体服务器'),
                   ),
-                  TextField(
+                  AppTextField(
                     controller: port,
                     decoration: const InputDecoration(labelText: 'TCP 端口'),
                   ),
-                  TextField(
+                  AppTextField(
                     controller: fps,
                     decoration: const InputDecoration(labelText: '帧率'),
                   ),
@@ -113,7 +149,12 @@ class _VideoPageState extends State<VideoPage> {
                 runSpacing: 10,
                 children: [
                   FilledButton(
-                    onPressed: sessions[channel - 1].connecting ? null : _start,
+                    onPressed:
+                        picking ||
+                            path.text.isEmpty ||
+                            sessions[channel - 1].connecting
+                        ? null
+                        : _start,
                     child: const Text('开始 / 重启通道'),
                   ),
                   OutlinedButton(

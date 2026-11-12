@@ -21,7 +21,7 @@ class MapCredentials {
       );
     } catch (_) {
       // Avoid logging decoded values, ciphertext, URLs or cryptographic errors.
-      throw StateError('内置地图凭据不可用，请使用构建脚本重新构建应用。');
+      throw StateError('地图配置不可用，请联系应用提供者。');
     }
   }
 

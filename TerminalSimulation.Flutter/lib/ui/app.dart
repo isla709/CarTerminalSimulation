@@ -1,7 +1,11 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../services/app_model.dart';
 import '../services/terminal_session.dart' as terminal;
 import 'components.dart';
+import 'floating_navigation.dart';
+import 'harmony_chrome.dart';
+import 'log_page.dart';
 import 'terminal_page.dart';
 import 'tools_page.dart';
 import 'route_page.dart';
@@ -11,8 +15,9 @@ class TerminalApp extends StatelessWidget {
   const TerminalApp({super.key, required this.model});
   final AppModel model;
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
+  Widget build(BuildContext context) => ModelSlice<(String, bool, bool)>(
     listenable: model,
+    select: () => (model.theme, model.glass, model.reduceMotion),
     builder: (context, _) => MaterialApp(
       debugShowCheckedModeBanner: false,
       themeAnimationDuration: model.reduceMotion
@@ -109,7 +114,9 @@ class _StudioShellState extends State<StudioShell>
     end: Offset.zero,
   ).animate(CurvedAnimation(parent: transition, curve: Curves.easeOutCubic));
   void select(int value) {
+    settingsMenu.close();
     if (value == selected) return;
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() => selected = value);
     if (MediaQuery.disableAnimationsOf(context)) {
       transition.value = 1;
@@ -125,20 +132,21 @@ class _StudioShellState extends State<StudioShell>
   }
 
   int selected = 0;
-  static const destinations = [
-    ('终端', Icons.directions_car_outlined),
-    ('轨迹', Icons.route_outlined),
-    ('工具', Icons.data_object),
-    ('日志', Icons.receipt_long_outlined),
-    ('设置', Icons.tune),
-  ];
+  bool nativeChromeReady = false;
+  final headerKey = GlobalKey(), bottomKey = GlobalKey();
+  final settingsMenu = MenuController();
   List<Widget> get pages => <Widget>[
     TerminalPage(model: widget.model),
     RoutePage(model: widget.model),
     ToolsPage(model: widget.model),
     LogPage(model: widget.model),
-    SettingsPage(model: widget.model),
+    SettingsPage(model: widget.model, themeMenu: settingsMenu),
   ];
+  String get connectionLabel => switch (widget.model.session.state) {
+    terminal.ConnectionState.connected => '已连接',
+    terminal.ConnectionState.connecting => '连接中',
+    _ => '未连接',
+  };
   @override
   Widget build(BuildContext context) {
     final model = widget.model, scheme = Theme.of(context).colorScheme;
@@ -146,202 +154,201 @@ class _StudioShellState extends State<StudioShell>
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 600,
             wide = constraints.maxWidth >= 1024;
+        final keyboard = MediaQuery.viewInsetsOf(context).bottom > 0;
+        final headerHeight = math.max(
+          56.0,
+          MediaQuery.textScalerOf(context).scale(16) * 1.4 + 20,
+        );
+        final topInset = headerHeight + 24;
+        final bottomVisible = compact && !keyboard;
+        final bottomInset = bottomVisible
+            ? FloatingStudioNavigation.height(context) + 24
+            : 0.0;
+        final railWidth = wide ? 180.0 : 84.0;
+        final glass = model.glass && !MediaQuery.highContrastOf(context);
         return Scaffold(
           body: SafeArea(
-            child: Column(
+            child: Stack(
               children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                  child: GlassPanel(
-                    enabled: model.glass,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
+                Positioned.fill(
+                  left: compact ? 0 : railWidth + 24,
+                  child: MediaQuery(
+                    data: MediaQuery.of(context).copyWith(
+                      padding: EdgeInsets.only(
+                        top: topInset,
+                        bottom: bottomInset,
+                      ),
                     ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: scheme.primary,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(
-                            Icons.terminal,
-                            color: scheme.onPrimary,
-                            size: 21,
-                          ),
+                    child: FadeTransition(
+                      opacity: opacity,
+                      child: SlideTransition(
+                        position: position,
+                        child: IndexedStack(
+                          index: selected,
+                          children: [
+                            for (var i = 0; i < pages.length; i++)
+                              ActiveModelView(
+                                listenable: model,
+                                active: selected == i,
+                                select: i == 3
+                                    ? () => model.logRevision
+                                    : i == 2
+                                    ? () => model.session.state
+                                    : null,
+                                builder: (_) => pages[i],
+                              ),
+                          ],
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            compact ? 'CTS' : 'CTS / Terminal Studio',
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        Icon(
-                          model.session.state ==
-                                  terminal.ConnectionState.connected
-                              ? Icons.wifi
-                              : Icons.wifi_off,
-                          size: 18,
-                          color:
-                              model.session.state ==
-                                  terminal.ConnectionState.connected
-                              ? scheme.primary
-                              : scheme.outline,
-                        ),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            switch (model.session.state) {
-                              terminal.ConnectionState.connected => '已连接',
-                              terminal.ConnectionState.connecting => '连接中',
-                              _ => '未连接',
-                            },
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.labelMedium,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
-                Expanded(
-                  child: Row(
-                    children: [
-                      if (!compact)
-                        ScrollableRail(
-                          width: wide ? 180 : 80,
-                          child: NavigationRail(
-                            extended: wide,
-                            minExtendedWidth: 180,
-                            selectedIndex: selected,
-                            onDestinationSelected: select,
-                            labelType: wide
-                                ? null
-                                : NavigationRailLabelType.all,
-                            destinations: destinations
-                                .map(
-                                  (d) => NavigationRailDestination(
-                                    icon: Icon(d.$2),
-                                    label: Text(d.$1),
-                                  ),
-                                )
-                                .toList(),
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  top: 12,
+                  child: SizedBox(
+                    key: headerKey,
+                    height: headerHeight,
+                    child: IgnorePointer(
+                      ignoring: nativeChromeReady,
+                      child: Opacity(
+                        opacity: nativeChromeReady ? 0 : 1,
+                        child: GlassPanel(
+                          enabled: glass,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
                           ),
-                        ),
-                      Expanded(
-                        child: FadeTransition(
-                          opacity: opacity,
-                          child: SlideTransition(
-                            position: position,
-                            child: IndexedStack(
-                              index: selected,
-                              children: pages,
+                          child: ModelSlice<terminal.ConnectionState>(
+                            listenable: model,
+                            select: () => model.session.state,
+                            builder: (context, _) => Row(
+                              children: [
+                                Image.asset(
+                                  'assets/brand/app-icon.png',
+                                  width: 36,
+                                  height: 36,
+                                  semanticLabel: 'CTS',
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    compact ? 'CTS' : 'CTS / Terminal Studio',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                Icon(
+                                  model.session.state ==
+                                          terminal.ConnectionState.connected
+                                      ? Icons.link
+                                      : Icons.link_off,
+                                  size: 18,
+                                  color:
+                                      model.session.state ==
+                                          terminal.ConnectionState.connected
+                                      ? scheme.primary
+                                      : scheme.outline,
+                                ),
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    connectionLabel,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.labelMedium,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
                       ),
-                    ],
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 12,
+                  top: topInset,
+                  bottom: 12,
+                  width: railWidth,
+                  child: Offstage(
+                    offstage: compact,
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: FloatingStudioNavigation(
+                        selected: selected,
+                        onSelected: select,
+                        glass: glass,
+                        vertical: true,
+                        extended: wide,
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 12,
+                  right: 12,
+                  bottom: 12,
+                  child: Offstage(
+                    offstage: !bottomVisible,
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 560),
+                        child: SizedBox(
+                          key: bottomKey,
+                          height: FloatingStudioNavigation.height(context),
+                          child: IgnorePointer(
+                            ignoring: nativeChromeReady,
+                            child: Opacity(
+                              opacity: nativeChromeReady ? 0 : 1,
+                              child: FloatingStudioNavigation(
+                                selected: selected,
+                                onSelected: select,
+                                glass: glass,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  child: ModelSlice<terminal.ConnectionState>(
+                    listenable: model,
+                    select: () => model.session.state,
+                    builder: (context, _) => HarmonyChromeBridge(
+                      headerKey: headerKey,
+                      bottomKey: bottomKey,
+                      enabled: glass,
+                      bottomVisible: bottomVisible,
+                      compact: compact,
+                      selected: selected,
+                      status: connectionLabel,
+                      connected:
+                          model.session.state ==
+                          terminal.ConnectionState.connected,
+                      onSelected: select,
+                      onReady: (value) {
+                        if (mounted && value != nativeChromeReady) {
+                          setState(() => nativeChromeReady = value);
+                        }
+                      },
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-          bottomNavigationBar: compact
-              ? NavigationBar(
-                  selectedIndex: selected,
-                  onDestinationSelected: select,
-                  animationDuration: MediaQuery.disableAnimationsOf(context)
-                      ? Duration.zero
-                      : const Duration(milliseconds: 220),
-                  destinations: destinations
-                      .map(
-                        (d) => NavigationDestination(
-                          icon: Icon(d.$2),
-                          label: d.$1,
-                        ),
-                      )
-                      .toList(),
-                )
-              : null,
         );
       },
-    );
-  }
-}
-
-class LogPage extends StatefulWidget {
-  const LogPage({super.key, required this.model});
-  final AppModel model;
-  @override
-  State<LogPage> createState() => _LogPageState();
-}
-
-class _LogPageState extends State<LogPage> {
-  String filter = '全部';
-  @override
-  Widget build(BuildContext context) {
-    final logs = widget.model.logs
-        .where((e) => filter == '全部' || e.category == filter)
-        .toList();
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
-            spacing: 12,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Text('通信与事件', style: Theme.of(context).textTheme.headlineSmall),
-              DropdownButton<String>(
-                value: filter,
-                items: ['全部', '发送', '接收', '错误', '文本', '透传', '配置']
-                    .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                    .toList(),
-                onChanged: (value) => setState(() => filter = value!),
-              ),
-              TextButton.icon(
-                onPressed: () {
-                  widget.model.logs.clear();
-                  widget.model.changed();
-                },
-                icon: const Icon(Icons.clear_all),
-                label: const Text('清空全部'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: logs.isEmpty
-                ? const Center(child: Text('连接、发送和下行事件将在这里显示'))
-                : ListView.builder(
-                    itemCount: logs.length,
-                    itemBuilder: (context, index) {
-                      final entry = logs[index];
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 7),
-                        child: SelectableText(
-                          '${entry.time.toIso8601String().substring(11, 23)}  ${entry.category}\n${entry.message}',
-                          style: TextStyle(
-                            fontFamily: 'monospace',
-                            fontSize: 12,
-                            color: entry.category == '错误'
-                                ? Theme.of(context).colorScheme.error
-                                : null,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
     );
   }
 }

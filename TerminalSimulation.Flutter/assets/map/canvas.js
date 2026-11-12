@@ -8,6 +8,7 @@
   const post=data=>window.chrome?.webview?.postMessage(JSON.stringify({version:1,...data}));
   let geometry={points:[],alternatives:[],active:0,start:null,end:null,mode:'navigation'}, revision=-1;
   let lastCar=null,bearing=0,reduceMotion=false,style='default',view3d=false;
+  let followSuspended=false,following=false,carFrame=0,displayCar=null,displayBearing=0;
   function svgData(svg) { return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`; }
   function endpointSvg(color, text) { return svgData(`<svg xmlns="http://www.w3.org/2000/svg" width="42" height="48"><filter id="s"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-opacity=".3"/></filter><path filter="url(#s)" fill="${color}" stroke="white" stroke-width="3" d="M21 2C10 2 3 10 3 20c0 14 18 27 18 27s18-13 18-27C39 10 32 2 21 2z"/><circle cx="21" cy="20" r="10" fill="white" fill-opacity=".18"/><text x="21" y="25" text-anchor="middle" fill="white" font-size="13" font-family="Microsoft YaHei" font-weight="700">${text}</text></svg>`); }
   const carSvg = () => svgData(`<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44"><filter id="s"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-opacity=".35"/></filter><g filter="url(#s)"><circle cx="22" cy="22" r="18" fill="white"/><path fill="${themeColors[state.currentPathStyle]?.[0] || '#1688ff'}" d="M22 5 34 35 22 29 10 35z"/></g></svg>`);
@@ -77,17 +78,45 @@
     if(geometry.points.length>1){const paths=geometry.points.map(toLatLng);g.push({id:'shadow',styleId:'shadow',paths},{id:'route',styleId:'active',paths});}
     state.routeLayer.setGeometries(g);
   }
+  function paintCar(point,direction){
+    displayCar=point;displayBearing=direction;
+    state.markerLayer?.updateGeometries([{id:'car',styleId:carStyleId(direction),position:toLatLng(point)}]);
+    if(following&&!followSuspended&&!pointer)state.map?.setCenter(toLatLng(point));
+  }
+  function animateCar(point,direction){
+    cancelAnimationFrame(carFrame);
+    const target=asPoint(point),from=displayCar||target,start=performance.now();
+    const fromBearing=displayBearing,turn=(direction-fromBearing+540)%360-180;
+    // Simulation snapshots arrive at 10 Hz. Interpolate only the moving marker;
+    // static route/endpoints never re-enter the geometry pipeline on each tick.
+    function frame(now){
+      const t=reduceMotion?1:Math.min(1,(now-start)/100);
+      paintCar({lat:from.lat+(target.lat-from.lat)*t,lng:from.lng+(target.lng-from.lng)*t},normalizeBearing(fromBearing+turn*t));
+      if(t<1)carFrame=requestAnimationFrame(frame);
+    }
+    if(!displayCar||reduceMotion)paintCar(target,direction);
+    else carFrame=requestAnimationFrame(frame);
+  }
   function render(data){
     if(!state.map)return;
-    if(data.points&&data.revision!==revision){geometry={...geometry,...data};revision=data.revision;routes();}
-    if(themeColors[data.pathStyle]&&state.currentPathStyle!==data.pathStyle){state.currentPathStyle=data.pathStyle;createRouteLayer();createMarkerLayer();routes();}
+    let geometryChanged=false;
+    if(data.points&&data.revision!==revision){geometry={...geometry,...data};revision=data.revision;geometryChanged=true;routes();}
+    if(themeColors[data.pathStyle]&&state.currentPathStyle!==data.pathStyle){state.currentPathStyle=data.pathStyle;createRouteLayer();createMarkerLayer();routes();geometryChanged=true;}
     if(data.mapStyle!==style){
       const center=state.map.getCenter(),zoom=state.map.getZoom();style=data.mapStyle;
-      try{state.routeLayer?.setMap(null);state.markerLayer?.setMap(null);state.map.destroy();$('map').replaceChildren();createMap(center,zoom);routes()}catch(_){post({type:'error'})}
+      try{state.routeLayer?.setMap(null);state.markerLayer?.setMap(null);state.map.destroy();$('map').replaceChildren();createMap(center,zoom);routes();geometryChanged=true;}catch(_){post({type:'error'})}
     }
     if(view3d!==!!data.use3d){view3d=!!data.use3d;state.map.setPitch(view3d?50:0);state.map.setRotation(0)}
-    lastCar=data.car||lastCar;bearing=Number(data.bearing)||0;markers();
-    if(data.follow&&lastCar)state.map.setCenter(toLatLng(lastCar));
+    following=!!data.follow;
+    if(!following)followSuspended=false;
+    const next=data.showCar===false?null:(data.car||lastCar),nextBearing=Number(data.bearing)||0;
+    const moved=next&&(!lastCar||next.lat!==lastCar.lat||next.lng!==lastCar.lng||nextBearing!==bearing);
+    const hidden=!!lastCar&&!next,shown=!lastCar&&!!next;
+    lastCar=next;bearing=nextBearing;
+    if(hidden){cancelAnimationFrame(carFrame);displayCar=null;}
+    if(geometryChanged||hidden||shown)markers();
+    if(moved)animateCar(lastCar,bearing);
+    else if(following&&!followSuspended&&!pointer&&lastCar)state.map.setCenter(toLatLng(lastCar));
   }
   function fit(){
     const line=geometry.points;if(!state.map||!line.length)return;
@@ -103,16 +132,27 @@
     appearance(data){reduceMotion=!!data.reduceMotion;document.documentElement.style.colorScheme=data.dark?'dark':'light'}
   };
   let dragged=false,ignoreUntil=0,pointer=null;
+  function suspendFollow(){
+    if(!state.map)return;
+    dragged=true;ignoreUntil=performance.now()+350;
+    if(followSuspended||!following)return;
+    followSuspended=true;
+    const p=state.map.getCenter();
+    // Suspend in JS before crossing the asynchronous Flutter bridge.
+    post({type:'view',lat:p.getLat(),lng:p.getLng(),dragged:true});
+  }
   $('map').addEventListener('pointerdown',e=>{pointer={id:e.pointerId,x:e.clientX,y:e.clientY}},true);
-  $('map').addEventListener('pointermove',e=>{if(pointer?.id===e.pointerId&&Math.hypot(e.clientX-pointer.x,e.clientY-pointer.y)>8)ignoreUntil=performance.now()+350},true);
+  $('map').addEventListener('pointermove',e=>{if(pointer?.id===e.pointerId&&Math.hypot(e.clientX-pointer.x,e.clientY-pointer.y)>4)suspendFollow()},true);
+  $('map').addEventListener('wheel',suspendFollow,{capture:true,passive:true});
   window.addEventListener('pointerup',()=>{pointer=null},true);
   window.addEventListener('pointercancel',()=>{pointer=null},true);
+  window.addEventListener('pagehide',()=>cancelAnimationFrame(carFrame));
   $('map').addEventListener('dragstart',e=>e.preventDefault());
   function createMap(center,zoom){
       state.map=new TMap.Map($('map'),{center,zoom,pitch:view3d?50:0,viewMode:'3D',baseMap:{type:'vector',features:['base','building3d','point','label']},...(style==='default'?{}:{mapStyleId:style})});
       createRouteLayer();createMarkerLayer();
       state.map.on('click',e=>{if(performance.now()>=ignoreUntil)post({type:'point',lat:e.latLng.getLat(),lng:e.latLng.getLng()})});
-      state.map.on('dragstart',()=>{dragged=true;ignoreUntil=performance.now()+350});
+      state.map.on('dragstart',suspendFollow);
       state.map.on('dragend',()=>{ignoreUntil=performance.now()+350});
       state.map.on('idle',()=>{const p=state.map.getCenter();post({type:'view',lat:p.getLat(),lng:p.getLng(),dragged});dragged=false});
   }

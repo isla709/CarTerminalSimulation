@@ -9,10 +9,12 @@ param(
   [ValidateSet('ohos-arm64','ohos-arm','ohos-x64')][string]$OhosTargetPlatform='ohos-arm64',
   [switch]$Codesign,
   [switch]$DebugMapWebView,
+  [switch]$DebugFrameTimings,
   [switch]$OfflineDependencies,
   [switch]$VerboseBuild
 )
 $ErrorActionPreference='Stop'
+if($DebugFrameTimings -and $Configuration -ne 'Debug'){throw 'Frame diagnostics are available only in Debug builds.'}
 if($DebugMapWebView -and $Configuration -ne 'Debug'){throw 'Map WebView debugging is available only in Debug builds.'}
 $projectRoot=Split-Path $PSScriptRoot -Parent
 $repositoryRoot=Split-Path $projectRoot -Parent
@@ -80,6 +82,11 @@ if($Platform -eq 'ohos'){
   # The OHOS SDK exposes PlatformView types absent from upstream Flutter.
   # Select the native-composition adapter only in this SDK's build copy.
   Copy-Item -LiteralPath (Join-Path $projectRoot 'ohos/flutter/map_webview.dart.template') -Destination (Join-Path $sourceRoot 'lib/ui/map_webview.dart') -Force
+  Copy-Item -LiteralPath (Join-Path $projectRoot 'ohos/flutter/harmony_chrome.dart.template') -Destination (Join-Path $sourceRoot 'lib/ui/harmony_chrome.dart') -Force
+  foreach($retired in @('lib/ui/harmony_navigation.dart','ohos/entry/src/main/ets/platform/CtsNavigationView.ets')){
+    $retiredPath=Join-Path $sourceRoot $retired
+    if(Test-Path -LiteralPath $retiredPath -PathType Leaf){Remove-Item -LiteralPath $retiredPath -Force}
+  }
   if($localOhosIdentity){
     $profilePath=Join-Path $sourceRoot 'ohos/build-profile.json5'
     $profile=Get-Content -LiteralPath $profilePath -Raw | ConvertFrom-Json -AsHashtable
@@ -170,6 +177,7 @@ try {
   $flutterArguments+='--no-pub'
   if($Platform -eq 'ohos'){$flutterArguments+="--target-platform=$OhosTargetPlatform"}
   if($DebugMapWebView){$flutterArguments+='--dart-define=CTS_MAP_WEB_DEBUG=true'}
+  if($DebugFrameTimings){$flutterArguments+='--dart-define=CTS_FRAME_TIMINGS=true'}
   if($Platform -eq 'ohos' -and -not $Codesign){$flutterArguments+='--no-codesign'}
   & $dart "--packages=$packages" $snapshot @flutterArguments
   if($LASTEXITCODE -ne 0){throw "Flutter build failed ($LASTEXITCODE)"}

@@ -48,6 +48,14 @@ Android 仅为 `127.0.0.1` 放行明文资源访问，远端请求使用 HTTPS�
 - APK/HAP 和 Windows Flutter 资源均只包含 `assets/map/` 的四个文件：index.html、canvas.js、host.js、host.css，已删除的 HTML 操作界面不残留于构建包；三个构建副本的九项运行源码/资源，共 27 项 SHA-256 比较一致。
 - API 37 安卓可见模拟器已更新最终 APK；真实腾讯底图与归属可见，Flutter 面板没有外围灰底，速度/坐标系上下边界一致，驾驶设置为原生可滚动弹窗。截图及边界见 [实施记录](map-native-panel-plan.md#实施记录2026-10-20)。这些证据不等于四平台或全部功能验收。
 - 仍待：腾讯搜索/规划权限和配额全流程、手机/平板中文输入与各比例视觉及无障碍、文件权限/取消、CEF 生命周期、长路线资源占用、真实 GPU 帧率。Linux 尚无本机构建环境；HarmonyOS HAP 未签名、未真机验收。
+
+## Windows 地图黑屏修复（2026-10-20）
+
+- 复现现象：Flutter 面板与地图消息桥正常，底图全黑；标准错误持续出现 `Could not create external texture->`。CEF 已输出 BGRA GPU 帧，因此继续追查共享纹理描述符的生命周期。
+- `webview_cef 0.6.2` 的 GPU 回调返回堆内描述符，在 `release_callback` 中连同纹理引用一并删除；Flutter 3.38.5 的 `ExternalTextureD3d::PopulateTexture` 在执行该回调后仍读取 `visible_width` / `visible_height`，形成释放后读取。实现顺序可核对 [Flutter 对应版本源码](https://github.com/flutter/flutter/blob/3.38.5/engine/src/flutter/shell/platform/windows/external_texture_d3d.cc)。
+- Windows CMake 在构建树生成修补后的插件源文件：返回线程局部的描述符副本，纹理引用仍按原回调释放，保留 GPU 共享纹理路径。公共 Pub 缓存不变；依赖升级后若补丁定位失效，构建会中止并提示复核。
+- 本机 Windows Debug 重建后实际底图、SDK 归属、2D / 3D 切换、拖动、原生缩放和最大化重绘恢复；修复版标准错误为空。记录为本机手动试用，不代表其他显卡、Linux 或长时间运行验收；本轮未新增或运行自动化测试。构建日志：`bin/Debug/windows-map-build.log`。
+
 ## 鸿蒙 WebView 初始化与模拟器边界（2026-10-20）
 
 - 公共宿主先配置 JavaScript、通道和导航代理，再挂载 WebView，最后请求本地页面。ArkWeb 首次创建须读到已启用 JavaScript 的设置；挂载不能放在等待页面请求完成之后。

@@ -3,29 +3,34 @@ import '../services/app_model.dart';
 import 'components.dart';
 
 class SettingsPage extends StatelessWidget {
-  const SettingsPage({super.key, required this.model});
+  const SettingsPage({super.key, required this.model, required this.themeMenu});
   final AppModel model;
+  final MenuController themeMenu;
   @override
   Widget build(BuildContext context) => PageBody(
     title: '外观与偏好',
-    description: '按设备尺寸和系统设置调整显示体验。',
+    description: '设置主题、玻璃质感和动态效果。',
     children: [
       Section(
         '显示',
         child: Column(
           children: [
-            DropdownButtonFormField<String>(
-              isExpanded: true,
-              initialValue: model.theme,
+            DropdownMenu<String>(
+              expandedInsets: EdgeInsets.zero,
+              initialSelection: model.theme,
+              menuController: themeMenu,
+              requestFocusOnTap: false,
+              enableSearch: false,
               key: ValueKey(model.theme),
-              decoration: const InputDecoration(labelText: '主题'),
-              items: const [
-                DropdownMenuItem(value: 'system', child: Text('跟随系统')),
-                DropdownMenuItem(value: 'light', child: Text('浅色')),
-                DropdownMenuItem(value: 'dark', child: Text('深色')),
+              label: const Text('主题'),
+              dropdownMenuEntries: const [
+                DropdownMenuEntry(value: 'system', label: '跟随系统'),
+                DropdownMenuEntry(value: 'light', label: '浅色'),
+                DropdownMenuEntry(value: 'dark', label: '深色'),
               ],
-              onChanged: (v) {
-                model.theme = v!;
+              onSelected: (v) {
+                if (v == null) return;
+                model.theme = v;
                 model.changed();
               },
             ),
@@ -78,7 +83,7 @@ class SettingsPage extends StatelessWidget {
       ),
       Section(
         '关于 CTS',
-        child: const Text('CTS Terminal Studio · 开发版本 0.1.0\n车载终端模拟与协议联调工作台。'),
+        child: const Text('CTS Terminal Studio · 0.1.0\n车载终端模拟与协议联调工作台。'),
       ),
     ],
   );

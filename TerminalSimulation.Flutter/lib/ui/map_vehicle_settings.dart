@@ -56,7 +56,7 @@ class _VehicleSettingsState extends State<_VehicleSettings> {
       id,
       () => TextEditingController(text: '${target[key]}'),
     );
-    return TextFormField(
+    return AppTextField(
       controller: c,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: InputDecoration(labelText: label),
@@ -248,7 +248,7 @@ class _VehicleSettingsState extends State<_VehicleSettings> {
                             ],
                           ),
                           const SizedBox(height: 16),
-                          TextFormField(
+                          AppTextField(
                             controller: fields.putIfAbsent(
                               'gearRatios',
                               () => TextEditingController(

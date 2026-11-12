@@ -1,0 +1,262 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'studio_geometry.dart';
+
+class HarmonyChromeBridge extends StatefulWidget {
+  const HarmonyChromeBridge({
+    super.key,
+    required this.headerKey,
+    required this.bottomKey,
+    required this.enabled,
+    required this.bottomVisible,
+    required this.compact,
+    required this.selected,
+    required this.status,
+    required this.connected,
+    required this.onSelected,
+    required this.onReady,
+  });
+  final GlobalKey headerKey, bottomKey;
+  final bool enabled, bottomVisible, compact, connected;
+  final int selected;
+  final String status;
+  final ValueChanged<int> onSelected;
+  // Native ownership, including temporary hiding during a child route.
+  final ValueChanged<bool> onReady;
+  @override
+  State<HarmonyChromeBridge> createState() => _HarmonyChromeBridgeState();
+}
+
+class _HarmonyChromeBridgeState extends State<HarmonyChromeBridge>
+    with WidgetsBindingObserver {
+  final channel = const MethodChannel('cts/chrome');
+  final owner = DateTime.now().microsecondsSinceEpoch;
+  Map<String, Object>? last;
+  int generation = 0;
+  bool foreground = true, ready = false, queued = false;
+  Timer? deadline;
+  bool failed = false;
+  bool claimed = false, fallbackHidden = false;
+  Rect? stableHeader, stableBottom;
+  Size? stableSize;
+  EdgeInsets? stablePadding;
+  Animation<double>? routeAnimation, secondaryAnimation;
+  bool get routeSettled =>
+      (routeAnimation == null || routeAnimation!.status == AnimationStatus.completed) &&
+      (secondaryAnimation == null || secondaryAnimation!.status == AnimationStatus.dismissed);
+  void routeStatusChanged(AnimationStatus status) => queue();
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    channel.setMethodCallHandler((call) async {
+      if (!mounted) return;
+      if (call.method == 'chromeHostReady') {
+        last = null;
+        queue();
+      }
+      if (call.method == 'chromeReady' &&
+          call.arguments == generation &&
+          last?['enabled'] == true) {
+        publish(true);
+      }
+      if (call.method == 'selected' &&
+          call.arguments is int &&
+          ready &&
+          widget.enabled &&
+          ModalRoute.isCurrentOf(context) == true) {
+        final index = call.arguments as int;
+        if (index >= 0 && index < 5) widget.onSelected(index);
+      }
+    });
+  }
+
+  void publish(bool value) {
+    if (!mounted) return;
+    ready = value;
+    if (value) {
+      claimed = true;
+      deadline?.cancel();
+    }
+    // Temporary route/lifecycle hiding does not transfer ownership to Flutter.
+    final hidden = widget.enabled && !failed && claimed;
+    if (hidden != fallbackHidden) {
+      fallbackHidden = hidden;
+      widget.onReady(hidden);
+    }
+  }
+
+  Rect rect(GlobalKey key) {
+    final box = key.currentContext?.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return Rect.zero;
+    return box.localToGlobal(Offset.zero) & box.size;
+  }
+
+  void queue() {
+    if (queued || !mounted) return;
+    queued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      queued = false;
+      if (mounted) unawaited(sync());
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  Future<void> sync() async {
+    final media = MediaQuery.of(context);
+    final currentRoute = ModalRoute.isCurrentOf(context) == true;
+    if (routeSettled && currentRoute && foreground) {
+      final header = rect(widget.headerKey), bottom = rect(widget.bottomKey);
+      if (header.width > 0) {
+        stableHeader = header;
+        stableBottom = bottom;
+        stableSize = media.size;
+        stablePadding = media.viewPadding;
+      }
+    }
+    final cached = stableHeader != null && stableSize == media.size &&
+        stablePadding == media.viewPadding;
+    // Never send the translated shell coordinates during a route transition.
+    final header = cached ? stableHeader! : rect(widget.headerKey);
+    final bottom = cached ? stableBottom! : rect(widget.bottomKey);
+    final enabled =
+        widget.enabled &&
+        foreground &&
+        !failed &&
+        routeSettled &&
+        currentRoute &&
+        header.width > 0;
+    final bottomVisible = enabled && widget.bottomVisible && bottom.width > 0;
+    final config = <String, Object>{
+      'enabled': enabled,
+      'bottomVisible': bottomVisible,
+      'selected': widget.selected,
+      'status': widget.status,
+      'connected': widget.connected,
+      'compact': widget.compact,
+      'dark': Theme.of(context).brightness == Brightness.dark,
+      'reduceMotion': media.disableAnimations,
+      'textScale': media.textScaler.scale(12) / 12,
+      'iconOnly': bottom.width / 5 < 32 + media.textScaler.scale(24),
+      'cornerRadius': StudioGeometry.floatingRadius,
+      'contentInset': StudioGeometry.navigationInset,
+      'headerX': header.left,
+      'headerY': header.top,
+      'headerWidth': header.width,
+      'headerHeight': header.height,
+      'bottomX': bottom.left,
+      'bottomY': bottom.top,
+      'bottomWidth': bottom.width,
+      'bottomHeight': bottom.height,
+    };
+    if (mapEquals(last, config)) return;
+    last = config;
+    final current = ++generation;
+    if (!enabled) {
+      deadline?.cancel();
+      publish(false);
+    }
+    try {
+      final answer = await channel
+          .invokeMapMethod<String, dynamic>('configure', {
+            ...config,
+            'owner': owner,
+            'generation': current,
+          })
+          .timeout(const Duration(seconds: 2));
+      if (!mounted || current != generation) return;
+      // A layout acknowledgement can arrive before the configure response.
+      // Its earlier readiness snapshot must not undo that acknowledgement.
+      if (enabled && answer?['ready'] == true) publish(true);
+      if (enabled && !ready) {
+        deadline?.cancel();
+        deadline = Timer(const Duration(seconds: 2), () {
+          if (mounted && !ready) {
+            failed = true;
+            last = null;
+            unawaited(sync());
+          }
+        });
+      }
+    } catch (_) {
+      if (mounted && current == generation) {
+        failed = true;
+        publish(false);
+        unawaited(
+          channel
+              .invokeMethod<void>('hide', {'owner': owner})
+              .catchError((Object _) {}),
+        );
+      }
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    foreground = state == AppLifecycleState.resumed;
+    publish(false);
+    last = null;
+    queue();
+    if (!foreground)
+      unawaited(
+        channel
+            .invokeMethod<void>('hide', {'owner': owner})
+            .catchError((Object _) {}),
+      );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (routeAnimation != route?.animation || secondaryAnimation != route?.secondaryAnimation) {
+      routeAnimation?.removeStatusListener(routeStatusChanged);
+      secondaryAnimation?.removeStatusListener(routeStatusChanged);
+      routeAnimation = route?.animation;
+      secondaryAnimation = route?.secondaryAnimation;
+      routeAnimation?.addStatusListener(routeStatusChanged);
+      secondaryAnimation?.addStatusListener(routeStatusChanged);
+    }
+    if (ModalRoute.isCurrentOf(context) != true) {
+      unawaited(
+        channel
+            .invokeMethod<void>('hide', {'owner': owner})
+            .catchError((Object _) {}),
+      );
+    }
+    queue();
+  }
+
+  @override
+  void didUpdateWidget(covariant HarmonyChromeBridge old) {
+    super.didUpdateWidget(old);
+    queue();
+  }
+
+  @override
+  void dispose() {
+    deadline?.cancel();
+    routeAnimation?.removeStatusListener(routeStatusChanged);
+    secondaryAnimation?.removeStatusListener(routeStatusChanged);
+    WidgetsBinding.instance.removeObserver(this);
+    channel.setMethodCallHandler(null);
+    unawaited(
+      channel
+          .invokeMethod<void>('hide', {'owner': owner})
+          .catchError((Object _) {}),
+    );
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Track route, theme, keyboard and safe-area changes even with a live shell.
+    ModalRoute.isCurrentOf(context);
+    MediaQuery.of(context);
+    Theme.of(context);
+    queue();
+    return const SizedBox.shrink();
+  }
+}

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'services/app_model.dart';
+import 'services/frame_diagnostics.dart';
 import 'services/storage.dart';
 import 'services/map_credentials.dart';
 import 'ui/app.dart';
@@ -18,7 +19,7 @@ Future<void> main() async {
   try {
     credentials = await MapCredentials.load();
   } catch (_) {
-    credentialError = '内置地图凭据不可用，请使用构建脚本重新构建应用。';
+    credentialError = '地图配置不可用，请联系应用提供者。';
   }
   final model = AppModel(storage: storage, mapCredentials: credentials);
   if (credentialError != null) model.log('地图', credentialError);
@@ -28,5 +29,6 @@ Future<void> main() async {
     model.log('错误', '读取设置失败：$e');
   }
   if (storageError != null) model.log('错误', '应用数据目录不可用：$storageError');
+  FrameDiagnostics.start();
   runApp(TerminalApp(model: model));
 }

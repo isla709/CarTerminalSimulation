@@ -7,6 +7,7 @@ import '../services/route_files.dart';
 import '../core/vehicle_options.dart';
 import 'components.dart';
 import 'map_workspace.dart';
+import 'device_position_controls.dart';
 
 class RoutePage extends StatefulWidget {
   const RoutePage({super.key, required this.model});
@@ -44,6 +45,8 @@ class _RoutePageState extends State<RoutePage> {
       title: '轨迹工作台',
       description: '地图选点、搜索和规划路线，或载入 CTS 路线进行模拟。',
       children: [
+        if (m.realLocation)
+          Section('设备实时位置', child: DevicePositionSummary(model: m)),
         if (error.isNotEmpty)
           Text(
             error,
@@ -51,7 +54,7 @@ class _RoutePageState extends State<RoutePage> {
           ),
         Section(
           '地图工作台',
-          subtitle: '腾讯 GL 地图 · 搜索、规划与驾驶模拟，适配横竖屏及不同窗口尺寸。',
+          subtitle: '搜索地点、规划路线与模拟驾驶。',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -59,7 +62,7 @@ class _RoutePageState extends State<RoutePage> {
                 onPressed: () async {
                   if (!m.mapCredentials.available) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('内置地图配置不可用，请使用构建脚本重新构建应用。')),
+                      const SnackBar(content: Text('地图配置不可用，请联系应用提供者。')),
                     );
                     return;
                   }
@@ -83,64 +86,68 @@ class _RoutePageState extends State<RoutePage> {
             ],
           ),
         ),
-        Section(
-          '轨迹预览',
-          subtitle: route == null
-              ? '尚未载入路线'
-              : '${route.coordinateSystem.name.toUpperCase()} · ${route.points.length} 个点 · ${route.speed} km/h',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                height: 280,
-                width: double.infinity,
-                child: CustomPaint(
-                  painter: RoutePainter(
-                    route,
-                    Theme.of(context).colorScheme.primary,
-                  ),
-                  child: route == null
-                      ? const Center(child: Text('导入 .ctsroute 后显示轨迹轮廓'))
-                      : null,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  FilledButton.icon(
-                    onPressed: route == null || m.simulationPreparing
-                        ? null
-                        : () => act(() async {
-                            if (m.simulating) {
-                              m.stopSimulation();
-                              m.changed();
-                            } else {
-                              await m.startSimulation();
-                            }
-                          }),
-                    icon: Icon(m.simulating ? Icons.stop : Icons.play_arrow),
-                    label: Text(
-                      m.simulationPreparing
-                          ? '准备中…'
-                          : m.simulating
-                          ? '停止模拟'
-                          : '开始模拟',
+        if (!m.realLocation)
+          Section(
+            '轨迹预览',
+            subtitle: route == null
+                ? '尚未载入路线'
+                : '${route.coordinateSystem.name.toUpperCase()} · ${route.points.length} 个点 · ${route.speed} km/h',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  height: 280,
+                  width: double.infinity,
+                  child: CustomPaint(
+                    painter: RoutePainter(
+                      route,
+                      Theme.of(context).colorScheme.primary,
                     ),
+                    child: route == null
+                        ? const Center(child: Text('导入 .ctsroute 后显示轨迹轮廓'))
+                        : null,
                   ),
-                  Text(
-                    '当前位置  ${m.latitude.toStringAsFixed(6)}, ${m.longitude.toStringAsFixed(6)}',
-                  ),
-                ],
-              ),
-            ],
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    FilledButton.icon(
+                      onPressed:
+                          route == null ||
+                              m.simulationPreparing ||
+                              m.realLocation
+                          ? null
+                          : () => act(() async {
+                              if (m.simulating) {
+                                m.stopSimulation();
+                                m.changed();
+                              } else {
+                                await m.startSimulation();
+                              }
+                            }),
+                      icon: Icon(m.simulating ? Icons.stop : Icons.play_arrow),
+                      label: Text(
+                        m.simulationPreparing
+                            ? '准备中…'
+                            : m.simulating
+                            ? '停止模拟'
+                            : '开始模拟',
+                      ),
+                    ),
+                    Text(
+                      '当前位置  ${m.latitude.toStringAsFixed(6)}, ${m.longitude.toStringAsFixed(6)}',
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        ),
         if (m.vehicleTelemetry != null)
           Section(
             '驾驶状态',
-            subtitle: '速度、位移与协议汇报同步；交通情景为模拟数据。',
+            subtitle: '查看车速、挡位与行驶进度。',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -184,109 +191,114 @@ class _RoutePageState extends State<RoutePage> {
               ],
             ),
           ),
-        Section(
-          '路线文件',
-          subtitle: '兼容 CTSROUTE/1 格式；保留坐标系、顺序与车辆配置。',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextField(
-                controller: editor,
-                minLines: 7,
-                maxLines: 16,
-                decoration: const InputDecoration(
-                  labelText: '粘贴 .ctsroute 文件内容',
+        if (!m.realLocation)
+          Section(
+            '路线文件',
+            subtitle: '打开或保存 .ctsroute 路线文件。',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AppTextField(
+                  controller: editor,
+                  minLines: 7,
+                  maxLines: 16,
+                  decoration: const InputDecoration(
+                    labelText: '粘贴 .ctsroute 文件内容',
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  FilledButton.icon(
-                    onPressed: () => act(() async {
-                      final document = await RouteFiles.open();
-                      if (document != null) {
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: () => act(() async {
+                        final document = await RouteFiles.open();
+                        if (document != null) {
+                          m.applyRoute(document);
+                          editor.text = document.serialize();
+                        }
+                      }),
+                      icon: const Icon(Icons.folder_open),
+                      label: const Text('选择路线文件'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: route == null
+                          ? null
+                          : () => act(() async {
+                              if (await RouteFiles.save(route)) {
+                                m.log('路线', '路线已保存');
+                              }
+                            }),
+                      icon: const Icon(Icons.save_alt),
+                      label: const Text('保存路线文件'),
+                    ),
+                    FilledButton(
+                      onPressed: () => act(() async {
+                        m.applyRoute(RouteDocument.parse(editor.text));
+                      }),
+                      child: const Text('载入路线'),
+                    ),
+                    OutlinedButton(
+                      onPressed: route == null
+                          ? null
+                          : () {
+                              editor.text = route.serialize();
+                            },
+                      child: const Text('填入当前路线'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                AppTextField(
+                  controller: path,
+                  decoration: const InputDecoration(
+                    labelText: '本地文件路径（应用可访问目录）',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    OutlinedButton(
+                      onPressed: () => act(() async {
+                        final file = File(path.text.trim());
+                        if (await file.length() > 25 * 1024 * 1024) {
+                          throw const FormatException('路线超过 25 MiB');
+                        }
+                        final content = await file.readAsString();
+                        final document = RouteDocument.parse(content);
+                        editor.text = content;
                         m.applyRoute(document);
-                        editor.text = document.serialize();
-                      }
-                    }),
-                    icon: const Icon(Icons.folder_open),
-                    label: const Text('选择路线文件'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: route == null
-                        ? null
-                        : () => act(() async {
-                            if (await RouteFiles.save(route)) {
+                      }),
+                      child: const Text('打开文件'),
+                    ),
+                    OutlinedButton(
+                      onPressed: route == null
+                          ? null
+                          : () => act(() async {
+                              final target = File(path.text.trim());
+                              if (await target.exists()) {
+                                throw const FileSystemException(
+                                  '目标已存在，请使用新文件名',
+                                );
+                              }
+                              final temporary = File('${target.path}.tmp');
+                              await temporary.writeAsString(
+                                route.serialize(),
+                                flush: true,
+                              );
+                              await temporary.rename(target.path);
                               m.log('路线', '路线已保存');
-                            }
-                          }),
-                    icon: const Icon(Icons.save_alt),
-                    label: const Text('保存路线文件'),
-                  ),
-                  FilledButton(
-                    onPressed: () => act(() async {
-                      m.applyRoute(RouteDocument.parse(editor.text));
-                    }),
-                    child: const Text('载入路线'),
-                  ),
-                  OutlinedButton(
-                    onPressed: route == null
-                        ? null
-                        : () {
-                            editor.text = route.serialize();
-                          },
-                    child: const Text('填入当前路线'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: path,
-                decoration: const InputDecoration(labelText: '本地文件路径（应用可访问目录）'),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  OutlinedButton(
-                    onPressed: () => act(() async {
-                      final file = File(path.text.trim());
-                      if (await file.length() > 25 * 1024 * 1024) {
-                        throw const FormatException('路线超过 25 MiB');
-                      }
-                      final content = await file.readAsString();
-                      final document = RouteDocument.parse(content);
-                      editor.text = content;
-                      m.applyRoute(document);
-                    }),
-                    child: const Text('打开文件'),
-                  ),
-                  OutlinedButton(
-                    onPressed: route == null
-                        ? null
-                        : () => act(() async {
-                            final target = File(path.text.trim());
-                            if (await target.exists()) {
-                              throw const FileSystemException('目标已存在，请使用新文件名');
-                            }
-                            final temporary = File('${target.path}.tmp');
-                            await temporary.writeAsString(
-                              route.serialize(),
-                              flush: true,
-                            );
-                            await temporary.rename(target.path);
-                            m.log('路线', '路线已保存');
-                          }),
-                    child: const Text('另存为新文件'),
-                  ),
-                ],
-              ),
-            ],
+                            }),
+                      child: const Text('另存为新文件'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        ),
       ],
     );
   }

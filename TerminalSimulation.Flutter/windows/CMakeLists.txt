@@ -58,6 +58,8 @@ add_subdirectory("runner")
 # them to the application.
 include(flutter/generated_plugins.cmake)
 
+# Pinned CEF rendering, initialization and logging compatibility fixes.
+include(cef_compat.cmake)
 
 # === Installation ===
 # Support files are copied into place next to the executable, so that it can

@@ -17,11 +17,12 @@
         "name": "EntryAbility",
         "srcEntry": "./ets/entryability/EntryAbility.ets",
         "description": "$string:EntryAbility_desc",
-        "icon": "$media:icon",
+        "icon": "$media:cts_layered_icon",
         "label": "$string:EntryAbility_label",
-        "startWindowIcon": "$media:icon",
+        "startWindowIcon": "$media:cts_start_icon",
         "startWindowBackground": "$color:start_window_background",
         "exported": true,
+        "backgroundModes": ["dataTransfer", "location"],
         "skills": [
           {
             "entities": [
@@ -36,6 +37,9 @@
     ],
     "requestPermissions": [
       {"name" :  "ohos.permission.INTERNET"},
+      {"name": "ohos.permission.KEEP_BACKGROUND_RUNNING"},
+      {"name": "ohos.permission.APPROXIMATELY_LOCATION", "reason": "$string:location_reason", "usedScene": {"abilities": ["EntryAbility"], "when": "inuse"}},
+      {"name": "ohos.permission.LOCATION", "reason": "$string:location_reason", "usedScene": {"abilities": ["EntryAbility"], "when": "inuse"}},
     ]
   }
 }

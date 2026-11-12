@@ -108,7 +108,12 @@ class _MapWorkspaceState extends State<MapWorkspace> {
         _desktopReady ??= cef.WebviewManager().initialize(
           userAgent: 'CTS/Flutter-0.1.0',
         );
-        await _desktopReady;
+        try {
+          await _desktopReady;
+        } catch (_) {
+          _desktopReady = null;
+          rethrow;
+        }
         if (!mounted) return;
         final controller = cef.WebviewManager().createWebView(
           loading: const Center(child: CircularProgressIndicator()),
@@ -252,6 +257,7 @@ class _MapWorkspaceState extends State<MapWorkspace> {
     if (collapsed) {
       openPanel();
     } else {
+      FocusManager.instance.primaryFocus?.unfocus();
       setState(() => collapsed = true);
     }
   }
@@ -335,18 +341,21 @@ class _MapWorkspaceState extends State<MapWorkspace> {
                       icon: const Icon(Icons.tune),
                     ),
                   IconButton(
-                    tooltip: '网络近似定位',
+                    tooltip: widget.model.realLocation ? '设备当前位置' : '网络近似定位',
                     onPressed: bridge.locating ? null : () => bridge.locate(),
                     icon: const Icon(Icons.my_location),
                   ),
                   IconButton(
-                    tooltip: '恢复车辆跟随',
+                    tooltip: widget.model.realLocation ? '跟随设备位置' : '恢复车辆跟随',
                     onPressed: bridge.resumeFollow,
                     icon: const Icon(Icons.navigation_outlined),
                   ),
                   IconButton(
                     tooltip: '查看整条路线',
-                    onPressed: bridge.points.isEmpty ? null : bridge.fit,
+                    onPressed:
+                        widget.model.realLocation || bridge.points.isEmpty
+                        ? null
+                        : bridge.fit,
                     icon: const Icon(Icons.fit_screen),
                   ),
                 ],
@@ -468,54 +477,65 @@ class _MapWorkspaceState extends State<MapWorkspace> {
                       }
                     : null,
               );
-              if (vertical) {
-                if (box.maxHeight < 280) {
-                  return Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      canvas(),
-                      Listener(behavior: HitTestBehavior.opaque, child: panel),
-                    ],
-                  );
-                }
-                final scale = MediaQuery.textScalerOf(context).scale(14) / 14;
-                final minimum = 144.0 + 24 * (scale - 1).clamp(0.0, 2.0);
-                final desired = collapsed
-                    ? minimum
-                    : math.max(minimum, box.maxHeight * panelFraction);
-                final height = math.max(
-                  0.0,
-                  math.min(math.max(0.0, box.maxHeight - 48), desired),
-                );
-                return Column(
-                  children: [
-                    Expanded(child: canvas()),
-                    AnimatedContainer(
-                      height: height,
-                      duration:
-                          draggingPanel ||
-                              MediaQuery.disableAnimationsOf(context)
-                          ? Duration.zero
-                          : const Duration(milliseconds: 220),
-                      curve: Curves.easeOutCubic,
-                      child: panel,
-                    ),
-                  ],
-                );
-              }
-              return Row(
+              final keyboard = MediaQuery.viewInsetsOf(context).bottom > 0;
+              final scale = MediaQuery.textScalerOf(context).scale(14) / 14;
+              final minimum = 144.0 + 24 * (scale - 1).clamp(0.0, 2.0);
+              final coverMap = vertical && (keyboard || box.maxHeight < 280);
+              final desired = collapsed
+                  ? minimum
+                  : math.max(minimum, box.maxHeight * panelFraction);
+              final panelHeight = vertical && !coverMap
+                  ? math.max(
+                      0.0,
+                      math.min(math.max(0.0, box.maxHeight - 48), desired),
+                    )
+                  : box.maxHeight;
+              final panelWidth = vertical
+                  ? box.maxWidth
+                  : math.min(400.0, math.max(320.0, box.maxWidth * .36));
+              final duration =
+                  keyboard ||
+                      draggingPanel ||
+                      MediaQuery.disableAnimationsOf(context)
+                  ? Duration.zero
+                  : const Duration(milliseconds: 220);
+              // Keep both editor and WebView at stable positions in the tree.
+              // IME insets and responsive breakpoints only change geometry.
+              return Stack(
                 children: [
-                  Expanded(child: canvas()),
-                  if (!collapsed) const VerticalDivider(width: 1),
-                  Visibility(
-                    visible: !collapsed,
-                    maintainState: true,
-                    child: SizedBox(
-                      width: math.min(
-                        400.0,
-                        math.max(320.0, box.maxWidth * .36),
+                  AnimatedPositioned(
+                    duration: duration,
+                    curve: Curves.easeOutCubic,
+                    left: 0,
+                    top: 0,
+                    right: !vertical && !collapsed ? panelWidth : 0,
+                    bottom: vertical && !coverMap ? panelHeight : 0,
+                    child: canvas(),
+                  ),
+                  AnimatedPositioned(
+                    duration: duration,
+                    curve: Curves.easeOutCubic,
+                    right: 0,
+                    bottom: 0,
+                    width: panelWidth,
+                    height: panelHeight,
+                    child: Offstage(
+                      offstage: !vertical && collapsed,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          border: Border(
+                            left: BorderSide(
+                              color: vertical
+                                  ? Colors.transparent
+                                  : Theme.of(context).dividerColor,
+                            ),
+                          ),
+                        ),
+                        child: Listener(
+                          behavior: HitTestBehavior.opaque,
+                          child: panel,
+                        ),
                       ),
-                      child: panel,
                     ),
                   ),
                 ],

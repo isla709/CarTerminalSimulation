@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
-import '../core/bytes.dart';
 import '../core/jt808.dart';
 import '../services/app_model.dart';
 import '../services/terminal_session.dart' as terminal;
 import 'components.dart';
+import 'location_attachment_editor.dart';
+import 'device_position_controls.dart';
+import '../services/mobile_runtime.dart';
 
 class TerminalPage extends StatefulWidget {
   const TerminalPage({super.key, required this.model});
@@ -23,7 +25,6 @@ class _TerminalPageState extends State<TerminalPage> {
       city = '0',
       plateColor = '1';
   final auth = TextEditingController();
-  String attachmentText = '';
   @override
   void initState() {
     super.initState();
@@ -85,46 +86,82 @@ class _TerminalPageState extends State<TerminalPage> {
           ),
         Section(
           '平台连接',
-          subtitle: 'TCP 直连 · JT/T 808',
+          subtitle:
+              '${m.host}:${m.port} · ${busy
+                  ? '连接中'
+                  : connected
+                  ? '已连接'
+                  : '未连接'}',
+          trailing: Icon(
+            connected ? Icons.link : Icons.link_off,
+            color: connected ? Theme.of(context).colorScheme.primary : null,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              FieldGrid(
+              ExpansionTile(
+                key: const PageStorageKey('platform-connection-settings'),
+                tilePadding: EdgeInsets.zero,
+                onExpansionChanged: (expanded) {
+                  if (!expanded) FocusScope.of(context).unfocus();
+                  setState(() {});
+                },
+                title: const Text('连接配置'),
+                subtitle: Text(
+                  '${m.phone} · JT808 ${m.version == ProtocolVersion.v2019 ? '2019' : '2013'}',
+                ),
                 children: [
-                  EditField('服务器', value: m.host, onChanged: (v) => m.host = v),
-                  EditField(
-                    '端口',
-                    value: '${m.port}',
-                    numeric: true,
-                    onChanged: (v) => m.port = int.tryParse(v) ?? 0,
-                  ),
-                  EditField(
-                    '终端手机号',
-                    value: m.phone,
-                    onChanged: (v) => m.phone = v,
-                  ),
-                  DropdownButtonFormField<ProtocolVersion>(
-                    isExpanded: true,
-                    initialValue: m.version,
-                    decoration: const InputDecoration(labelText: '协议版本'),
-                    items: ProtocolVersion.values
-                        .map(
-                          (v) => DropdownMenuItem(
-                            value: v,
-                            child: Text(
-                              v == ProtocolVersion.v2019
-                                  ? 'JT808 · 2019'
-                                  : 'JT808 · 2013',
-                            ),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: connected
-                        ? null
-                        : (v) {
-                            m.version = v!;
-                            m.changed();
-                          },
+                  Padding(
+                    padding: EdgeInsets.only(
+                      top: MediaQuery.textScalerOf(context).scale(12) + 4,
+                      bottom: 16,
+                    ),
+                    child: FieldGrid(
+                      children: [
+                        EditField(
+                          '服务器',
+                          value: m.host,
+                          enabled: !connected && !busy,
+                          onChanged: (v) => m.host = v,
+                        ),
+                        EditField(
+                          '端口',
+                          enabled: !connected && !busy,
+                          value: '${m.port}',
+                          numeric: true,
+                          onChanged: (v) => m.port = int.tryParse(v) ?? 0,
+                        ),
+                        EditField(
+                          '终端手机号',
+                          enabled: !connected && !busy,
+                          value: m.phone,
+                          onChanged: (v) => m.phone = v,
+                        ),
+                        DropdownButtonFormField<ProtocolVersion>(
+                          isExpanded: true,
+                          initialValue: m.version,
+                          decoration: const InputDecoration(labelText: '协议版本'),
+                          items: ProtocolVersion.values
+                              .map(
+                                (v) => DropdownMenuItem(
+                                  value: v,
+                                  child: Text(
+                                    v == ProtocolVersion.v2019
+                                        ? 'JT808 · 2019'
+                                        : 'JT808 · 2013',
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: connected || busy
+                              ? null
+                              : (v) {
+                                  m.version = v!;
+                                  m.changed();
+                                },
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -136,20 +173,25 @@ class _TerminalPageState extends State<TerminalPage> {
                   FilledButton.icon(
                     onPressed: busy
                         ? null
-                        : () =>
-                              act(connected ? m.session.disconnect : m.connect),
+                        : () => act(
+                            connected || m.reconnecting
+                                ? m.disconnect
+                                : m.connect,
+                          ),
                     icon: Icon(connected ? Icons.link_off : Icons.link),
                     label: Text(
                       busy
                           ? '连接中…'
                           : connected
                           ? '断开连接'
+                          : m.reconnecting
+                          ? '取消重连'
                           : '连接平台',
                     ),
                   ),
                   if (busy)
                     OutlinedButton(
-                      onPressed: () => act(m.session.disconnect),
+                      onPressed: () => act(m.disconnect),
                       child: const Text('取消连接'),
                     ),
                   OutlinedButton.icon(
@@ -159,6 +201,26 @@ class _TerminalPageState extends State<TerminalPage> {
                   ),
                 ],
               ),
+              if (MobileRuntime.supported) ...[
+                const SizedBox(height: 12),
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('后台保持连接'),
+                  subtitle: Text(
+                    m.backgroundMessage.isEmpty
+                        ? '连接期间显示后台任务通知，断线后自动重连。'
+                        : m.backgroundMessage,
+                  ),
+                  value: m.backgroundConnection,
+                  onChanged: (v) => act(() => m.setBackgroundConnection(v)),
+                ),
+                if (MobileRuntime.backgroundSettingsSupported)
+                  TextButton.icon(
+                    onPressed: () => act(m.runtime.openBackgroundSettings),
+                    icon: const Icon(Icons.battery_saver_outlined),
+                    label: const Text('系统后台设置'),
+                  ),
+              ],
             ],
           ),
         ),
@@ -173,7 +235,12 @@ class _TerminalPageState extends State<TerminalPage> {
                 title: const Text('注册身份'),
                 children: [
                   Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
+                    padding: EdgeInsets.fromLTRB(
+                      0,
+                      MediaQuery.textScalerOf(context).scale(12) + 4,
+                      0,
+                      20,
+                    ),
                     child: FieldGrid(
                       children: [
                         EditField(
@@ -219,9 +286,11 @@ class _TerminalPageState extends State<TerminalPage> {
                   ),
                 ],
               ),
-              TextField(
+              AppTextField(
                 controller: auth,
-                obscureText: true,
+                obscureText: false,
+                autocorrect: false,
+                enableSuggestions: false,
                 decoration: const InputDecoration(labelText: '鉴权码（仅本次会话）'),
                 onChanged: (v) => m.authCode = v,
               ),
@@ -292,14 +361,16 @@ class _TerminalPageState extends State<TerminalPage> {
         ),
         Section(
           '位置汇报',
-          subtitle: '轨迹、位置模拟和上报保持同一逻辑坐标系；不进行隐式坐标转换。',
+          subtitle: '编辑位置参数，发送单次或周期汇报。',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              DevicePositionControls(model: m),
               FieldGrid(
                 children: [
                   EditField(
                     '纬度',
+                    enabled: !m.realLocation,
                     value: m.latitude.toStringAsFixed(6),
                     numeric: true,
                     onChanged: (v) =>
@@ -307,6 +378,7 @@ class _TerminalPageState extends State<TerminalPage> {
                   ),
                   EditField(
                     '经度',
+                    enabled: !m.realLocation,
                     value: m.longitude.toStringAsFixed(6),
                     numeric: true,
                     onChanged: (v) =>
@@ -314,6 +386,7 @@ class _TerminalPageState extends State<TerminalPage> {
                   ),
                   EditField(
                     '速度（km/h）',
+                    enabled: !m.realLocation,
                     value: '${m.speed}',
                     numeric: true,
                     onChanged: (v) =>
@@ -321,12 +394,14 @@ class _TerminalPageState extends State<TerminalPage> {
                   ),
                   EditField(
                     '高程（m）',
+                    enabled: !m.realLocation,
                     value: '${m.altitude}',
                     numeric: true,
                     onChanged: (v) => m.altitude = int.tryParse(v) ?? -1,
                   ),
                   EditField(
                     '方向（0–359）',
+                    enabled: !m.realLocation,
                     value: '${m.direction}',
                     numeric: true,
                     onChanged: (v) => m.direction = int.tryParse(v) ?? -1,
@@ -352,33 +427,26 @@ class _TerminalPageState extends State<TerminalPage> {
                 ],
               ),
               const SizedBox(height: 16),
-              EditField(
-                '附加项：每行 ID=HEX，例如 01=00000064',
-                value: attachmentText,
-                lines: 3,
-                onChanged: (v) => attachmentText = v,
-              ),
+              LocationAttachmentEditor(model: m),
               const SizedBox(height: 12),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
+              ActionGrid(
                 children: [
                   FilledButton.icon(
                     onPressed: connected
                         ? () => act(() async {
-                            _attachments();
                             await m.controller.report();
                           })
                         : null,
                     icon: const Icon(Icons.near_me_outlined),
                     label: const Text('上报位置'),
                   ),
-                  FilterChip(
+                  FilledButton.tonalIcon(
                     label: Text(m.reporting ? '停止周期汇报' : '周期汇报'),
-                    selected: m.reporting,
-                    onSelected: connected
-                        ? (v) => act(() async {
-                            _attachments();
+                    icon: Icon(
+                      m.reporting ? Icons.stop_circle_outlined : Icons.update,
+                    ),
+                    onPressed: connected
+                        ? () => act(() async {
                             m.toggleReports(reportMilliseconds);
                           })
                         : null,
@@ -405,21 +473,5 @@ class _TerminalPageState extends State<TerminalPage> {
         ),
       ],
     );
-  }
-
-  void _attachments() {
-    final parsed = <int, List<int>>{};
-    for (final line
-        in attachmentText.split('\n').where((line) => line.trim().isNotEmpty)) {
-      final parts = line.split('=');
-      if (parts.length != 2) throw const FormatException('附件格式为 ID=HEX');
-      final id = int.parse(parts.first.trim(), radix: 16),
-          bytes = unhex(parts.last);
-      if (id < 0 || id > 255 || bytes.length > 255) {
-        throw const FormatException('附件 ID 或长度无效');
-      }
-      parsed[id] = bytes;
-    }
-    widget.model.attachments = parsed;
   }
 }

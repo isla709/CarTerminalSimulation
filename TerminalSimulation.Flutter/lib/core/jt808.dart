@@ -300,11 +300,15 @@ class LocationReport {
     this.status = 3,
     this.time,
     this.attachments = const {},
+    this.rawAttachments = const [],
   });
   final double latitude, longitude, speed;
   final int altitude, direction, alarm, status;
   final DateTime? time;
   final Map<int, List<int>> attachments;
+
+  /// Appended verbatim after standard TLVs, for WPF-compatible RAW injection.
+  final List<int> rawAttachments;
   Uint8List encode() {
     if (!latitude.isFinite ||
         latitude.abs() > 90 ||
@@ -342,7 +346,12 @@ class LocationReport {
       w.u8(entry.value.length);
       w.add(entry.value);
     }
-    return w.take();
+    w.add(rawAttachments);
+    final body = w.take();
+    if (body.length > 1023) {
+      throw const FormatException('位置消息体超过 1023 字节，必须分包发送');
+    }
+    return body;
   }
 
   static LocationReport decode(List<int> body) {

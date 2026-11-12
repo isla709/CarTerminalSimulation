@@ -53,12 +53,15 @@ class MapWorkspaceController extends ChangeNotifier {
       _sentRevision = -1;
   bool _dark = false, _reduceMotion = false;
   String? _lastPosition;
+  bool _wasPreparing = false;
   bool _wasRunning = false, _dirty = false, _sending = false;
+  bool _wasRealLocation = false;
   Future<void> _writes = Future.value();
   bool get running => model.simulating || model.simulationPreparing;
   bool get canSave =>
-      mode == 'single' ? points.length == 1 : points.length >= 2;
-  bool get editable => !running;
+      !model.realLocation &&
+      (mode == 'single' ? points.length == 1 : points.length >= 2);
+  bool get editable => !running && !model.realLocation;
   GeoPoint center = GeoPoint(39.9042, 116.4074);
   static const cities = <String, (String, double, double)>{
     'beijing': ('北京', 39.9042, 116.4074),
@@ -145,12 +148,14 @@ class MapWorkspaceController extends ChangeNotifier {
     return {
       'revision': _revision,
       if (_sentRevision != _revision) ...{
-        'mode': mode,
-        'points': points.map(display).toList(),
-        'alternatives': alternatives.map((r) => r['points']).toList(),
+        'mode': model.realLocation ? 'live' : mode,
+        'points': model.realLocation ? [] : points.map(display).toList(),
+        'alternatives': model.realLocation
+            ? []
+            : alternatives.map((r) => r['points']).toList(),
         'active': activeRoute,
-        'start': start == null ? null : display(start!),
-        'end': end == null ? null : display(end!),
+        'start': model.realLocation || start == null ? null : display(start!),
+        'end': model.realLocation || end == null ? null : display(end!),
       },
       'car': Geo.convert(
         GeoPoint(model.latitude, model.longitude),
@@ -158,7 +163,8 @@ class MapWorkspaceController extends ChangeNotifier {
         CoordinateSystem.gcj02,
       ).toJson(),
       'bearing': model.direction,
-      'follow': follow && model.simulating,
+      'showCar': !model.realLocation || model.hasDeviceFix,
+      'follow': follow && (model.simulating || model.hasDeviceFix),
       'mapStyle': mapStyle,
       'pathStyle': pathStyle,
       'use3d': use3d,
@@ -214,7 +220,7 @@ class MapWorkspaceController extends ChangeNotifier {
           }
         case 'error':
           renderError = data['reason'] == 'webgl-unavailable'
-              ? '当前运行环境无法启用 WebGL，不能显示地图。请使用支持 WebGL 的设备；鸿蒙模拟器可继续试用原生面板，地图请在真机上验证。'
+              ? '此设备无法启用 WebGL，无法显示地图。请检查系统与显卡驱动，或更换设备后重试。'
               : '腾讯地图加载或渲染失败，请检查网络与地图授权后重试。';
           report(renderError!);
       }
@@ -224,6 +230,10 @@ class MapWorkspaceController extends ChangeNotifier {
   }
 
   Future<void> _initialCamera() async {
+    if (model.realLocation) {
+      if (model.hasDeviceFix) resumeFollow();
+      return;
+    }
     if (points.isNotEmpty) {
       await fit();
       return;
@@ -244,16 +254,36 @@ class MapWorkspaceController extends ChangeNotifier {
 
   void _modelChanged() {
     if (_closed) return;
-    final position = '${model.latitude},${model.longitude},${model.direction}';
+    final position =
+        '${model.latitude},${model.longitude},${model.direction},${model.hasDeviceFix}';
     if (_lastPosition != position) {
       _lastPosition = position;
       _queueRender();
     }
-    if (_wasRunning && !running) {
-      message = '模拟已停止';
+    final sourceChanged = _wasRealLocation != model.realLocation;
+    if (sourceChanged) {
+      ++_revision;
+      follow = true;
+      _cancelRoute();
+      ++_search;
+      service.cancel('search');
+      service.cancel('suggest');
+      service.cancel('locate');
+      searching = locating = false;
     }
+    final stateChanged =
+        sourceChanged ||
+        _wasRunning != running ||
+        _wasPreparing != model.simulationPreparing;
+    _wasRealLocation = model.realLocation;
+    if (_wasRunning && !running) message = '模拟已停止';
     _wasRunning = running;
-    notifyListeners();
+    _wasPreparing = model.simulationPreparing;
+    // Position ticks update the canvas; controls only rebuild on state changes.
+    if (stateChanged) {
+      _queueRender();
+      notifyListeners();
+    }
   }
 
   void _cancelRoute() {
@@ -386,6 +416,7 @@ class MapWorkspaceController extends ChangeNotifier {
   }
 
   Future<void> search(String query, {bool suggest = false}) async {
+    if (model.realLocation) return;
     query = query.trim();
     final id = ++_search, generation = _document;
     service.cancel('search');
@@ -491,10 +522,22 @@ class MapWorkspaceController extends ChangeNotifier {
   Future<void> fly(GeoPoint displayPoint, {double zoom = 13}) =>
       _call('camera', {'point': displayPoint.toJson(), 'zoom': zoom});
   Future<void> fit() async {
+    if (model.realLocation) {
+      if (model.hasDeviceFix) resumeFollow();
+      return;
+    }
     if (ready && points.isNotEmpty) await _call('fit', null);
   }
 
   Future<void> locate({bool silent = false}) async {
+    if (model.realLocation) {
+      if (model.hasDeviceFix) {
+        resumeFollow();
+      } else if (!silent) {
+        report(model.locationStatus);
+      }
+      return;
+    }
     final id = ++_locating, generation = _document;
     locating = true;
     changed(geometry: false);
@@ -527,6 +570,7 @@ class MapWorkspaceController extends ChangeNotifier {
   }
 
   void resumeFollow() {
+    if (model.realLocation && !model.hasDeviceFix) return;
     follow = true;
     changed();
     unawaited(
@@ -574,7 +618,7 @@ class MapWorkspaceController extends ChangeNotifier {
   }
 
   Future<void> startSimulation() async {
-    if (running || !canSave) return;
+    if (model.realLocation || running || !canSave) return;
     final route = document();
     model.applyRoute(route);
     if (mode == 'single') {

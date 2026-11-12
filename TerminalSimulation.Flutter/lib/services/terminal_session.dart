@@ -219,6 +219,7 @@ class TerminalController {
   late final StreamSubscription<ConnectionState> _stateSubscription;
   Timer? _heartbeat, _report;
   bool _heartbeatBusy = false, _reportBusy = false;
+  String? _lastReportError;
   Future<void> register() async {
     await session.send(0x0100, identity.registerBody(session.version));
   }
@@ -267,8 +268,13 @@ class TerminalController {
       _reportBusy = true;
       try {
         await report();
+        _lastReportError = null;
       } catch (e) {
-        onError?.call('$e');
+        final text = '$e';
+        if (_lastReportError != text) {
+          _lastReportError = text;
+          onError?.call(text);
+        }
       } finally {
         _reportBusy = false;
       }

@@ -4,7 +4,7 @@
 
 ## 已确定的目标
 
-- 分支 `codex/terminal-simulation-flutter-port`；项目 `TerminalSimulation.Flutter`。
+- 分支 `refactor/flutter`；项目 `TerminalSimulation.Flutter`。
 - Windows/Linux 桌面、Android/HarmonyOS 手机和平板；不建设浏览器版本或 Web TCP 代理。
 - Flutter/Dart；鸿蒙 CPF-Flutter 3.41.9+ohos-1.0.2，提交 `62357a93d653bf844f730bb1f4b7cc9e2139d14e`。本机普通 Flutter 为 3.38.5，生产版本仍需统一并复核依赖锁定。
 - 排除 CTS 动态插件系统、自动更新器和安装器；Flutter 编译进应用的原生适配器不属于动态插件系统。
@@ -28,11 +28,11 @@
 | 串口/TTS | 尚未实现 | 四平台后端、USB/设备权限、拔插与回调生命周期 |
 | 设置与凭据 | 明暗主题/玻璃/减少动态效果、连接设置本地保存；鉴权码不写入普通设置；地图固定 Key 从构建者本地未跟踪文件加密嵌入，移除运行时输入 | 安全凭据存储、旧 Windows 密文无法迁移时重新登录、配置导入导出 |
 | UI | 宽度 600/1024 断点、地图竖屏底部面板/横屏侧栏/常驻模拟按钮、安全区及键盘视口适配、导航重排、流式表单、低高度导航滚动、局部背景模糊、页面淡入/轻位移、系统/应用减少动画设置 | 地图/视频与控制台宽屏分栏、主题细节与高密度数据视图、折叠屏、真实 GPU 性能与多显示器 |
-| HarmonyOS 原生材质 | 真实 ohos 工程、phone/tablet/2in1、entry 材质 metadata、能力查询/原生确认弹窗桥、低版本 Flutter 弹窗回退；API 26 编译通过 | 原生导航/底部页签 PlatformView、材质跨 Flutter 层合成、API 17 与 API 26 真机视觉/功耗/无障碍验证 |
+| HarmonyOS 原生材质 | entry 材质 metadata、原生确认弹窗桥；API 26 ArkUI 宿主层 Navigation 顶栏/Tabs 底栏、THIN 原生材质及光感交互，绕开未实现的混合合成，低版本/关闭玻璃回退；[实现与边界](floating-navigation.md) | 原生材质对 Flutter 画面采样与路由合成、API 17 与 API 26 真机视觉/功耗/无障碍验证；大屏侧栏当前使用 Flutter 材质 |
 
 ## 平台进度
 
-- Windows Debug：已构建 EXE。曾做 5 秒进程存活检查；没有据此宣称真实 UI 联调或长稳通过。
+- Windows Debug：已构建 EXE。2026-10-20 修复 CEF GPU 描述符提前释放导致的地图黑屏，本机实际查看腾讯底图、2D / 3D、拖动、原生缩放和最大化重绘；未做其他显卡或长稳验证。见 [地图修复记录](map-integration.md#windows-地图黑屏修复2026-10-20)。
 - HarmonyOS Debug：ARM64 签名 HAP 已在 Mate 90 Pro Max / API 26 安装启动，真实腾讯地图与搜索结果可见，标题栏 2D / 3D 开关不再覆盖 SDK 指南针。x86_64 模拟器已安装，原生面板可用，当前模拟器禁用 WebGL；真机的完整地图交互、响应式和长稳验收仍待完成。详见 [鸿蒙试用记录](harmony-emulator-trial.md)。
 - Android：已定位 `D:\App\AndroidSDK`，Debug APK 已构建并安装到 Android 17 / API 37 模拟器；冷启动成功，已查看实际首屏截图。构建额外补齐 NDK 28.2.13676358、Build Tools 35、API 36 和 CMake 3.22.1。尚未验证真实手机/平板。
 - Linux：已生成原生 GTK runner；本机没有可用 WSL/Linux 环境，未做 Linux 构建/运行。
@@ -94,7 +94,7 @@ DevEco 目录为 `D:\App\DevEco Studio`，SDK API 26、ohpm 26.0.0.630、hvigor�
 
 1. 继续鸿蒙原生面板联调，并在支持 WebGL 的鸿蒙设备完成地图交互；保持 Windows/Android/HarmonyOS 可编译，扩大下行信令和平台回归覆盖。
 2. 扩大 Flutter 地图面板的统一历史、坐标边界、文件权限和响应式矩阵联调；灰底/字段错位改造已落地，HTML 操作界面已移除。
-3. 完成车辆/交通情景在实际地图中的交互和长稳验证，继续接入位置附加模拟和 UI。
+3. 完成车辆/交通情景在实际地图中的交互和长稳验证；位置附加模拟和 UI 已接入，需继续实际平台收发验收。
 4. 完成音频、原生媒体 ABI/预览/转码、串口/TTS、安全存储，以及已接入文件选择器的真实权限/取消场景验证。
 5. 完成鸿蒙原生导航/页签材质、Linux 构建，以及四平台的真实设备和性能验收。
 
@@ -109,3 +109,19 @@ DevEco 目录为 `D:\App\DevEco Studio`，SDK API 26、ohpm 26.0.0.630、hvigor�
 - 腾讯 GL 单地图结构和依赖限制见 [地图接入说明](map-integration.md)。Android/HarmonyOS 使用同盘依赖缓存，避免 Hvigor 绝对模块路径错误和 Kotlin 跨盘增量缓存异常；Windows 明确启用 UTF-8 编译。
 - 驾驶核心、共享随机流对照与证据边界见 [驾驶移植说明](driving-integration.md)。
 - 此前 Windows/Android/HarmonyOS 构建副本的四个驾驶核心文件、AppModel、地图桥与两个界面文件共八项，已逐项 SHA-256 比较，与当前源码一致。本轮未提交或推送 Git；原 WPF 已跟踪文件没有修改。
+
+## Windows 细节迭代
+
+2026-10-20 本轮完善地图拖动/遥测刷新隔离、注册表单浮动标签、会话鉴权码明文显示以及独立 JT808 分析工作台。实现和本机性能证据边界见 [Windows 迭代记录](windows-detail-iteration.md)。Android/HarmonyOS 按用户要求留到阶段结束后验证。
+
+## 独立工具与日志工作台
+
+2026-10-21 HTTP 与 JT808 数据透传改为独立二级页面，工具页仅保留入口；日志增加有界 RAW 历史、分类/搜索/暂停/自动滚动/复制导出及后台报文解析。同步修复 Windows CEF 初始化前日志洪泛导致磁盘耗尽的问题。功能与证据边界见 [工作台记录](tool-workbenches.md)。
+
+## 竖屏连接与位置附加项
+
+2026-10-21 平台连接配置改为默认折叠，摘要和连接操作常驻。位置附加项按当前 WPF 实现接入九类标准附件、位选择、独立模拟开关、可增删 RAW 列表、HEX 预览和配置保存/导入导出。自定义字节保留顺序、重复 ID 与手填长度；单位、默认值及模拟公式见 [位置附加项说明](location-attachments.md)。Android/HarmonyOS 仍待阶段验证。
+
+## 移动端后台连接与系统 GNSS
+
+2026-10-21 接入 Android 前台任务/缓存引擎、HarmonyOS 长时任务、断线退避恢复、设备系统 GNSS 与地图实时位置模式。GNSS 位置以 WGS-84 汇报，渲染时转换；过期或未定位时不发送旧模拟位置，启停不自动开启周期汇报。实现与系统约束、真机验收边界见 [移动端后台与定位说明](mobile-runtime-gnss.md)。

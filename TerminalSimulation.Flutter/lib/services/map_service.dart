@@ -61,7 +61,7 @@ class MapService {
     _requests[lane] = tool;
     try {
       if (key.trim().isEmpty) {
-        throw StateError('内置地图凭据不可用，请使用构建脚本重新构建应用。');
+        throw StateError('地图配置不可用，请联系应用提供者。');
       }
       if (operation == 'locate') return await _locate(lane, key);
       if (operation == 'route') {

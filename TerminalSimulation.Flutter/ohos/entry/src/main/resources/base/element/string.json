@@ -1,5 +1,6 @@
 {
   "string": [
+    {"name": "location_reason", "value": "用于通过系统定位服务获取设备位置、在地图显示实时位置及向已连接的平台汇报位置"},
     {
       "name": "module_desc",
       "value": "module description"
